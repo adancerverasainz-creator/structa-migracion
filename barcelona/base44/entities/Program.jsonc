@@ -1,0 +1,41 @@
+{
+  "name": "Program",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Nombre del programa de captaci\u00f3n"
+    },
+    "description": {
+      "type": "string",
+      "description": "Descripci\u00f3n del programa"
+    },
+    "link": {
+      "type": "string",
+      "description": "URL del formulario de pre-registro asociado"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "activo",
+        "pausado",
+        "cerrado"
+      ],
+      "default": "activo",
+      "description": "Estado del programa"
+    },
+    "start_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Fecha de inicio del programa"
+    },
+    "end_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Fecha de cierre del programa"
+    }
+  },
+  "required": [
+    "name"
+  ]
+}

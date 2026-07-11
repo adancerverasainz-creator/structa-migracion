@@ -1,0 +1,99 @@
+{
+  "name": "Team",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Nombre del equipo"
+    },
+    "registration_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Fecha de inscripci\u00f3n"
+    },
+    "player_count": {
+      "type": "number",
+      "description": "Cantidad de jugadores"
+    },
+    "player_names": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Nombres de los jugadores del equipo"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "activo",
+        "inactivo"
+      ],
+      "default": "activo",
+      "description": "Estado del equipo"
+    },
+    "matches_played": {
+      "type": "number",
+      "default": 0,
+      "description": "Partidos jugados"
+    },
+    "matches_won": {
+      "type": "number",
+      "default": 0,
+      "description": "Partidos ganados"
+    },
+    "matches_tied": {
+      "type": "number",
+      "default": 0,
+      "description": "Partidos empatados"
+    },
+    "matches_lost": {
+      "type": "number",
+      "default": 0,
+      "description": "Partidos perdidos"
+    },
+    "goals_for": {
+      "type": "number",
+      "default": 0,
+      "description": "Goles a favor"
+    },
+    "goals_against": {
+      "type": "number",
+      "default": 0,
+      "description": "Goles en contra"
+    },
+    "points": {
+      "type": "number",
+      "default": 0,
+      "description": "Puntos totales"
+    },
+    "top_scorer": {
+      "type": "string",
+      "description": "Nombre del goleador del equipo"
+    },
+    "top_scorer_goals": {
+      "type": "number",
+      "default": 0,
+      "description": "Goles del goleador"
+    },
+    "fouls": {
+      "type": "number",
+      "default": 0,
+      "description": "Faltas cometidas"
+    },
+    "yellow_cards": {
+      "type": "number",
+      "default": 0,
+      "description": "Tarjetas amarillas"
+    },
+    "red_cards": {
+      "type": "number",
+      "default": 0,
+      "description": "Tarjetas rojas"
+    }
+  },
+  "required": [
+    "name",
+    "registration_date",
+    "player_count"
+  ]
+}

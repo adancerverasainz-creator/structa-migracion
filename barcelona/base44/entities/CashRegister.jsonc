@@ -1,0 +1,27 @@
+{
+  "name": "CashRegister",
+  "type": "object",
+  "properties": {
+    "cash_amount": {
+      "type": "number",
+      "description": "Monto de efectivo del corte de caja"
+    },
+    "register_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Fecha del corte de caja"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Notas adicionales"
+    },
+    "source": {
+      "type": "string",
+      "description": "Origen del efectivo (ej: Corte de caja)"
+    }
+  },
+  "required": [
+    "cash_amount",
+    "register_date"
+  ]
+}

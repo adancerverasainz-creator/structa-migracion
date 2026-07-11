@@ -1,0 +1,46 @@
+{
+  "name": "AccountPayablePayment",
+  "type": "object",
+  "properties": {
+    "account_payable_id": {
+      "type": "string",
+      "description": "ID de la cuenta por pagar"
+    },
+    "amount": {
+      "type": "number",
+      "description": "Monto del abono"
+    },
+    "payment_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Fecha del abono"
+    },
+    "payment_method": {
+      "type": "string",
+      "enum": [
+        "efectivo",
+        "tarjeta",
+        "transferencia"
+      ],
+      "description": "M\u00e9todo de pago del abono"
+    },
+    "bank_name": {
+      "type": "string",
+      "description": "Banco (si aplica)"
+    },
+    "reference_number": {
+      "type": "string",
+      "description": "N\u00famero de referencia o comprobante"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Notas del abono"
+    }
+  },
+  "required": [
+    "account_payable_id",
+    "amount",
+    "payment_date",
+    "payment_method"
+  ]
+}

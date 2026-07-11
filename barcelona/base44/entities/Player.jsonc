@@ -1,0 +1,100 @@
+{
+  "name": "Player",
+  "type": "object",
+  "properties": {
+    "full_name": {
+      "type": "string",
+      "description": "Nombre completo del jugador"
+    },
+    "birth_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Fecha de nacimiento"
+    },
+    "join_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Fecha de ingreso al club"
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "Sub 5A",
+        "Sub 5B",
+        "Sub 5C",
+        "Sub 5D",
+        "Sub 7A",
+        "Sub 7B",
+        "Sub 7C",
+        "Sub 7D",
+        "Sub 9A",
+        "Sub 9B",
+        "Sub 9C",
+        "Sub 9D",
+        "Sub 11A",
+        "Sub 11B",
+        "Sub 11C",
+        "Sub 11D",
+        "Sub 13A",
+        "Sub 13B",
+        "Sub 13C",
+        "Sub 13D",
+        "Sub 15A",
+        "Sub 15B",
+        "Sub 15C",
+        "Sub 15D",
+        "Sub 17A",
+        "Sub 17B",
+        "Sub 17C",
+        "Sub 17D"
+      ],
+      "description": "Categor\u00eda del jugador"
+    },
+    "parent_name": {
+      "type": "string",
+      "description": "Nombre del padre/madre/tutor"
+    },
+    "parent_phone": {
+      "type": "string",
+      "description": "Tel\u00e9fono del padre/madre"
+    },
+    "parent_email": {
+      "type": "string",
+      "description": "Email del padre/madre"
+    },
+    "monthly_fee": {
+      "type": "number",
+      "description": "Cuota mensual"
+    },
+    "scholarship": {
+      "type": "string",
+      "enum": [
+        "ninguna",
+        "50%",
+        "100%"
+      ],
+      "default": "ninguna",
+      "description": "Tipo de beca asignada al jugador"
+    },
+    "photo_url": {
+      "type": "string",
+      "description": "Foto del jugador"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "activo",
+        "inactivo",
+        "baja"
+      ],
+      "default": "activo",
+      "description": "Estado del jugador"
+    }
+  },
+  "required": [
+    "full_name",
+    "parent_name",
+    "parent_phone",
+    "monthly_fee"
+  ]
+}

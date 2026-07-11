@@ -1,0 +1,64 @@
+{
+  "name": "Expense",
+  "type": "object",
+  "properties": {
+    "concept": {
+      "type": "string",
+      "description": "Concepto del gasto"
+    },
+    "amount": {
+      "type": "number",
+      "description": "Monto del gasto"
+    },
+    "expense_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Fecha del gasto"
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "nomina",
+        "bono_torneo",
+        "viaticos",
+        "hospedaje",
+        "transporte",
+        "equipamiento",
+        "mantenimiento",
+        "arbitros",
+        "intereses",
+        "retorno_inversion",
+        "copa",
+        "torneo",
+        "liga",
+        "otros"
+      ],
+      "description": "Categor\u00eda del gasto"
+    },
+    "payment_method": {
+      "type": "string",
+      "enum": [
+        "efectivo",
+        "tarjeta",
+        "transferencia"
+      ],
+      "description": "M\u00e9todo de pago"
+    },
+    "account": {
+      "type": "string",
+      "description": "Cuenta desde la que se realiz\u00f3 el pago"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Notas adicionales"
+    }
+  },
+  "required": [
+    "concept",
+    "amount",
+    "expense_date",
+    "category",
+    "payment_method"
+  ],
+  "rls": {}
+}

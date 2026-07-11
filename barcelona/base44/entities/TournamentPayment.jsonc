@@ -1,0 +1,71 @@
+{
+  "name": "TournamentPayment",
+  "type": "object",
+  "properties": {
+    "player_id": {
+      "type": "string",
+      "description": "ID del jugador del club (vac\u00edo si es externo)"
+    },
+    "external_attendee_id": {
+      "type": "string",
+      "description": "ID del TournamentAttendee externo (si aplica)"
+    },
+    "external_name": {
+      "type": "string",
+      "description": "Nombre del jugador externo (copia para referencia)"
+    },
+    "tournament_id": {
+      "type": "string",
+      "description": "ID del torneo"
+    },
+    "amount": {
+      "type": "number",
+      "description": "Monto total de la cuota"
+    },
+    "paid_amount": {
+      "type": "number",
+      "description": "Monto abonado"
+    },
+    "payment_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Fecha de pago"
+    },
+    "payment_method": {
+      "type": "string",
+      "enum": [
+        "efectivo",
+        "tarjeta",
+        "transferencia"
+      ],
+      "description": "M\u00e9todo de pago"
+    },
+    "bank_name": {
+      "type": "string",
+      "description": "Nombre del banco (si aplica)"
+    },
+    "reference_number": {
+      "type": "string",
+      "description": "N\u00famero de referencia"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Notas adicionales"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pagado",
+        "abono",
+        "pendiente"
+      ],
+      "default": "pendiente",
+      "description": "Estado del pago"
+    }
+  },
+  "required": [
+    "tournament_id",
+    "amount",
+    "payment_method"
+  ]
+}

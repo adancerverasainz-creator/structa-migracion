@@ -1,0 +1,67 @@
+{
+  "name": "AccountPayable",
+  "type": "object",
+  "properties": {
+    "concept": {
+      "type": "string",
+      "description": "Concepto o descripci\u00f3n de la deuda"
+    },
+    "supplier": {
+      "type": "string",
+      "description": "Proveedor o acreedor"
+    },
+    "total_amount": {
+      "type": "number",
+      "description": "Monto total a pagar"
+    },
+    "due_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Fecha l\u00edmite de pago"
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "nomina",
+        "proveedor",
+        "arbitros",
+        "renta",
+        "equipamiento",
+        "torneo",
+        "viaticos",
+        "hospedaje",
+        "transporte",
+        "intereses",
+        "otros"
+      ],
+      "description": "Categor\u00eda del gasto"
+    },
+    "payment_method": {
+      "type": "string",
+      "enum": [
+        "efectivo",
+        "tarjeta",
+        "transferencia"
+      ],
+      "description": "M\u00e9todo de pago preferido"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Notas adicionales"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pendiente",
+        "parcial",
+        "pagado"
+      ],
+      "default": "pendiente",
+      "description": "Estado de la cuenta"
+    }
+  },
+  "required": [
+    "concept",
+    "total_amount"
+  ]
+}

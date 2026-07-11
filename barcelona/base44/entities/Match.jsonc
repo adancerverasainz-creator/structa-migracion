@@ -1,0 +1,65 @@
+{
+  "name": "Match",
+  "type": "object",
+  "properties": {
+    "date": {
+      "type": "string",
+      "format": "date",
+      "description": "Fecha del partido"
+    },
+    "time": {
+      "type": "string",
+      "description": "Hora del partido (ej: 16:00)"
+    },
+    "home_team": {
+      "type": "string",
+      "description": "Equipo local"
+    },
+    "away_team": {
+      "type": "string",
+      "description": "Equipo visitante"
+    },
+    "home_goals": {
+      "type": "number",
+      "default": 0,
+      "description": "Goles del equipo local"
+    },
+    "away_goals": {
+      "type": "number",
+      "default": 0,
+      "description": "Goles del equipo visitante"
+    },
+    "location": {
+      "type": "string",
+      "description": "Ubicaci\u00f3n del partido"
+    },
+    "category": {
+      "type": "string",
+      "description": "Categor\u00eda del partido"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "programado",
+        "en_curso",
+        "finalizado",
+        "cancelado"
+      ],
+      "default": "programado",
+      "description": "Estado del partido"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Notas sobre el partido"
+    },
+    "tournament_id": {
+      "type": "string",
+      "description": "ID del torneo al que pertenece (opcional)"
+    }
+  },
+  "required": [
+    "date",
+    "home_team",
+    "away_team"
+  ]
+}

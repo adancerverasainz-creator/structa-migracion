@@ -1,0 +1,30 @@
+{
+  "name": "TournamentAttendee",
+  "type": "object",
+  "properties": {
+    "tournament_id": {
+      "type": "string",
+      "description": "ID del torneo"
+    },
+    "player_id": {
+      "type": "string",
+      "description": "ID del jugador del club (opcional si es externo)"
+    },
+    "is_external": {
+      "type": "boolean",
+      "default": false,
+      "description": "Si es un jugador externo al club"
+    },
+    "external_name": {
+      "type": "string",
+      "description": "Nombre del jugador externo"
+    },
+    "external_category": {
+      "type": "string",
+      "description": "Categor\u00eda del jugador externo"
+    }
+  },
+  "required": [
+    "tournament_id"
+  ]
+}

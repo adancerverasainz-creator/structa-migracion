@@ -1,0 +1,58 @@
+{
+  "name": "AuditLog",
+  "type": "object",
+  "properties": {
+    "action": {
+      "type": "string",
+      "enum": [
+        "CREACI\u00d3N",
+        "MODIFICACI\u00d3N",
+        "ELIMINACI\u00d3N"
+      ],
+      "description": "Tipo de acci\u00f3n realizada"
+    },
+    "module": {
+      "type": "string",
+      "description": "M\u00f3dulo afectado (Pagos, Jugadores, Egresos, Torneos, etc.)"
+    },
+    "entity_type": {
+      "type": "string",
+      "description": "Tipo de entidad afectada"
+    },
+    "entity_id": {
+      "type": "string",
+      "description": "ID del registro afectado"
+    },
+    "entity_name": {
+      "type": "string",
+      "description": "Nombre o descripci\u00f3n del registro"
+    },
+    "user_email": {
+      "type": "string",
+      "description": "Email del usuario que realiz\u00f3 la acci\u00f3n"
+    },
+    "previous_value": {
+      "type": "string",
+      "description": "Valor anterior (JSON serializado)"
+    },
+    "new_value": {
+      "type": "string",
+      "description": "Valor nuevo (JSON serializado)"
+    },
+    "monetary_diff": {
+      "type": "number",
+      "description": "Diferencia monetaria (si aplica)"
+    },
+    "details": {
+      "type": "string",
+      "description": "Detalles adicionales de la acci\u00f3n"
+    }
+  },
+  "required": [
+    "action",
+    "entity_type",
+    "entity_id",
+    "user_email",
+    "module"
+  ]
+}

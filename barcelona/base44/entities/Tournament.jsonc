@@ -1,0 +1,47 @@
+{
+  "name": "Tournament",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Nombre de la copa/torneo"
+    },
+    "date": {
+      "type": "string",
+      "format": "date",
+      "description": "Fecha del torneo"
+    },
+    "location": {
+      "type": "string",
+      "description": "Ubicaci\u00f3n del torneo"
+    },
+    "registration_fee": {
+      "type": "number",
+      "description": "Cuota de inscripci\u00f3n por jugador"
+    },
+    "category": {
+      "type": "string",
+      "description": "Categor\u00eda del torneo"
+    },
+    "description": {
+      "type": "string",
+      "description": "Descripci\u00f3n del torneo"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "proximo",
+        "en_curso",
+        "finalizado"
+      ],
+      "default": "proximo",
+      "description": "Estado del torneo"
+    }
+  },
+  "required": [
+    "name",
+    "date",
+    "registration_fee"
+  ],
+  "rls": {}
+}

@@ -1,0 +1,51 @@
+{
+  "name": "MatchPlayer",
+  "type": "object",
+  "properties": {
+    "match_id": {
+      "type": "string",
+      "description": "ID del partido"
+    },
+    "player_id": {
+      "type": "string",
+      "description": "ID del jugador"
+    },
+    "participated": {
+      "type": "boolean",
+      "default": true,
+      "description": "Si el jugador particip\u00f3"
+    },
+    "minutes_played": {
+      "type": "number",
+      "description": "Minutos jugados"
+    },
+    "goals": {
+      "type": "number",
+      "default": 0,
+      "description": "Goles marcados en este partido"
+    },
+    "assists": {
+      "type": "number",
+      "default": 0,
+      "description": "Asistencias en este partido"
+    },
+    "yellow_cards": {
+      "type": "number",
+      "default": 0,
+      "description": "Tarjetas amarillas"
+    },
+    "red_cards": {
+      "type": "number",
+      "default": 0,
+      "description": "Tarjetas rojas"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Notas sobre el desempe\u00f1o del jugador"
+    }
+  },
+  "required": [
+    "match_id",
+    "player_id"
+  ]
+}

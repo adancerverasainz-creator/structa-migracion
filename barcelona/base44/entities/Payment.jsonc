@@ -1,0 +1,77 @@
+{
+  "name": "Payment",
+  "type": "object",
+  "properties": {
+    "player_id": {
+      "type": "string",
+      "description": "ID del jugador"
+    },
+    "payment_type": {
+      "type": "string",
+      "enum": [
+        "mensualidad",
+        "inscripcion",
+        "reinscripcion",
+        "uniformes"
+      ],
+      "default": "mensualidad",
+      "description": "Tipo de pago"
+    },
+    "amount": {
+      "type": "number",
+      "description": "Monto pagado"
+    },
+    "surcharge": {
+      "type": "number",
+      "default": 0,
+      "description": "Recargos aplicados"
+    },
+    "payment_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Fecha de pago"
+    },
+    "month": {
+      "type": "string",
+      "description": "Mes o temporada correspondiente al pago"
+    },
+    "payment_method": {
+      "type": "string",
+      "enum": [
+        "efectivo",
+        "tarjeta",
+        "transferencia"
+      ],
+      "description": "M\u00e9todo de pago"
+    },
+    "bank_name": {
+      "type": "string",
+      "description": "Nombre del banco (si aplica)"
+    },
+    "reference_number": {
+      "type": "string",
+      "description": "N\u00famero de referencia o comprobante"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Notas adicionales"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pagado",
+        "pendiente",
+        "atrasado"
+      ],
+      "default": "pagado",
+      "description": "Estado del pago"
+    }
+  },
+  "required": [
+    "player_id",
+    "amount",
+    "payment_date",
+    "month",
+    "payment_method"
+  ]
+}

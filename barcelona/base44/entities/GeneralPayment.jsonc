@@ -1,0 +1,59 @@
+{
+  "name": "GeneralPayment",
+  "type": "object",
+  "properties": {
+    "concept": {
+      "type": "string",
+      "description": "Concepto del pago general"
+    },
+    "amount": {
+      "type": "number",
+      "description": "Monto del pago"
+    },
+    "payment_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Fecha de pago"
+    },
+    "payment_method": {
+      "type": "string",
+      "enum": [
+        "efectivo",
+        "tarjeta",
+        "transferencia"
+      ],
+      "description": "M\u00e9todo de pago"
+    },
+    "bank_name": {
+      "type": "string",
+      "description": "Nombre del banco (si aplica)"
+    },
+    "reference_number": {
+      "type": "string",
+      "description": "N\u00famero de referencia o comprobante"
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "inscripcion_torneo",
+        "uniformes",
+        "renta_cancha",
+        "donacion",
+        "patrocinio",
+        "venta_equipo",
+        "otros"
+      ],
+      "description": "Categor\u00eda del pago general"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Notas adicionales"
+    }
+  },
+  "required": [
+    "concept",
+    "amount",
+    "payment_date",
+    "payment_method"
+  ]
+}

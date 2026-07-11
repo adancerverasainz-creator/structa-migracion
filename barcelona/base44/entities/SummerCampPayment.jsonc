@@ -1,0 +1,86 @@
+{
+  "name": "SummerCampPayment",
+  "type": "object",
+  "properties": {
+    "player_id": {
+      "type": "string",
+      "description": "ID del jugador"
+    },
+    "player_name": {
+      "type": "string",
+      "description": "Nombre del jugador (copia)"
+    },
+    "payment_type": {
+      "type": "string",
+      "enum": [
+        "semana",
+        "uniforme"
+      ],
+      "description": "Tipo de cobro"
+    },
+    "week_number": {
+      "type": "number",
+      "description": "N\u00famero de semana (1-4), solo para tipo semana"
+    },
+    "base_amount": {
+      "type": "number",
+      "description": "Monto base antes de descuento"
+    },
+    "discount": {
+      "type": "number",
+      "default": 0,
+      "description": "Descuento aplicado"
+    },
+    "discount_reason": {
+      "type": "string",
+      "description": "Motivo del descuento"
+    },
+    "amount": {
+      "type": "number",
+      "description": "Monto final pagado"
+    },
+    "payment_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Fecha de pago"
+    },
+    "payment_method": {
+      "type": "string",
+      "enum": [
+        "efectivo",
+        "tarjeta",
+        "transferencia"
+      ],
+      "description": "M\u00e9todo de pago"
+    },
+    "bank_name": {
+      "type": "string",
+      "description": "Banco (si aplica)"
+    },
+    "reference_number": {
+      "type": "string",
+      "description": "N\u00famero de referencia"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pagado",
+        "pendiente",
+        "parcial"
+      ],
+      "default": "pagado",
+      "description": "Estado del pago"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Notas adicionales"
+    }
+  },
+  "required": [
+    "player_id",
+    "payment_type",
+    "amount",
+    "payment_date",
+    "payment_method"
+  ]
+}
