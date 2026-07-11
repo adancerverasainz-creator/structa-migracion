@@ -180,4 +180,9 @@ const functions = {
   },
 };
 
-export const base44 = { entities, auth, functions, supabase };
+// Telemetría interna de Base44 (NavigationTracker la invoca) — no-op en Supabase
+const appLogs = {
+  logUserInApp: async () => {},
+};
+
+export const base44 = { entities, auth, functions, appLogs, supabase };

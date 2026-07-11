@@ -8,3 +8,4 @@ ERP Club Barcelona Inter Academy portado a Supabase.
 
 Build: `npm install && npm run build`
 Staging con hash-router: `VITE_HASH_ROUTER=1 npm run build`
+Staging publicado: rama gh-pages → https://adancerverasainz-creator.github.io/structa-migracion/
