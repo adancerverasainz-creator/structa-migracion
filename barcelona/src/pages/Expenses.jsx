@@ -51,6 +51,12 @@ queryKey: ['summerCampPayments'],
 queryFn: () => base44.entities.SummerCampPayment.list(),
 });
 
+// FIX: added caja_principal_expenses as second expense source
+const { data: cajaPrincipalExpenses = [] } = useQuery({
+queryKey: ['cajaPrincipalExpenses'],
+queryFn: () => base44.entities.CajaPrincipalExpense.list('-expense_date'),
+});
+
 const createMutation = useMutation({
 mutationFn: async (data) => {
 const result = await base44.entities.Expense.create(data);
@@ -140,7 +146,8 @@ liga: 'Liga',
 otros: 'Otros'
 };
 
-const totalExpenses = expenses.reduce((sum, e) => sum + (e.amount || 0), 0);
+// FIX: includes caja_principal_expenses in total
+const totalExpenses = [...expenses, ...cajaPrincipalExpenses].reduce((sum, e) => sum + (e.amount || 0), 0);
 
 // Filter expenses based on search term
 const filteredExpenses = expenses.filter(expense => {
@@ -198,27 +205,27 @@ const allPayments = [
 ];
 
 const efectivoIn = allPayments.filter(p => p.payment_method === 'efectivo').reduce((sum, p) => sum + getAmt(p), 0);
-const efectivoOut = expenses.filter(e => e.payment_method === 'efectivo').reduce((sum, e) => sum + (e.amount || 0), 0);
+const efectivoOut = [...expenses, ...cajaPrincipalExpenses].filter(e => e.payment_method === 'efectivo').reduce((sum, e) => sum + (e.amount || 0), 0);
 const efectivoBalance = efectivoIn - efectivoOut;
 
 const tarjetaIn = allPayments.filter(p => p.payment_method === 'tarjeta').reduce((sum, p) => sum + getAmt(p), 0);
-const tarjetaOut = expenses.filter(e => e.payment_method === 'tarjeta').reduce((sum, e) => sum + (e.amount || 0), 0);
+const tarjetaOut = [...expenses, ...cajaPrincipalExpenses].filter(e => e.payment_method === 'tarjeta').reduce((sum, e) => sum + (e.amount || 0), 0);
 const tarjetaBalance = tarjetaIn - tarjetaOut;
 
 const bbvaIn = allPayments.filter(p => p.payment_method === 'transferencia' && p.bank_name === 'BBVA').reduce((sum, p) => sum + getAmt(p), 0);
-const bbvaOut = expenses.filter(e => e.payment_method === 'transferencia' && e.account === 'BBVA').reduce((sum, e) => sum + (e.amount || 0), 0);
+const bbvaOut = [...expenses, ...cajaPrincipalExpenses].filter(e => e.payment_method === 'transferencia' && e.account === 'BBVA').reduce((sum, e) => sum + (e.amount || 0), 0);
 const bbvaBalance = bbvaIn - bbvaOut;
 
 const mpIn = allPayments.filter(p => p.payment_method === 'transferencia' && p.bank_name === 'MP').reduce((sum, p) => sum + getAmt(p), 0);
-const mpOut = expenses.filter(e => e.payment_method === 'transferencia' && e.account === 'MP').reduce((sum, e) => sum + (e.amount || 0), 0);
+const mpOut = [...expenses, ...cajaPrincipalExpenses].filter(e => e.payment_method === 'transferencia' && e.account === 'MP').reduce((sum, e) => sum + (e.amount || 0), 0);
 const mpBalance = mpIn - mpOut;
 
 const nuIn = allPayments.filter(p => p.payment_method === 'transferencia' && p.bank_name === 'NU').reduce((sum, p) => sum + getAmt(p), 0);
-const nuOut = expenses.filter(e => e.payment_method === 'transferencia' && e.account === 'NU').reduce((sum, e) => sum + (e.amount || 0), 0);
+const nuOut = [...expenses, ...cajaPrincipalExpenses].filter(e => e.payment_method === 'transferencia' && e.account === 'NU').reduce((sum, e) => sum + (e.amount || 0), 0);
 const nuBalance = nuIn - nuOut;
 
 const obIn = allPayments.filter(p => p.payment_method === 'transferencia' && p.bank_name === 'OpenBank').reduce((sum, p) => sum + getAmt(p), 0);
-const obOut = expenses.filter(e => e.payment_method === 'transferencia' && e.account === 'OpenBank').reduce((sum, e) => sum + (e.amount || 0), 0);
+const obOut = [...expenses, ...cajaPrincipalExpenses].filter(e => e.payment_method === 'transferencia' && e.account === 'OpenBank').reduce((sum, e) => sum + (e.amount || 0), 0);
 const obBalance = obIn - obOut;
 
 return (<>
