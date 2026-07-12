@@ -192,10 +192,10 @@ actions={
 <CardContent>
 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
 {(() => {
-// FIX: helper to correctly use paid_amount for tournaments
+// FIX: helper to correctly use paid_amount for tournaments (null → fallback to amount)
 const getAmt = (p) => (p.paid_amount !== undefined && p.paid_amount !== null) ? p.paid_amount : (p.amount || 0);
 
-// FIX: added summerCampPayments (status === 'pagado') to income calculation
+// FIX: added summerCampPayments (status === 'pagado') + status filter on payments
 const allPayments = [
   ...payments.filter(p => p.status === 'pagado'),
   ...generalPayments,
@@ -227,6 +227,10 @@ const nuBalance = nuIn - nuOut;
 const obIn = allPayments.filter(p => p.payment_method === 'transferencia' && p.bank_name === 'OpenBank').reduce((sum, p) => sum + getAmt(p), 0);
 const obOut = [...expenses, ...cajaPrincipalExpenses].filter(e => e.payment_method === 'transferencia' && e.account === 'OpenBank').reduce((sum, e) => sum + (e.amount || 0), 0);
 const obBalance = obIn - obOut;
+
+const mpbiaIn = allPayments.filter(p => p.payment_method === 'transferencia' && p.bank_name === 'MercadoPagoBIA').reduce((sum, p) => sum + getAmt(p), 0);
+const mpbiaOut = [...expenses, ...cajaPrincipalExpenses].filter(e => e.payment_method === 'transferencia' && e.account === 'MercadoPagoBIA').reduce((sum, e) => sum + (e.amount || 0), 0);
+const mpbiaBalance = mpbiaIn - mpbiaOut;
 
 return (<>
 <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
@@ -281,6 +285,15 @@ In: {formatCurrency(nuIn)} | Out: {formatCurrency(nuOut)}
 </p>
 <p className="text-xs text-gray-500 mt-1">
 In: {formatCurrency(obIn)} | Out: {formatCurrency(obOut)}
+</p>
+</div>
+<div className="p-4 bg-teal-50 rounded-lg border border-teal-200">
+<p className="text-sm text-gray-600 mb-1">Mercado Pago BIA</p>
+<p className={`text-2xl font-bold ${mpbiaBalance >= 0 ? 'text-teal-600' : 'text-red-600'}`}>
+{formatCurrency(mpbiaBalance)}
+</p>
+<p className="text-xs text-gray-500 mt-1">
+In: {formatCurrency(mpbiaIn)} | Out: {formatCurrency(mpbiaOut)}
 </p>
 </div>
 </>);
