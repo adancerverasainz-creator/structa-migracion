@@ -92,7 +92,6 @@ return paymentDate >= monthStart && paymentDate <= monthEnd;
 const playersWithPaymentThisMonth = new Set(paymentsThisMonth.map(p => p.player_id));
 const playersWithoutPayment = activePlayers.filter(p => !playersWithPaymentThisMonth.has(p.id));
 
-const totalCollected = paymentsThisMonth.reduce((sum, p) => sum + (p.amount || 0), 0);
 const expectedTotal = activePlayers.reduce((sum, p) => sum + (p.monthly_fee || 0), 0);
 
 // Ingresos por método de pago (incluye todos los tipos de ingreso del mes)
@@ -135,6 +134,9 @@ const transferPayments = allPaymentsThisMonth.filter(p => p.payment_method === '
 const totalCash = cashPayments.reduce((sum, p) => sum + getPaymentAmount(p), 0);
 const totalCard = cardPayments.reduce((sum, p) => sum + getPaymentAmount(p), 0);
 const totalTransfer = transferPayments.reduce((sum, p) => sum + getPaymentAmount(p), 0);
+
+// FIX: totalCollected now sums ALL income sources (cuotas + generales + torneos + liga + summer camp)
+const totalCollected = allPaymentsThisMonth.reduce((sum, p) => sum + getPaymentAmount(p), 0);
 
 // Desglose por tipo de pago
 const cashPlayerPayments = paymentsThisMonth.filter(p => p.payment_method === 'efectivo').reduce((sum, p) => sum + (p.amount || 0), 0);
