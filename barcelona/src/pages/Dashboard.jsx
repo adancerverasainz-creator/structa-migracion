@@ -47,6 +47,13 @@ initialData: [],
 staleTime: 0,
 });
 
+const { data: cajaPrincipalExpenses = [] } = useQuery({
+queryKey: ['cajaPrincipalExpenses'],
+queryFn: () => base44.entities.CajaPrincipalExpense.list('-expense_date'),
+initialData: [],
+staleTime: 0,
+});
+
 const { data: players = [] } = useQuery({
 queryKey: ['players'],
 queryFn: () => base44.entities.Player.list(),
@@ -125,15 +132,17 @@ const totalSummerCampIncome = summerCampFiltered.reduce((sum, p) => sum + (p.amo
 // Total ingresos
 const totalIncome = totalMonthlyIncome + totalTournamentIncome + totalLeagueIncome + totalGeneralIncome + totalSummerCampIncome;
 
-// Egresos
+// Egresos — incluye ambas tablas: expenses + caja_principal_expenses
 const expensesFiltered = expenses.filter(e => filterByPeriod(e.expense_date));
-const totalExpenses = expensesFiltered.reduce((sum, e) => sum + (e.amount || 0), 0);
+const cajaPrincipalFiltered = cajaPrincipalExpenses.filter(e => filterByPeriod(e.expense_date));
+const allExpensesFiltered = [...expensesFiltered, ...cajaPrincipalFiltered];
+const totalExpenses = allExpensesFiltered.reduce((sum, e) => sum + (e.amount || 0), 0);
 
 // Balance
 const balance = totalIncome - totalExpenses;
 
-// Egresos por categoría
-const expensesByCategory = expensesFiltered.reduce((acc, exp) => {
+// Egresos por categoría (ambas tablas)
+const expensesByCategory = allExpensesFiltered.reduce((acc, exp) => {
 const cat = exp.category || 'otros';
 acc[cat] = (acc[cat] || 0) + (exp.amount || 0);
 return acc;
@@ -150,7 +159,8 @@ const allPayments = [
   ...generalPayments,
   ...scPaid,
 ];
-const allExpenses = expenses;
+// FIX: include caja_principal_expenses in account balance calculation
+const allExpenses = [...expenses, ...cajaPrincipalExpenses];
 
 const balances = {
 efectivo: 0,
@@ -581,25 +591,25 @@ className="w-full flex justify-between items-center p-4 hover:bg-red-100 transit
 <div className="p-3 bg-white rounded border border-red-200">
 <p className="text-xs text-gray-600">Efectivo</p>
 <p className="text-lg font-bold text-red-600">
-{formatCurrency(expensesFiltered.filter(e => e.category === category && e.payment_method === 'efectivo').reduce((sum, e) => sum + (e.amount || 0), 0))}
+{formatCurrency(allExpensesFiltered.filter(e => e.category === category && e.payment_method === 'efectivo').reduce((sum, e) => sum + (e.amount || 0), 0))}
 </p>
 </div>
 <div className="p-3 bg-white rounded border border-red-200">
 <p className="text-xs text-gray-600">Tarjeta</p>
 <p className="text-lg font-bold text-red-600">
-{formatCurrency(expensesFiltered.filter(e => e.category === category && e.payment_method === 'tarjeta').reduce((sum, e) => sum + (e.amount || 0), 0))}
+{formatCurrency(allExpensesFiltered.filter(e => e.category === category && e.payment_method === 'tarjeta').reduce((sum, e) => sum + (e.amount || 0), 0))}
 </p>
 </div>
 <div className="p-3 bg-white rounded border border-red-200">
 <p className="text-xs text-gray-600">Transferencia</p>
 <p className="text-lg font-bold text-red-600">
-{formatCurrency(expensesFiltered.filter(e => e.category === category && e.payment_method === 'transferencia').reduce((sum, e) => sum + (e.amount || 0), 0))}
+{formatCurrency(allExpensesFiltered.filter(e => e.category === category && e.payment_method === 'transferencia').reduce((sum, e) => sum + (e.amount || 0), 0))}
 </p>
 </div>
 </div>
 {/* Lista de gastos */}
 <div className="space-y-2">
-{expensesFiltered.filter(e => e.category === category).map((expense) => (
+{allExpensesFiltered.filter(e => e.category === category).map((expense) => (
 <div key={expense.id} className="flex justify-between items-center p-2 bg-white rounded border border-red-100">
 <div className="flex items-center gap-2">
 <div>
