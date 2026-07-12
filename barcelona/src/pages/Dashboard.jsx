@@ -79,9 +79,22 @@ const now = new Date();
 const periodStart = period === 'month' ? startOfMonth(now) : startOfYear(now);
 const periodEnd = period === 'month' ? endOfMonth(now) : endOfYear(now);
 
+// FIX: parseLocalDate evita el bug de zona horaria donde new Date("YYYY-MM-DD")
+// interpreta la fecha como UTC midnight, desplazando días tempranos del mes fuera del rango.
+// Ej: "2026-07-01" con new Date() → June 30 18:00 local (UTC-6) → excluido del mes.
+const parseLocalDate = (dateStr) => {
+  if (!dateStr) return null;
+  const str = String(dateStr);
+  const datePart = str.includes('T') ? str.split('T')[0] : str.split(' ')[0];
+  const parts = datePart.split('-').map(Number);
+  if (parts.length < 3 || parts.some(isNaN)) return null;
+  return new Date(parts[0], parts[1] - 1, parts[2]);
+};
+
 const filterByPeriod = (date) => {
-const d = new Date(date);
-return d >= periodStart && d <= periodEnd;
+  const d = parseLocalDate(date);
+  if (!d) return false;
+  return d >= periodStart && d <= periodEnd;
 };
 
 // FIX: added p.status === 'pagado' filter — previously included pending payments in monthly totals
