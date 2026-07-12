@@ -276,6 +276,8 @@ const { data: tournamentPayments = [] } = useQuery({ queryKey: ['tournamentPayme
 const { data: leaguePayments = [] } = useQuery({ queryKey: ['leaguePayments'], queryFn: () => base44.entities.LeaguePayment.list(null, 10000) });
 const { data: summerCampPayments = [] } = useQuery({ queryKey: ['summerCampPayments'], queryFn: () => base44.entities.SummerCampPayment.list(null, 10000) });
 const { data: expenses = [] } = useQuery({ queryKey: ['expenses'], queryFn: () => base44.entities.Expense.list(null, 10000) });
+// FIX: added caja_principal_expenses as second expense source
+const { data: cajaPrincipalExpenses = [] } = useQuery({ queryKey: ['cajaPrincipalExpenses'], queryFn: () => base44.entities.CajaPrincipalExpense.list(null, 10000) });
 const { data: players = [] } = useQuery({ queryKey: ['players'], queryFn: () => base44.entities.Player.list(null, 10000) });
 const { data: tournaments = [] } = useQuery({ queryKey: ['tournaments'], queryFn: () => base44.entities.Tournament.list(null, 1000) });
 const { data: teams = [] } = useQuery({ queryKey: ['teams'], queryFn: () => base44.entities.Team.list(null, 1000) });
@@ -287,7 +289,8 @@ const pagosPagados = payments.filter(p => p.status === 'pagado');
 
 // All income sources array (only confirmed paid records)
 const allPayments = [...pagosPagados, ...generalPayments, ...tournamentPayments, ...leaguePayments, ...campPagados];
-const allExpenses = [...expenses];
+// FIX: includes caja_principal_expenses in all expense calculations
+const allExpenses = [...expenses, ...cajaPrincipalExpenses];
 
 // ── Period helpers ──
 const dayStart = startOfDay(now); const dayEnd = endOfDay(now);
@@ -362,7 +365,8 @@ const pieData = incomeSources
 .filter(d => d.value > 0);
 
 // ── Egresos por categoría (mes actual) ──
-const expensesMonth = expenses.filter(e => inRange(e, monthStart, monthEnd));
+// FIX: use allExpenses (includes caja_principal_expenses)
+const expensesMonth = allExpenses.filter(e => inRange(e, monthStart, monthEnd));
 const expByCategory = expensesMonth.reduce((acc, e) => {
 const c = e.category || 'otros';
 if (!acc[c]) acc[c] = [];
