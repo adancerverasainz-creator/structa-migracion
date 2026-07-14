@@ -29,7 +29,7 @@ export default function Layout({ children, currentPageName }) {
     { name: 'CxP', page: 'CuentasPorPagar', icon: CreditCard },
     { name: 'Fondos', page: 'Fondos', icon: CreditCard },
     { name: 'Torneos', page: 'Tournaments', icon: Trophy },
-    { name: 'Liga', page: 'Liga', icon: Shield },
+    // Liga oculto del menú (módulo sin uso — decisión arquitectural 2026-07-13). La ruta /Liga sigue activa por si se necesita.
     { name: 'Summer', page: 'SummerCamp', icon: Trophy },
     { name: 'Reportes', page: 'FinancialReports', icon: BarChart2 },
     { name: 'Auditoría', page: 'AuditLogs', icon: FileText, roles: ['admin'] },
@@ -47,7 +47,7 @@ export default function Layout({ children, currentPageName }) {
             {/* Logo */}
             <Link to={createPageUrl('Home')} className="flex-shrink-0">
               <img 
-                src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/69829604916b5b78a01842a3/784240fce_LogoBIAtransparente.png" 
+                src="https://swtrrldixeeecsmfseah.supabase.co/storage/v1/object/public/assets/logo-bia-transparente.png" 
                 alt="BIA Logo" 
                 className="w-9 h-9 object-contain"
               />

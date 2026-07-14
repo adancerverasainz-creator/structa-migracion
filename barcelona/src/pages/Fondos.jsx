@@ -35,10 +35,7 @@ export default function Fondos() {
     queryFn: () => base44.entities.CashRegister.list('-register_date'),
   });
 
-  const { data: expenses = [] } = useQuery({
-    queryKey: ['cajaPrincipalExpenses'],
-    queryFn: () => base44.entities.CajaPrincipalExpense.list('-expense_date'),
-  });
+  // Fusión Fase 1 (2026-07-13): los gastos de Fondos viven en expenses con account='Fondos'
 
   // Para saldos de bancos en modal de traspaso
   const { data: allPayments = [] } = useQuery({
@@ -57,6 +54,7 @@ export default function Fondos() {
     queryKey: ['allExpensesForFondos'],
     queryFn: () => base44.entities.Expense.list(null, 10000),
   });
+  const expenses = allExpenses.filter(e => e.account === 'Fondos');
 
   const bankBalances = ['BBVA', 'MP', 'NU', 'OpenBank'].reduce((acc, bank) => {
     const inc = allPayments.filter(p => p.payment_method === 'transferencia' && p.bank_name === bank).reduce((s, p) => s + (p.amount || 0), 0);
@@ -115,18 +113,20 @@ export default function Fondos() {
   });
 
   const createExpenseMutation = useMutation({
-    mutationFn: (data) => base44.entities.CajaPrincipalExpense.create(data),
+    mutationFn: (data) => base44.entities.Expense.create({ ...data, payment_method: 'transferencia', account: 'Fondos', source_module: 'fondos', is_transfer: false }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['cajaPrincipalExpenses'] });
+      queryClient.invalidateQueries({ queryKey: ['allExpensesForFondos'] });
+      queryClient.invalidateQueries({ queryKey: ['expenses'] });
       setShowExpenseForm(false);
       setEditingExpense(null);
     },
   });
 
   const updateExpenseMutation = useMutation({
-    mutationFn: ({ id, data }) => base44.entities.CajaPrincipalExpense.update(id, data),
+    mutationFn: ({ id, data }) => base44.entities.Expense.update(id, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['cajaPrincipalExpenses'] });
+      queryClient.invalidateQueries({ queryKey: ['allExpensesForFondos'] });
+      queryClient.invalidateQueries({ queryKey: ['expenses'] });
       setShowExpenseForm(false);
       setEditingExpense(null);
     },
@@ -172,16 +172,17 @@ export default function Fondos() {
       await base44.entities.AuditLog.create({
         action: 'ELIMINACIÓN',
         module: 'Fondos',
-        entity_type: 'CajaPrincipalExpense',
+        entity_type: 'Expense',
         entity_id: expense.id,
         entity_name: expense.concept,
         user_email: user.email,
         details: `Monto: $${expense.amount}, Categoría: ${expense.category}`
       });
-      return base44.entities.CajaPrincipalExpense.delete(expense.id);
+      return base44.entities.Expense.delete(expense.id);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['cajaPrincipalExpenses'] });
+      queryClient.invalidateQueries({ queryKey: ['allExpensesForFondos'] });
+      queryClient.invalidateQueries({ queryKey: ['expenses'] });
     },
   });
 

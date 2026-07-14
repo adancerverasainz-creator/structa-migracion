@@ -53,9 +53,9 @@ queryFn: () => base44.entities.SummerCampPayment.list(),
 });
 
 // FIX: added caja_principal_expenses as second expense source
-const { data: cajaPrincipalExpenses = [] } = useQuery({
-queryKey: ['cajaPrincipalExpenses'],
-queryFn: () => base44.entities.CajaPrincipalExpense.list('-expense_date'),
+const { data: cashRegisters = [] } = useQuery({
+queryKey: ['cashRegisters'],
+queryFn: () => base44.entities.CashRegister.list('-register_date'),
 });
 
 const createMutation = useMutation({
@@ -147,8 +147,8 @@ liga: 'Liga',
 otros: 'Otros'
 };
 
-// FIX: includes caja_principal_expenses in total
-const totalExpenses = [...expenses, ...cajaPrincipalExpenses].reduce((sum, e) => sum + (e.amount || 0), 0);
+// Fusión Fase 1: total de gastos reales = expenses sin traspasos (gastos de Fondos incluidos)
+const totalExpenses = expenses.filter(e => !e.is_transfer).reduce((sum, e) => sum + (e.amount || 0), 0);
 
 // Filter expenses based on search term
 const filteredExpenses = expenses.filter(expense => {
@@ -206,32 +206,37 @@ const allPayments = [
 ];
 
 const efectivoIn = allPayments.filter(p => p.payment_method === 'efectivo').reduce((sum, p) => sum + getAmt(p), 0);
-const efectivoOut = [...expenses, ...cajaPrincipalExpenses].filter(e => e.payment_method === 'efectivo').reduce((sum, e) => sum + (e.amount || 0), 0);
+const efectivoOut = expenses.filter(e => e.payment_method === 'efectivo').reduce((sum, e) => sum + (e.amount || 0), 0);
 const efectivoBalance = efectivoIn - efectivoOut;
 
 const tarjetaIn = allPayments.filter(p => p.payment_method === 'tarjeta').reduce((sum, p) => sum + getAmt(p), 0);
-const tarjetaOut = [...expenses, ...cajaPrincipalExpenses].filter(e => e.payment_method === 'tarjeta').reduce((sum, e) => sum + (e.amount || 0), 0);
+const tarjetaOut = expenses.filter(e => e.payment_method === 'tarjeta').reduce((sum, e) => sum + (e.amount || 0), 0);
 const tarjetaBalance = tarjetaIn - tarjetaOut;
 
 const bbvaIn = allPayments.filter(p => p.payment_method === 'transferencia' && p.bank_name === 'BBVA').reduce((sum, p) => sum + getAmt(p), 0);
-const bbvaOut = [...expenses, ...cajaPrincipalExpenses].filter(e => e.payment_method === 'transferencia' && e.account === 'BBVA').reduce((sum, e) => sum + (e.amount || 0), 0);
+const bbvaOut = expenses.filter(e => e.payment_method === 'transferencia' && e.account === 'BBVA').reduce((sum, e) => sum + (e.amount || 0), 0);
 const bbvaBalance = bbvaIn - bbvaOut;
 
 const mpIn = allPayments.filter(p => p.payment_method === 'transferencia' && p.bank_name === 'MP').reduce((sum, p) => sum + getAmt(p), 0);
-const mpOut = [...expenses, ...cajaPrincipalExpenses].filter(e => e.payment_method === 'transferencia' && e.account === 'MP').reduce((sum, e) => sum + (e.amount || 0), 0);
+const mpOut = expenses.filter(e => e.payment_method === 'transferencia' && e.account === 'MP').reduce((sum, e) => sum + (e.amount || 0), 0);
 const mpBalance = mpIn - mpOut;
 
 const nuIn = allPayments.filter(p => p.payment_method === 'transferencia' && p.bank_name === 'NU').reduce((sum, p) => sum + getAmt(p), 0);
-const nuOut = [...expenses, ...cajaPrincipalExpenses].filter(e => e.payment_method === 'transferencia' && e.account === 'NU').reduce((sum, e) => sum + (e.amount || 0), 0);
+const nuOut = expenses.filter(e => e.payment_method === 'transferencia' && e.account === 'NU').reduce((sum, e) => sum + (e.amount || 0), 0);
 const nuBalance = nuIn - nuOut;
 
 const obIn = allPayments.filter(p => p.payment_method === 'transferencia' && p.bank_name === 'OpenBank').reduce((sum, p) => sum + getAmt(p), 0);
-const obOut = [...expenses, ...cajaPrincipalExpenses].filter(e => e.payment_method === 'transferencia' && e.account === 'OpenBank').reduce((sum, e) => sum + (e.amount || 0), 0);
+const obOut = expenses.filter(e => e.payment_method === 'transferencia' && e.account === 'OpenBank').reduce((sum, e) => sum + (e.amount || 0), 0);
 const obBalance = obIn - obOut;
 
 const mpbiaIn = allPayments.filter(p => p.payment_method === 'transferencia' && p.bank_name === 'MercadoPagoBIA').reduce((sum, p) => sum + getAmt(p), 0);
-const mpbiaOut = [...expenses, ...cajaPrincipalExpenses].filter(e => e.payment_method === 'transferencia' && e.account === 'MercadoPagoBIA').reduce((sum, e) => sum + (e.amount || 0), 0);
+const mpbiaOut = expenses.filter(e => e.payment_method === 'transferencia' && e.account === 'MercadoPagoBIA').reduce((sum, e) => sum + (e.amount || 0), 0);
 const mpbiaBalance = mpbiaIn - mpbiaOut;
+
+// Fondos (caja principal): In = cortes de caja + traspasos recibidos; Out = gastos pagados desde Fondos
+const fondosIn = cashRegisters.reduce((sum, r) => sum + (r.cash_amount || 0), 0);
+const fondosOut = expenses.filter(e => e.account === 'Fondos' && !e.is_transfer).reduce((sum, e) => sum + (e.amount || 0), 0);
+const fondosBalance = fondosIn - fondosOut;
 
 return (<>
 <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
@@ -295,6 +300,15 @@ In: {formatCurrency(obIn)} | Out: {formatCurrency(obOut)}
 </p>
 <p className="text-xs text-gray-500 mt-1">
 In: {formatCurrency(mpbiaIn)} | Out: {formatCurrency(mpbiaOut)}
+</p>
+</div>
+<div className="p-4 bg-green-50 rounded-lg border border-green-200">
+<p className="text-sm text-gray-600 mb-1">Fondos (caja)</p>
+<p className={`text-2xl font-bold ${fondosBalance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+{formatCurrency(fondosBalance)}
+</p>
+<p className="text-xs text-gray-500 mt-1">
+In: {formatCurrency(fondosIn)} | Out: {formatCurrency(fondosOut)}
 </p>
 </div>
 </>);

@@ -73,10 +73,11 @@ export default function CuentasPorPagar() {
         account: data.payment_method === 'transferencia' ? data.bank_name : undefined,
         notes: `Abono automático desde módulo CxP${data.reference_number ? ' | Ref: ' + data.reference_number : ''}${data.notes ? ' | ' + data.notes : ''}`,
       };
+      // Fusión Fase 1: pagos desde Fondos también van a expenses, con cuenta Fondos
       if (data.payment_method === 'efectivo' && data.cash_register === 'caja_principal') {
-        await base44.entities.CajaPrincipalExpense.create(expenseData);
+        await base44.entities.Expense.create({ ...expenseData, payment_method: 'transferencia', account: 'Fondos', source_module: 'cxp', is_transfer: false });
       } else {
-        await base44.entities.Expense.create(expenseData);
+        await base44.entities.Expense.create({ ...expenseData, source_module: 'cxp', is_transfer: false });
       }
 
       return payment;

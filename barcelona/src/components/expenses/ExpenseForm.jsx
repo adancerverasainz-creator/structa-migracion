@@ -87,6 +87,7 @@ export default function ExpenseForm({ expense, onSubmit, onCancel, isLoading }) 
     onSubmit({
       ...formData,
       amount: parseFloat(formData.amount) || 0,
+      source_module: formData.source_module || 'egresos',
     });
   };
 

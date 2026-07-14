@@ -10,6 +10,7 @@ import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Stethoscope, ShieldCheck, AlertCircle, AlertTriangle, Info, CheckCircle2, RefreshCw, Wand2, Loader2, ChevronRight, Wrench, ShieldAlert } from 'lucide-react';
 import ERPPageHeader from '@/components/layout/ERPPageHeader';
+import FinancialHealthCheck from '@/components/diagnostico/FinancialHealthCheck';
 import { toast } from 'sonner';
 
 const severityConfig = {
@@ -228,6 +229,9 @@ export default function DiagnosticoPage() {
           </div>
         }
       />
+
+      {/* Salud Financiera — checks reales en cliente */}
+      <FinancialHealthCheck />
 
       {/* Resultado de resolución */}
       <ResolveResultCard result={resolveResult} />

@@ -277,7 +277,6 @@ const { data: leaguePayments = [] } = useQuery({ queryKey: ['leaguePayments'], q
 const { data: summerCampPayments = [] } = useQuery({ queryKey: ['summerCampPayments'], queryFn: () => base44.entities.SummerCampPayment.list(null, 10000) });
 const { data: expenses = [] } = useQuery({ queryKey: ['expenses'], queryFn: () => base44.entities.Expense.list(null, 10000) });
 // FIX: added caja_principal_expenses as second expense source
-const { data: cajaPrincipalExpenses = [] } = useQuery({ queryKey: ['cajaPrincipalExpenses'], queryFn: () => base44.entities.CajaPrincipalExpense.list(null, 10000) });
 const { data: players = [] } = useQuery({ queryKey: ['players'], queryFn: () => base44.entities.Player.list(null, 10000) });
 const { data: tournaments = [] } = useQuery({ queryKey: ['tournaments'], queryFn: () => base44.entities.Tournament.list(null, 1000) });
 const { data: teams = [] } = useQuery({ queryKey: ['teams'], queryFn: () => base44.entities.Team.list(null, 1000) });
@@ -289,8 +288,8 @@ const pagosPagados = payments.filter(p => p.status === 'pagado');
 
 // All income sources array (only confirmed paid records)
 const allPayments = [...pagosPagados, ...generalPayments, ...tournamentPayments, ...leaguePayments, ...campPagados];
-// FIX: includes caja_principal_expenses in all expense calculations
-const allExpenses = [...expenses, ...cajaPrincipalExpenses];
+// Fusión Fase 1: gastos reales = expenses sin traspasos (los gastos de Fondos ya están aquí migrados)
+const allExpenses = expenses.filter(e => !e.is_transfer);
 
 // ── Period helpers ──
 const dayStart = startOfDay(now); const dayEnd = endOfDay(now);

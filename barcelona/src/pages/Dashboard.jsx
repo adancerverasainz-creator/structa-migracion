@@ -47,9 +47,9 @@ initialData: [],
 staleTime: 0,
 });
 
-const { data: cajaPrincipalExpenses = [] } = useQuery({
-queryKey: ['cajaPrincipalExpenses'],
-queryFn: () => base44.entities.CajaPrincipalExpense.list('-expense_date'),
+const { data: cashRegisters = [] } = useQuery({
+queryKey: ['cashRegisters'],
+queryFn: () => base44.entities.CashRegister.list('-register_date'),
 initialData: [],
 staleTime: 0,
 });
@@ -132,10 +132,8 @@ const totalSummerCampIncome = summerCampFiltered.reduce((sum, p) => sum + (p.amo
 // Total ingresos
 const totalIncome = totalMonthlyIncome + totalTournamentIncome + totalLeagueIncome + totalGeneralIncome + totalSummerCampIncome;
 
-// Egresos — incluye ambas tablas: expenses + caja_principal_expenses
-const expensesFiltered = expenses.filter(e => filterByPeriod(e.expense_date));
-const cajaPrincipalFiltered = cajaPrincipalExpenses.filter(e => filterByPeriod(e.expense_date));
-const allExpensesFiltered = [...expensesFiltered, ...cajaPrincipalFiltered];
+// Fusión Fase 1: gastos reales = expenses sin traspasos (gastos de Fondos incluidos tras migración)
+const allExpensesFiltered = expenses.filter(e => filterByPeriod(e.expense_date) && !e.is_transfer);
 const totalExpenses = allExpensesFiltered.reduce((sum, e) => sum + (e.amount || 0), 0);
 
 // Balance
@@ -159,8 +157,8 @@ const allPayments = [
   ...generalPayments,
   ...scPaid,
 ];
-// FIX: include caja_principal_expenses in account balance calculation
-const allExpenses = [...expenses, ...cajaPrincipalExpenses];
+// FIX saldos: cajaPrincipalExpenses excluido del cálculo de saldos (doble conteo con traspasos en expenses)
+const allExpenses = [...expenses];
 
 const balances = {
 efectivo: 0,
@@ -170,6 +168,7 @@ MP: 0,
 NU: 0,
 OpenBank: 0,
 MercadoPagoBIA: 0,
+Fondos: cashRegisters.reduce((s, r) => s + (r.cash_amount || 0), 0),
 };
 
 // Sumar ingresos (para TournamentPayment usar paid_amount, para el resto amount)
@@ -678,6 +677,12 @@ className="w-full flex justify-between items-center p-4 hover:bg-red-100 transit
 <p className="text-sm text-gray-600 mb-1">Mercado Pago BIA</p>
 <p className={`text-2xl font-bold ${accountBalances.MercadoPagoBIA >= 0 ? 'text-teal-600' : 'text-red-600'}`}>
 {formatCurrency(accountBalances.MercadoPagoBIA)}
+</p>
+</div>
+<div className="p-4 bg-green-50 rounded-lg border border-green-200">
+<p className="text-sm text-gray-600 mb-1">Fondos (caja)</p>
+<p className={`text-2xl font-bold ${accountBalances.Fondos >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+{formatCurrency(accountBalances.Fondos)}
 </p>
 </div>
 </div>

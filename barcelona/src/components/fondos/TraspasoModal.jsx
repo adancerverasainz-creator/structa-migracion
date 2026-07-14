@@ -43,6 +43,9 @@ export default function TraspasoModal({ onClose, bankBalances }) {
         category: 'otros',
         payment_method: 'transferencia',
         account: form.bank,
+        is_transfer: true,
+        transfer_to: 'Fondos',
+        source_module: 'fondos',
         notes: form.notes || `Referencia: ${form.reference || 'N/A'}`,
       });
 
