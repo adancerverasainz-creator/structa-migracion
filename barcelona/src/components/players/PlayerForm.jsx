@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { base44 } from '@/api/base44Client';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -7,6 +9,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { X, Save } from 'lucide-react';
 
 export default function PlayerForm({ player, onSubmit, onCancel, isLoading }) {
+  // Regla del club: solo un admin puede capturar/modificar fecha de ingreso retroactiva.
+  // (También reforzada con un trigger en la base de datos.)
+  const { data: currentUser } = useQuery({ queryKey: ['currentUser'], queryFn: () => base44.auth.me() });
+  const isAdmin = currentUser?.role === 'admin';
+  const todayStr = new Date().toISOString().split('T')[0];
+
   const [formData, setFormData] = useState(() => {
     if (player) {
       return {
@@ -19,7 +27,7 @@ export default function PlayerForm({ player, onSubmit, onCancel, isLoading }) {
     return {
       full_name: '',
       birth_date: '',
-      join_date: '',
+      join_date: new Date().toISOString().split('T')[0],
       category: '',
       parent_name: '',
       parent_phone: '',
@@ -38,6 +46,11 @@ export default function PlayerForm({ player, onSubmit, onCancel, isLoading }) {
       ...formData,
       monthly_fee: parseFloat(formData.monthly_fee) || 0,
     };
+    // No-admin: alta siempre con fecha del día; edición no puede alterar la fecha de ingreso
+    if (!isAdmin) {
+      if (!player) submitData.join_date = todayStr;
+      else submitData.join_date = player.join_date;
+    }
     
     // Ensure dates are in YYYY-MM-DD format only
     if (submitData.birth_date) {
@@ -92,8 +105,13 @@ export default function PlayerForm({ player, onSubmit, onCancel, isLoading }) {
                 id="join_date"
                 type="date"
                 value={formData.join_date}
+                min={isAdmin ? undefined : (player ? undefined : todayStr)}
+                disabled={!isAdmin}
                 onChange={(e) => setFormData({ ...formData, join_date: e.target.value })}
               />
+              {!isAdmin && (
+                <p className="text-xs text-gray-500">Las altas se registran con la fecha del día. Solo un administrador puede capturar ingresos retroactivos.</p>
+              )}
             </div>
             <div className="space-y-2">
               <Label htmlFor="category">Categoría</Label>
