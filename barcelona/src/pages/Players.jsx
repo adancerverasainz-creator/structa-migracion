@@ -59,6 +59,7 @@ export default function Players() {
         previousData: prev, newData: data,
         monetaryDiff: (data.monthly_fee || 0) - (prev?.monthly_fee || 0),
         details: `Cuota anterior: $${prev?.monthly_fee} → Nueva: $${data.monthly_fee}`
+          + (prev?.status !== data.status ? ` | ESTATUS: ${prev?.status} → ${data.status} (la deuda del jugador permanece activa y cobrable)` : '')
       });
       return base44.entities.Player.update(id, data);
     },

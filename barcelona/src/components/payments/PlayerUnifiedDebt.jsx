@@ -55,8 +55,7 @@ export default function PlayerUnifiedDebt({
     const results = [];
 
     for (const p of players) {
-      if (p.status === 'inactivo' || p.status === 'baja') continue;
-
+      // FIX 2026-07-15: inactivos/baja permanecen — su deuda sigue viva y cobrable.
       const monthlyFee = p.monthly_fee || 0;
       if (monthlyFee <= 0) continue;
 
@@ -495,6 +494,9 @@ export default function PlayerUnifiedDebt({
                     <div>
                       <div className="flex items-center gap-2 flex-wrap">
                         <h3 className="text-base font-bold text-gray-900">{player.full_name}</h3>
+                        {player.status && player.status !== 'activo' && (
+                          <Badge className="bg-gray-700 text-white text-xs">{player.status === 'baja' ? 'Baja' : 'Inactivo'}</Badge>
+                        )}
                         {player.category && <Badge variant="outline">{player.category}</Badge>}
                         {(player.scholarship && player.scholarship !== 'ninguna') && (
                           <Badge className="bg-purple-100 text-purple-800 flex items-center gap-1">

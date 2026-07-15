@@ -152,8 +152,9 @@ export default function PaymentForm({ payment, players, onSubmit, onCancel, isLo
 
   const selectedPlayer = players.find(p => p.id === formData.player_id);
 
-  const filteredPlayers = players
-    .filter(p => p.status === 'activo')
+  // FIX 2026-07-15: también se puede cobrar a inactivos/baja (su deuda sigue viva); activos aparecen primero
+  const filteredPlayers = [...players]
+    .sort((a, b) => (a.status === 'activo' ? 0 : 1) - (b.status === 'activo' ? 0 : 1) || (a.full_name || '').localeCompare(b.full_name || ''))
     .filter(p => 
       playerSearch === '' || 
       p.full_name.toLowerCase().includes(playerSearch.toLowerCase()) ||
@@ -232,7 +233,12 @@ export default function PaymentForm({ payment, players, onSubmit, onCancel, isLo
                         }}
                         className="w-full text-left px-4 py-2 hover:bg-gray-100 transition-colors"
                       >
-                        <div className="font-medium">{player.full_name}</div>
+                        <div className="font-medium">
+                          {player.full_name}
+                          {player.status && player.status !== 'activo' && (
+                            <span className="ml-2 text-xs font-semibold text-white bg-gray-600 rounded px-1.5 py-0.5">{player.status === 'baja' ? 'Baja' : 'Inactivo'}</span>
+                          )}
+                        </div>
                         <div className="text-xs text-gray-500">{player.parent_name} - {formatCurrency(player.monthly_fee)}</div>
                       </button>
                     ))}

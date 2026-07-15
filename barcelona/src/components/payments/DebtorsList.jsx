@@ -50,8 +50,9 @@ export default function DebtorsList({ players, payments, isLoading, tournamentPa
   const selMonthIndex = monthNames.indexOf(selMonthName.toLowerCase());
   const selectedMonthDate = new Date(parseInt(selYear), selMonthIndex, 1);
 
-  const activePlayers = players.filter(p => {
-    if (p.status !== 'activo') return false;
+  // FIX 2026-07-15: la deuda NO desaparece al dar de baja — se sigue cobrando.
+  // Morosos de mensualidad incluye TODOS los estatus; solo se filtra por fecha de inscripción.
+  const eligiblePlayers = players.filter(p => {
     if (!p.join_date) return true;
     const joined = parseISO(p.join_date);
     // El jugador debe haberse inscrito antes o durante el mes seleccionado
@@ -88,8 +89,8 @@ export default function DebtorsList({ players, payments, isLoading, tournamentPa
     return fullFee;
   };
 
-  // Moroso: sin pago o pago parcial (pagó menos de su cuota requerida)
-  const debtors = activePlayers
+  // Moroso: sin pago o pago parcial (pagó menos de su cuota requerida) — cualquier estatus
+  const debtors = eligiblePlayers
     .filter(p => {
       const paid = paidAmountByPlayer[p.id] || 0;
       return paid < getRequiredFee(p);
@@ -116,9 +117,10 @@ export default function DebtorsList({ players, payments, isLoading, tournamentPa
       .map(p => p.player_id)
   );
 
-  // Jugadores activos que NO tienen inscripcion ni reinscripcion para esa temporada
+  // Inscripciones/reinscripciones: SOLO jugadores activos (a un inactivo/baja no se le genera nueva reinscripción)
   // Excluir jugadores con cuota mensual $0 (no pagan reinscripción)
-  const pendingInscripcion = activePlayers.filter(p => (p.monthly_fee || 0) > 0 && !paidInscripcionIds.has(p.id));
+  const activeOnly = eligiblePlayers.filter(p => p.status === 'activo');
+  const pendingInscripcion = activeOnly.filter(p => (p.monthly_fee || 0) > 0 && !paidInscripcionIds.has(p.id));
 
   const filteredPendingInscripcion = seasonSearch.trim()
     ? pendingInscripcion.filter(p =>
@@ -334,6 +336,9 @@ export default function DebtorsList({ players, payments, isLoading, tournamentPa
                     <div className="flex-1">
                       <div className="flex items-center gap-3 flex-wrap mb-2">
                         <h3 className="text-base font-bold text-gray-900">{player.full_name}</h3>
+                        {player.status && player.status !== 'activo' && (
+                          <Badge className="bg-gray-700 text-white text-xs">{player.status === 'baja' ? 'Baja' : 'Inactivo'}</Badge>
+                        )}
                         {player.category && <Badge variant="outline">{player.category}</Badge>}
                         <Badge className="bg-orange-100 text-orange-700 border-orange-300 border">Sin inscripción</Badge>
                       </div>
@@ -467,6 +472,9 @@ export default function DebtorsList({ players, payments, isLoading, tournamentPa
                     <div className="flex items-start justify-between mb-3">
                       <div>
                         <h3 className="text-lg font-bold text-gray-900">{player.full_name}</h3>
+                        {player.status && player.status !== 'activo' && (
+                          <Badge className="bg-gray-700 text-white text-xs">{player.status === 'baja' ? 'Baja' : 'Inactivo'}</Badge>
+                        )}
                         {player.category && (
                           <Badge variant="outline" className="mt-1">{player.category}</Badge>
                         )}
