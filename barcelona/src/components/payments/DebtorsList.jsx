@@ -36,7 +36,7 @@ function getMonthOptions() {
   return options;
 }
 
-export default function DebtorsList({ players, payments, isLoading, tournamentPayments = [], onAbonar, onAbonarInscripcion, lateFeeSettings = null, debtWaivers = [] }) {
+export default function DebtorsList({ players, payments, isLoading, tournamentPayments = [], onAbonar, onAbonarInscripcion, lateFeeSettings = null, debtWaivers = [] , onCondonar }) {
   const monthOptions = getMonthOptions();
   const [selectedMonth, setSelectedMonth] = useState(monthOptions[0].value);
   const [search, setSearch] = useState('');
