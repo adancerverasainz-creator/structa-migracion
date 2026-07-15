@@ -22,11 +22,16 @@ const SEASON_OPTIONS = Array.from({ length: currentYear - 2025 + 4 }, (_, i) => 
 });
 
 // Generate list of months (current + 11 previous)
+// Inicio oficial de la ventana de deuda del sistema: diciembre 2025
+// (mismo fixedStart que Deuda Unificada — antes de esa fecha no se cobra nada)
+const DEBT_START = new Date(2025, 11, 1);
+
 function getMonthOptions() {
   const options = [];
   const now = new Date();
   for (let i = 0; i < 12; i++) {
     const d = subMonths(now, i);
+    if (d < DEBT_START && !(d.getFullYear() === DEBT_START.getFullYear() && d.getMonth() === DEBT_START.getMonth())) break;
     options.push({
       label: format(d, 'MMMM yyyy', { locale: es }),
       value: format(d, 'MMMM yyyy', { locale: es }),
