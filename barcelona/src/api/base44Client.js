@@ -12,6 +12,8 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 // Entidad Base44 → tabla Supabase
 const TABLE = {
   Player: 'players',
+  ClubSetting: 'club_settings',
+  DebtWaiver: 'debt_waivers',
   PreRegistro: 'pre_registrations',
   Tournament: 'tournaments',
   Team: 'teams',

@@ -7,6 +7,7 @@ import { AlertCircle, Phone, Mail, DollarSign, Calendar, FileDown, Search, Clipb
 import TournamentDebtorsList from './TournamentDebtorsList';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { calculateMoratorio } from '../../lib/financeEngine';
 import { format, subMonths, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { formatCurrency } from '../lib/formatCurrency';
@@ -35,7 +36,7 @@ function getMonthOptions() {
   return options;
 }
 
-export default function DebtorsList({ players, payments, isLoading, tournamentPayments = [], onAbonar, onAbonarInscripcion }) {
+export default function DebtorsList({ players, payments, isLoading, tournamentPayments = [], onAbonar, onAbonarInscripcion, lateFeeSettings = null, debtWaivers = [] }) {
   const monthOptions = getMonthOptions();
   const [selectedMonth, setSelectedMonth] = useState(monthOptions[0].value);
   const [search, setSearch] = useState('');
@@ -53,6 +54,12 @@ export default function DebtorsList({ players, payments, isLoading, tournamentPa
   // FIX 2026-07-15: la deuda NO desaparece al dar de baja — se sigue cobrando.
   // Morosos de mensualidad incluye TODOS los estatus; solo se filtra por fecha de inscripción.
   const eligiblePlayers = players.filter(p => {
+    // Fecha de baja: la deuda se congela — no se generan meses posteriores a la baja
+    if (p.baja_date) {
+      const baja = parseISO(p.baja_date);
+      const bajaMonthDate = new Date(baja.getFullYear(), baja.getMonth(), 1);
+      if (selectedMonthDate > bajaMonthDate) return false;
+    }
     if (!p.join_date) return true;
     const joined = parseISO(p.join_date);
     // El jugador debe haberse inscrito antes o durante el mes seleccionado
@@ -67,6 +74,12 @@ export default function DebtorsList({ players, payments, isLoading, tournamentPa
     p.month?.toLowerCase().includes(selectedOption.monthName.toLowerCase()) &&
     p.month?.includes(selectedOption.value.split(' ')[1])
   );
+
+  // Condonaciones registradas para el mes seleccionado
+  const waivedByPlayer = {};
+  debtWaivers
+    .filter(w => (w.month || '').toLowerCase() === selectedOption.value.toLowerCase())
+    .forEach(w => { waivedByPlayer[w.player_id] = (waivedByPlayer[w.player_id] || 0) + (w.amount || 0); });
 
   // Sumar pagos por jugador para detectar pagos parciales
   const paidAmountByPlayer = {};
@@ -89,21 +102,30 @@ export default function DebtorsList({ players, payments, isLoading, tournamentPa
     return fullFee;
   };
 
-  // Moroso: sin pago o pago parcial (pagó menos de su cuota requerida) — cualquier estatus
+  // Moroso: sin pago o pago parcial (pagó menos de su cuota requerida) — cualquier estatus.
+  // Regla del club: vencido el día 15 → recargo (configurable). Las condonaciones restan deuda.
   const debtors = eligiblePlayers
     .filter(p => {
-      const paid = paidAmountByPlayer[p.id] || 0;
+      const paid = (paidAmountByPlayer[p.id] || 0) + (waivedByPlayer[p.id] || 0);
       return paid < getRequiredFee(p);
     })
     .map(p => {
       const requiredFee = getRequiredFee(p);
       const isHalfFee = requiredFee < (p.monthly_fee || 0);
+      const paid = paidAmountByPlayer[p.id] || 0;
+      const waived = waivedByPlayer[p.id] || 0;
+      const basePending = Math.max(0, requiredFee - paid - waived);
+      const { moratorio } = basePending > 0
+        ? calculateMoratorio(selectedOption.value, new Date(), lateFeeSettings)
+        : { moratorio: 0 };
       return {
         ...p,
         requiredFee,
         isHalfFee,
-        paidAmount: paidAmountByPlayer[p.id] || 0,
-        pendingAmount: requiredFee - (paidAmountByPlayer[p.id] || 0),
+        paidAmount: paid,
+        waivedAmount: waived,
+        recargo: moratorio,
+        pendingAmount: basePending + moratorio,
       };
     });
 
@@ -517,6 +539,12 @@ export default function DebtorsList({ players, payments, isLoading, tournamentPa
                           : `⚠️ Sin pago registrado para ${selectedMonth.charAt(0).toUpperCase() + selectedMonth.slice(1)}`
                         }
                       </p>
+                      {player.recargo > 0 && (
+                        <p className="text-xs text-red-600 mt-1">Incluye recargo por pago tardío: {formatCurrency(player.recargo)} (vencido el día 15)</p>
+                      )}
+                      {player.waivedAmount > 0 && (
+                        <p className="text-xs text-purple-600 mt-1">Condonado previamente: {formatCurrency(player.waivedAmount)}</p>
+                      )}
                       {player.isHalfFee && (
                         <p className="text-xs text-orange-600 mt-1">
                           📅 Ingresó después del día 15 — aplica 50% de mensualidad ({formatCurrency(player.requiredFee)} de {formatCurrency(player.monthly_fee)})
@@ -524,7 +552,17 @@ export default function DebtorsList({ players, payments, isLoading, tournamentPa
                       )}
                     </div>
                     {onAbonar && (
-                      <div className="mt-3 flex justify-end">
+                      <div className="mt-3 flex justify-end gap-2">
+                        {onCondonar && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="border-purple-300 text-purple-700 hover:bg-purple-50 gap-2"
+                            onClick={() => onCondonar(player, selectedMonth, player.pendingAmount)}
+                          >
+                            Condonar
+                          </Button>
+                        )}
                         <Button
                           size="sm"
                           className="bg-green-600 hover:bg-green-700 gap-2"

@@ -69,8 +69,11 @@ export function calculateSuggestedSurcharge(monthKey, paymentDate) {
  * @param {Date} [referenceDate] - Fecha de referencia (default: hoy)
  * @returns {{ moratorio: number, isLate: boolean, monthsLate: number }}
  */
-export function calculateMoratorio(monthKey, referenceDate = new Date()) {
-  if (!monthKey) return { moratorio: 0, isLate: false, monthsLate: 0 };
+// Regla del club (2026-07-15): fecha límite de pago = día 15 de cada mes;
+// desde el día 16 se cobra recargo fijo (default $100). Configurable en club_settings.late_fee.
+export function calculateMoratorio(monthKey, referenceDate = new Date(), lateFeeSettings = null) {
+  const cfg = { amount: 100, cutoff_day: 15, start_month: '2026-07', enabled: true, ...(lateFeeSettings || {}) };
+  if (!cfg.enabled || !monthKey) return { moratorio: 0, isLate: false, monthsLate: 0 };
 
   const monthNames = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
   const parts = monthKey.toLowerCase().split(' ');
@@ -80,15 +83,20 @@ export function calculateMoratorio(monthKey, referenceDate = new Date()) {
 
   if (monthIndex < 0 || !year) return { moratorio: 0, isLate: false, monthsLate: 0 };
 
-  const dueDate = new Date(year, monthIndex, 1);
-  const refDate = new Date(referenceDate.getFullYear(), referenceDate.getMonth(), 1);
+  // Vigencia: la regla aplica a partir de start_month (no retroactiva a meses históricos)
+  const [sy, sm] = String(cfg.start_month).split('-').map(Number);
+  if (sy && sm && (year < sy || (year === sy && (monthIndex + 1) < sm))) {
+    return { moratorio: 0, isLate: false, monthsLate: 0 };
+  }
 
-  const monthsLate = (refDate.getFullYear() - dueDate.getFullYear()) * 12 + (refDate.getMonth() - dueDate.getMonth());
+  // Vencido si ya pasó el día límite (15) de ese mes
+  const cutoff = new Date(year, monthIndex, cfg.cutoff_day, 23, 59, 59);
+  if (referenceDate <= cutoff) return { moratorio: 0, isLate: false, monthsLate: 0 };
 
-  if (monthsLate <= 0) return { moratorio: 0, isLate: false, monthsLate: 0 };
+  const refMonth = new Date(referenceDate.getFullYear(), referenceDate.getMonth(), 1);
+  const monthsLate = Math.max(1, (refMonth.getFullYear() - year) * 12 + (refMonth.getMonth() - monthIndex));
 
-  // Moratorio fijo: $100 por mes atrasado (se cobra cuando ya pasó el mes)
-  return { moratorio: 100, isLate: true, monthsLate };
+  return { moratorio: cfg.amount, isLate: true, monthsLate };
 }
 
 /**

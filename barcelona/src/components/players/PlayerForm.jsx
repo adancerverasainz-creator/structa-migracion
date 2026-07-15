@@ -13,6 +13,7 @@ export default function PlayerForm({ player, onSubmit, onCancel, isLoading }) {
         ...player,
         birth_date: player.birth_date ? player.birth_date.split('T')[0] : '',
         join_date: player.join_date ? player.join_date.split('T')[0] : '',
+        baja_date: player.baja_date ? player.baja_date.split('T')[0] : '',
       };
     }
     return {
@@ -27,6 +28,7 @@ export default function PlayerForm({ player, onSubmit, onCancel, isLoading }) {
       scholarship: 'ninguna',
       photo_url: '',
       status: 'activo',
+      baja_date: '',
     };
   });
 
@@ -41,6 +43,11 @@ export default function PlayerForm({ player, onSubmit, onCancel, isLoading }) {
     if (submitData.birth_date) {
       submitData.birth_date = submitData.birth_date.split('T')[0];
     }
+    // Fecha de baja: obligatoria si el estatus no es activo (congela la deuda en ese mes);
+    // si vuelve a activo, se limpia.
+    if (submitData.status === 'activo') submitData.baja_date = null;
+    else if (!submitData.baja_date) submitData.baja_date = new Date().toISOString().split('T')[0];
+    if (submitData.baja_date) submitData.baja_date = String(submitData.baja_date).split('T')[0];
     if (submitData.join_date) {
       submitData.join_date = submitData.join_date.split('T')[0];
     }
@@ -221,6 +228,18 @@ export default function PlayerForm({ player, onSubmit, onCancel, isLoading }) {
                 </SelectContent>
               </Select>
             </div>
+            {formData.status !== 'activo' && (
+              <div className="space-y-2">
+                <Label htmlFor="baja_date">Fecha de baja / inactivación *</Label>
+                <Input
+                  id="baja_date"
+                  type="date"
+                  value={formData.baja_date || ''}
+                  onChange={(e) => setFormData({ ...formData, baja_date: e.target.value })}
+                />
+                <p className="text-xs text-gray-500">La deuda se genera solo hasta el mes de esta fecha.</p>
+              </div>
+            )}
           </div>
         </CardContent>
         <CardFooter className="flex justify-end gap-3">

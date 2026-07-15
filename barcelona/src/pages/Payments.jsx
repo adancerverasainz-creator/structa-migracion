@@ -37,6 +37,42 @@ queryKey: ['players'],
 queryFn: () => base44.entities.Player.list(),
 });
 
+// Regla de morosidad del club (día límite / recargo) y condonaciones registradas
+const { data: clubSettings = [] } = useQuery({
+queryKey: ['clubSettings'],
+queryFn: () => base44.entities.ClubSetting.list(),
+});
+const lateFeeSettings = clubSettings.find(cs => cs.key === 'late_fee')?.value || null;
+
+const { data: debtWaivers = [] } = useQuery({
+queryKey: ['debtWaivers'],
+queryFn: () => base44.entities.DebtWaiver.list(null, 10000),
+});
+
+// Condonar deuda: registro inmutable + auditoría (nunca se borra deuda en silencio)
+const [condonarInfo, setCondonarInfo] = useState(null); // { player, month, amount }
+const [condonarReason, setCondonarReason] = useState('');
+const condonarMutation = useMutation({
+mutationFn: async ({ player, month, amount, reason }) => {
+const user = await base44.auth.me();
+await base44.entities.DebtWaiver.create({
+player_id: player.id, month, amount, reason, created_by: user.email,
+});
+await logAudit({
+action: 'CONDONACIÓN', module: 'Pagos', entity_type: 'DebtWaiver',
+entity_id: player.id, entity_name: player.full_name,
+monetaryDiff: -amount,
+details: `Deuda condonada: ${month} por $${amount}. Motivo: ${reason}`,
+});
+},
+onSuccess: () => {
+queryClient.invalidateQueries({ queryKey: ['debtWaivers'] });
+setCondonarInfo(null); setCondonarReason('');
+toast.success('Deuda condonada y registrada en Auditoría');
+},
+onError: () => toast.error('No se pudo registrar la condonación'),
+});
+
 const { data: generalPayments = [], isLoading: generalPaymentsLoading } = useQuery({
 queryKey: ['generalPayments'],
 queryFn: () => base44.entities.GeneralPayment.list('-payment_date'),
@@ -600,6 +636,9 @@ payments={payments}
 isLoading={playersLoading || paymentsLoading}
 onAbonar={handleAbonar}
 onAbonarInscripcion={handleAbonar}
+lateFeeSettings={lateFeeSettings}
+debtWaivers={debtWaivers}
+onCondonar={(player, month, amount) => setCondonarInfo({ player, month, amount })}
 />
 </TabsContent>
 
@@ -607,6 +646,8 @@ onAbonarInscripcion={handleAbonar}
 <PlayerUnifiedDebt
 players={players}
 payments={payments}
+lateFeeSettings={lateFeeSettings}
+debtWaivers={debtWaivers}
 tournamentPayments={tournamentPayments}
 tournaments={tournaments}
 tournamentAttendees={tournamentAttendees}
@@ -618,6 +659,39 @@ onPagoGeneral={(info) => setPagoGeneralInfo(info)}
 />
 </TabsContent>
 </Tabs>
+
+{/* Modal Condonar Deuda */}
+{condonarInfo && (
+<div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+<div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6 space-y-4">
+<h3 className="text-lg font-bold text-gray-900">Condonar deuda</h3>
+<p className="text-sm text-gray-600">
+{condonarInfo.player.full_name} — {condonarInfo.month} — <span className="font-bold text-red-600">${condonarInfo.amount}</span>
+</p>
+<p className="text-xs text-gray-500">La condonación es permanente, queda registrada en Auditoría y no se puede editar ni borrar.</p>
+<div>
+<label className="text-sm font-medium text-gray-700">Motivo (obligatorio)</label>
+<textarea
+className="mt-1 w-full border rounded-md p-2 text-sm"
+rows={3}
+value={condonarReason}
+onChange={(e) => setCondonarReason(e.target.value)}
+placeholder="Ej. Acuerdo con el padre por baja definitiva en marzo"
+/>
+</div>
+<div className="flex justify-end gap-2">
+<Button variant="outline" onClick={() => { setCondonarInfo(null); setCondonarReason(''); }}>Cancelar</Button>
+<Button
+className="bg-purple-600 hover:bg-purple-700"
+disabled={!condonarReason.trim() || condonarMutation.isPending}
+onClick={() => condonarMutation.mutate({ ...condonarInfo, reason: condonarReason.trim() })}
+>
+Condonar y registrar
+</Button>
+</div>
+</div>
+</div>
+)}
 </div>
 );
 }

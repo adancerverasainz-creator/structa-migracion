@@ -35,7 +35,7 @@ const monthNames = ['enero','febrero','marzo','abril','mayo','junio','julio','ag
 export default function PlayerUnifiedDebt({
   players, payments, tournamentPayments, tournaments, tournamentAttendees,
   summerCampPayments, onAbonar, onAbonarTorneo, onPagoGeneral, isLoading
-}) {
+, lateFeeSettings = null, debtWaivers = []}) {
   const monthOptions = getMonthOptions();
   const [selectedMonth, setSelectedMonth] = useState(monthOptions[0]?.value || '');
   const [search, setSearch] = useState('');
@@ -76,7 +76,13 @@ export default function PlayerUnifiedDebt({
       let mensualidadPaid = 0;
 
       const genCursor = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
-      const genEnd = new Date(selectedMonthDate.getFullYear(), selectedMonthDate.getMonth(), 1);
+      let genEnd = new Date(selectedMonthDate.getFullYear(), selectedMonthDate.getMonth(), 1);
+      // Fecha de baja: la deuda se genera solo hasta el mes de la baja (congelada después)
+      if (p.baja_date) {
+        const baja = new Date(p.baja_date + 'T00:00:00');
+        const bajaMonth = new Date(baja.getFullYear(), baja.getMonth(), 1);
+        if (bajaMonth < genEnd) genEnd = bajaMonth;
+      }
 
       while (genCursor <= genEnd) {
         const mName = format(genCursor, 'MMMM', { locale: es });
@@ -97,14 +103,18 @@ export default function PlayerUnifiedDebt({
             && pay.month?.includes(String(mYear)))
           .reduce((sum, pay) => sum + (pay.amount || 0), 0);
 
-        const basePending = Math.max(0, requiredFee - paidForMonth);
+        const waivedForMonth = debtWaivers
+          .filter(w => w.player_id === p.id && (w.month || '').toLowerCase() === mKey.toLowerCase())
+          .reduce((sum, w) => sum + (w.amount || 0), 0);
+
+        const basePending = Math.max(0, requiredFee - paidForMonth - waivedForMonth);
 
         // Moratorio: $100 si el mes ya pasó y aún hay saldo pendiente
         let moratorio = 0;
         let isLate = false;
         let monthsLate = 0;
         if (basePending > 0 && requiredFee > 0) {
-          const morResult = calculateMoratorio(mKey, now);
+          const morResult = calculateMoratorio(mKey, now, lateFeeSettings);
           moratorio = morResult.moratorio;
           isLate = morResult.isLate;
           monthsLate = morResult.monthsLate;
@@ -116,7 +126,7 @@ export default function PlayerUnifiedDebt({
           label: `${mName.charAt(0).toUpperCase() + mName.slice(1)} ${mYear}`,
           detail: requiredFee === 0
             ? 'Beca 100% — sin cargo'
-            : `Cuota: ${formatCurrency(requiredFee)}${moratorio > 0 ? ` + Moratorio: ${formatCurrency(moratorio)}` : ''}${requiredFee !== monthlyFee && requiredFee > 0 ? ' (50%)' : ''}`,
+            : `Cuota: ${formatCurrency(requiredFee)}${moratorio > 0 ? ` + Recargo día 15: ${formatCurrency(moratorio)}` : ''}${requiredFee !== monthlyFee && requiredFee > 0 ? ' (50%)' : ''}${waivedForMonth > 0 ? ` | Condonado: ${formatCurrency(waivedForMonth)}` : ''}`,
           paid: paidForMonth,
           pending: totalPendingWithMoratorio,
           moratorio,
