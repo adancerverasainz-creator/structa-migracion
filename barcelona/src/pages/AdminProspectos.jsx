@@ -12,6 +12,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Users, Search, ExternalLink, Link2, Plus, Copy, Pencil, Trash2, CheckCircle, Clock, XCircle, Zap } from 'lucide-react';
 import ERPPageHeader from '@/components/layout/ERPPageHeader';
+import { toast } from 'sonner';
 
 const STATUS_LABELS = {
   pendiente: 'Nuevo',
@@ -42,6 +43,9 @@ const generateFormLink = (programId) => `https://forms.structa.mx/registro?app=$
 
 export default function AdminProspectos() {
   const queryClient = useQueryClient();
+  // Crear/editar programas requiere rol admin o editor (política RLS en BD)
+  const { data: currentUser } = useQuery({ queryKey: ['currentUser'], queryFn: () => base44.auth.me() });
+  const canManagePrograms = ['admin', 'editor'].includes(currentUser?.role);
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [showProgramForm, setShowProgramForm] = useState(false);
@@ -74,17 +78,26 @@ export default function AdminProspectos() {
       } catch (_) {}
       queryClient.invalidateQueries({ queryKey: ['programs'] });
       closeProgramForm();
+      toast.success('Programa creado con su link de formulario');
+    },
+    onError: (err) => {
+      const msg = String(err?.message || '');
+      toast.error(msg.includes('row-level security') || msg.includes('policy')
+        ? 'No tienes permisos para crear programas — pide a un administrador que eleve tu rol'
+        : `No se pudo guardar el programa: ${msg}`);
     },
   });
 
   const updateProgramMutation = useMutation({
     mutationFn: ({ id, data }) => base44.entities.Program.update(id, data),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['programs'] }); closeProgramForm(); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['programs'] }); closeProgramForm(); toast.success('Programa actualizado'); },
+    onError: (err) => toast.error(`No se pudo actualizar el programa: ${err?.message || ''}`),
   });
 
   const deleteProgramMutation = useMutation({
     mutationFn: (id) => base44.entities.Program.delete(id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['programs'] }),
+    onError: (err) => toast.error(`No se pudo eliminar el programa: ${err?.message || ''}`),
   });
 
   const handleStatusChange = (id, newStatus) => {
@@ -282,8 +295,11 @@ export default function AdminProspectos() {
         </TabsContent>
 
         <TabsContent value="programas" className="mt-4 space-y-4">
-          <div className="flex justify-end">
-            <Button onClick={openNewProgram} className="bg-rose-600 hover:bg-rose-700 text-white gap-2">
+          <div className="flex justify-end items-center gap-3">
+            {!canManagePrograms && (
+              <p className="text-xs text-gray-500">Solo administradores y editores pueden crear programas.</p>
+            )}
+            <Button onClick={openNewProgram} disabled={!canManagePrograms} className="bg-rose-600 hover:bg-rose-700 text-white gap-2">
               <Plus className="w-4 h-4" /> Nuevo programa
             </Button>
           </div>
