@@ -14,6 +14,8 @@ const TABLE = {
   Player: 'players',
   ClubSetting: 'club_settings',
   RolePermission: 'role_permissions',
+  UserPermission: 'user_permissions',
+  Profile: 'profiles',
   DebtWaiver: 'debt_waivers',
   PreRegistro: 'pre_registrations',
   Tournament: 'tournaments',

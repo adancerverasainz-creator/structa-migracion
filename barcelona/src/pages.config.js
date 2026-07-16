@@ -59,6 +59,7 @@ import Players from './pages/Players';
 import Tournaments from './pages/Tournaments';
 import CuentasPorPagar from './pages/CuentasPorPagar';
 import Diagnostico from './pages/Diagnostico';
+import Permissions from './pages/Permissions';
 import SummerCamp from './pages/SummerCamp';
 import Liga from './pages/Liga';
 import AdminProspectos from './pages/AdminProspectos';
@@ -78,6 +79,7 @@ export const PAGES = {
     "PreRegistro": PreRegistro,
     "CuentasPorPagar": CuentasPorPagar,
     "Diagnostico": Diagnostico,
+    "Permissions": Permissions,
     "SummerCamp": SummerCamp,
     "Liga": Liga,
     "AdminProspectos": AdminProspectos,
