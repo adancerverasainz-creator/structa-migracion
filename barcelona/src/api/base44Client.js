@@ -13,6 +13,7 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const TABLE = {
   Player: 'players',
   ClubSetting: 'club_settings',
+  RolePermission: 'role_permissions',
   DebtWaiver: 'debt_waivers',
   PreRegistro: 'pre_registrations',
   Tournament: 'tournaments',

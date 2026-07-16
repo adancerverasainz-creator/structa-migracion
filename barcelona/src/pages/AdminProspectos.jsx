@@ -43,9 +43,13 @@ const generateFormLink = (programId) => `https://forms.structa.mx/registro?app=$
 
 export default function AdminProspectos() {
   const queryClient = useQueryClient();
-  // Crear/editar programas requiere rol admin o editor (política RLS en BD)
+  // Permisos granulares (matriz role_permissions en BD — patrón recurso × acción)
   const { data: currentUser } = useQuery({ queryKey: ['currentUser'], queryFn: () => base44.auth.me() });
-  const canManagePrograms = ['admin', 'editor'].includes(currentUser?.role);
+  const { data: rolePerms = [] } = useQuery({ queryKey: ['rolePermissions'], queryFn: () => base44.entities.RolePermission.list(null, 1000) });
+  const myPerms = new Set(rolePerms.filter(rp => rp.role === currentUser?.role && rp.resource === 'programs').map(rp => rp.action));
+  const canCreatePrograms = myPerms.has('create');
+  const canUpdatePrograms = myPerms.has('update');
+  const canDeletePrograms = myPerms.has('delete');
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [showProgramForm, setShowProgramForm] = useState(false);
@@ -296,10 +300,10 @@ export default function AdminProspectos() {
 
         <TabsContent value="programas" className="mt-4 space-y-4">
           <div className="flex justify-end items-center gap-3">
-            {!canManagePrograms && (
-              <p className="text-xs text-gray-500">Solo administradores y editores pueden crear programas.</p>
+            {!canCreatePrograms && (
+              <p className="text-xs text-gray-500">Tu rol no tiene permiso para crear programas.</p>
             )}
-            <Button onClick={openNewProgram} disabled={!canManagePrograms} className="bg-rose-600 hover:bg-rose-700 text-white gap-2">
+            <Button onClick={openNewProgram} disabled={!canCreatePrograms} className="bg-rose-600 hover:bg-rose-700 text-white gap-2">
               <Plus className="w-4 h-4" /> Nuevo programa
             </Button>
           </div>
@@ -368,16 +372,20 @@ export default function AdminProspectos() {
                       )}
 
                       <div className="flex justify-end gap-2 pt-1 border-t border-gray-100">
-                        <Button variant="ghost" size="sm" onClick={() => openEditProgram(p)} className="text-gray-500 hover:text-gray-700 gap-1">
-                          <Pencil className="w-3.5 h-3.5" /> Editar
-                        </Button>
-                        <Button
-                          variant="ghost" size="sm"
-                          onClick={() => deleteProgramMutation.mutate(p.id)}
-                          className="text-red-400 hover:text-red-600 gap-1"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" /> Eliminar
-                        </Button>
+                        {canUpdatePrograms && (
+                          <Button variant="ghost" size="sm" onClick={() => openEditProgram(p)} className="text-gray-500 hover:text-gray-700 gap-1">
+                            <Pencil className="w-3.5 h-3.5" /> Editar
+                          </Button>
+                        )}
+                        {canDeletePrograms && (
+                          <Button
+                            variant="ghost" size="sm"
+                            onClick={() => deleteProgramMutation.mutate(p.id)}
+                            className="text-red-400 hover:text-red-600 gap-1"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" /> Eliminar
+                          </Button>
+                        )}
                       </div>
                     </CardContent>
                   </Card>
