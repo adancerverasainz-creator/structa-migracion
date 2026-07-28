@@ -12,6 +12,8 @@ import LoginPage from './pages/admin/LoginPage'
 import AdminLayout from './pages/admin/AdminLayout'
 import AdminTournaments from './pages/admin/AdminTournaments'
 import AdminTournamentDetail from './pages/admin/AdminTournamentDetail'
+import ProfilePage from './pages/admin/ProfilePage'
+import AdminUsers from './pages/admin/AdminUsers'
 
 function RequireAuth({ children }) {
   const [session, setSession] = useState(undefined)
@@ -50,6 +52,8 @@ export default function App() {
         <Route index element={<Navigate to="/admin/torneos" replace />} />
         <Route path="torneos" element={<AdminTournaments />} />
         <Route path="torneo/:id" element={<AdminTournamentDetail />} />
+        <Route path="perfil" element={<ProfilePage />} />
+        <Route path="usuarios" element={<AdminUsers />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />
