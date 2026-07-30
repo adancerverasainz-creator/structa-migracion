@@ -592,7 +592,7 @@ export default function AdminTournamentDetail() {
                 {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
               </select>
             </Field>
-            {matchForm.status === 'completed' && (
+            {(matchForm.status === 'completed' || matchForm.status === 'forfait') && (
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Goles local">
                   <input type="number" min="0" value={matchForm.home_goals} onChange={e => setMatchForm(f => ({ ...f, home_goals: e.target.value }))} className={INPUT} />
@@ -602,10 +602,10 @@ export default function AdminTournamentDetail() {
                 </Field>
               </div>
             )}
-            {matchForm.status === 'completed' && (
-              <Field label="Forfait (equipo que no se presentó)">
-                <select value={matchForm.forfait_team_id} onChange={e => setMatchForm(f => ({ ...f, forfait_team_id: e.target.value }))} className={INPUT}>
-                  <option value="">Ninguno</option>
+            {matchForm.status === 'forfait' && (
+              <Field label="Equipo que no se presentó *">
+                <select required value={matchForm.forfait_team_id} onChange={e => setMatchForm(f => ({ ...f, forfait_team_id: e.target.value }))} className={INPUT}>
+                  <option value="">Seleccionar...</option>
                   {teams.filter(t => t.id === matchForm.home_team_id || t.id === matchForm.away_team_id).map(t => (
                     <option key={t.id} value={t.id}>{t.name}</option>
                   ))}
