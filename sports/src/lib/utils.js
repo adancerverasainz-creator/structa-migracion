@@ -65,10 +65,14 @@ export function calcScorers(events) {
   const scorers = {}
   events
     .filter(e => e.event_type === 'goal')
-    .forEach(e => {
-      const key = e.player_id || e.player_name
+    .forEach((e, i) => {
+      // Use player_id if available; fall back to "name + team" to avoid
+      // merging different players with the same name. Anonymous goals
+      // (no name, no id) each get a unique key so they don't collapse.
+      const key = e.player_id
+        || (e.player_name ? `${e.player_name}__${e.team_id || e.team_name || ''}` : `anon_${i}`)
       if (!scorers[key]) {
-        scorers[key] = { name: e.player_name || 'Desconocido', team: e.team_name || '', goals: 0 }
+        scorers[key] = { name: e.player_name || 'Sin nombre', team: e.team_name || '', goals: 0 }
       }
       scorers[key].goals++
     })
