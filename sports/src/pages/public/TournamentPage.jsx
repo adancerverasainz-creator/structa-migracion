@@ -193,7 +193,12 @@ function StandingsTab({ standings, groups, teams, matches }) {
       <div className="space-y-6">
         {groups.map(g => {
           const groupTeams = teams.filter(t => t.group_id === g.id)
-          const groupMatches = matches.filter(m => m.group_id === g.id)
+          const groupTeamIds = new Set(groupTeams.map(t => t.id))
+          const groupMatches = matches.filter(m =>
+            m.group_id
+              ? m.group_id === g.id
+              : groupTeamIds.has(m.home_team_id) && groupTeamIds.has(m.away_team_id)
+          )
           const gs = calcStandings(groupTeams, groupMatches)
           return (
             <div key={g.id}>
