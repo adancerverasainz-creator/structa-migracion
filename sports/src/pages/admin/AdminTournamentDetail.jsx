@@ -11,7 +11,7 @@ import { toast } from 'sonner'
 const TAB_LABELS = ['Equipos', 'Partidos']
 
 // ─── helpers ────────────────────────────────────────────────────────────────
-const EMPTY_TEAM = { name: '', captain_name: '', color: '#16a34a', logo_url: '', status: 'active', group_id: '' }
+const EMPTY_TEAM = { name: '', captain_name: '', color: '#16a34a', logo_url: '', status: 'active', group_id: '', category_id: '' }
 const EMPTY_MATCH = {
   matchday: 1, home_team_id: '', away_team_id: '',
   field: '', match_date: '', match_time: '',
@@ -106,7 +106,7 @@ export default function AdminTournamentDetail() {
 
   const saveTeam = useMutation({
     mutationFn: async (values) => {
-      const payload = { ...values, tournament_id: id, group_id: values.group_id || null }
+      const payload = { ...values, tournament_id: id, group_id: values.group_id || null, category_id: values.category_id || null }
       if (teamModal === 'create') {
         const { error } = await supabase.from('teams').insert(payload)
         if (error) throw error
@@ -354,7 +354,7 @@ export default function AdminTournamentDetail() {
                           <Link2 className="w-4 h-4" />
                         </button>
                       )}
-                      <button onClick={() => { setTeamForm({ name: t.name, captain_name: t.captain_name || '', color: t.color || '#16a34a', logo_url: t.logo_url || '', status: t.status || 'active', group_id: t.group_id || '' }); setTeamModal(t) }} className="p-1.5 text-gray-400 hover:text-green-600 rounded-lg transition-colors">
+                      <button onClick={() => { setTeamForm({ name: t.name, captain_name: t.captain_name || '', color: t.color || '#16a34a', logo_url: t.logo_url || '', status: t.status || 'active', group_id: t.group_id || '', category_id: t.category_id || '' }); setTeamModal(t) }} className="p-1.5 text-gray-400 hover:text-green-600 rounded-lg transition-colors">
                         <Pencil className="w-4 h-4" />
                       </button>
                       <button onClick={() => setDeletingTeam(t)} className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg transition-colors">
@@ -546,6 +546,14 @@ export default function AdminTournamentDetail() {
                 </select>
               </Field>
             </div>
+            {categories.length > 0 && (
+              <Field label="Categoría">
+                <select value={teamForm.category_id} onChange={e => setTeamForm(f => ({ ...f, category_id: e.target.value }))} className={INPUT}>
+                  <option value="">Sin categoría</option>
+                  {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              </Field>
+            )}
             {groups.length > 0 && (
               <Field label="Grupo">
                 <select value={teamForm.group_id} onChange={e => setTeamForm(f => ({ ...f, group_id: e.target.value }))} className={INPUT}>
