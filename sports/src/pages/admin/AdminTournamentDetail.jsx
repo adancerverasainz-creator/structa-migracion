@@ -636,8 +636,8 @@ export default function AdminTournamentDetail() {
       {/* ── EVENT MODAL ──────────────────────────────────────────────────── */}
       {eventModal !== null && (() => {
         const selectedMatch = matches.find(m => m.id === eventForm.match_id)
-        const availableTeams = matchTeamsFilter
-          ? teams.filter(t => matchTeamsFilter.includes(t.id))
+        const availableTeams = selectedMatch
+          ? teams.filter(t => t.id === selectedMatch.home_team_id || t.id === selectedMatch.away_team_id)
           : teams
         function closeEventModal() {
           setEventModal(null)
