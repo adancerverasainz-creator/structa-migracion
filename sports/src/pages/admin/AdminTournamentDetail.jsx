@@ -194,6 +194,7 @@ export default function AdminTournamentDetail() {
   const [eventModal, setEventModal] = useState(null)
   const [eventForm, setEventForm] = useState(EMPTY_EVENT)
   const [deletingEvent, setDeletingEvent] = useState(null)
+  const [matchTeamsFilter, setMatchTeamsFilter] = useState(null) // [home_id, away_id] when opened from a match row
 
   const saveEvent = useMutation({
     mutationFn: async (values) => {
@@ -232,6 +233,13 @@ export default function AdminTournamentDetail() {
     },
     onError: () => toast.error('Error al eliminar'),
   })
+
+  // ── Open event modal pre-filled for a specific match ────────────────────
+  function openEventForMatch(m) {
+    setEventForm({ ...EMPTY_EVENT, match_id: m.id })
+    setMatchTeamsFilter([m.home_team_id, m.away_team_id])
+    setEventModal('create')
+  }
 
   // ── Grouped matches by matchday ───────────────────────────────────────────
   const matchesByDay = matches.reduce((acc, m) => {
@@ -407,6 +415,13 @@ export default function AdminTournamentDetail() {
                             <span className={`text-xs px-2 py-0.5 rounded-full shrink-0 ${isPlayed ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
                               {isPlayed ? 'Jugado' : 'Programado'}
                             </span>
+                            <button
+                              onClick={() => openEventForMatch(m)}
+                              title="Registrar evento (gol, tarjeta…)"
+                              className="p-1.5 text-gray-400 hover:text-yellow-500 hover:bg-yellow-50 rounded-lg transition-colors"
+                            >
+                              <Zap className="w-4 h-4" />
+                            </button>
                             <button onClick={() => {
                               setMatchForm({
                                 matchday: m.matchday,
@@ -619,42 +634,79 @@ export default function AdminTournamentDetail() {
       )}
 
       {/* ── EVENT MODAL ──────────────────────────────────────────────────── */}
-      {eventModal !== null && (
-        <Modal title={eventModal === 'create' ? 'Nuevo evento' : 'Editar evento'} onClose={() => setEventModal(null)}>
-          <form onSubmit={e => { e.preventDefault(); saveEvent.mutate(eventForm) }} className="space-y-4">
-            <Field label="Partido *">
-              <select required value={eventForm.match_id} onChange={e => setEventForm(f => ({ ...f, match_id: e.target.value }))} className={INPUT}>
-                <option value="">Seleccionar...</option>
-                {matches.map(m => (
-                  <option key={m.id} value={m.id}>J{m.matchday}: {m.home_team_name} vs {m.away_team_name}</option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Tipo de evento *">
-              <select value={eventForm.event_type} onChange={e => setEventForm(f => ({ ...f, event_type: e.target.value }))} className={INPUT}>
-                <option value="goal">Gol</option>
-                <option value="yellow_card">Tarjeta amarilla</option>
-                <option value="red_card">Tarjeta roja</option>
-              </select>
-            </Field>
-            <Field label="Equipo">
-              <select value={eventForm.team_id} onChange={e => setEventForm(f => ({ ...f, team_id: e.target.value }))} className={INPUT}>
-                <option value="">Seleccionar...</option>
-                {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-              </select>
-            </Field>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Nombre del jugador">
-                <input value={eventForm.player_name} onChange={e => setEventForm(f => ({ ...f, player_name: e.target.value }))} className={INPUT} placeholder="Ej. J. García" />
+      {eventModal !== null && (() => {
+        const selectedMatch = matches.find(m => m.id === eventForm.match_id)
+        const availableTeams = matchTeamsFilter
+          ? teams.filter(t => matchTeamsFilter.includes(t.id))
+          : teams
+        function closeEventModal() {
+          setEventModal(null)
+          setMatchTeamsFilter(null)
+        }
+        return (
+          <Modal title={eventModal === 'create' ? 'Registrar evento' : 'Editar evento'} onClose={closeEventModal}>
+            <form onSubmit={e => { e.preventDefault(); saveEvent.mutate(eventForm) }} className="space-y-4">
+              {/* Partido — bloqueado si viene de una fila, seleccionable si es manual */}
+              <Field label="Partido *">
+                {matchTeamsFilter && selectedMatch ? (
+                  <div className={INPUT + ' bg-gray-50 text-gray-700 cursor-not-allowed'}>
+                    J{selectedMatch.matchday}: {selectedMatch.home_team_name} vs {selectedMatch.away_team_name}
+                  </div>
+                ) : (
+                  <select required value={eventForm.match_id} onChange={e => setEventForm(f => ({ ...f, match_id: e.target.value, team_id: '' }))} className={INPUT}>
+                    <option value="">Seleccionar...</option>
+                    {matches.map(m => (
+                      <option key={m.id} value={m.id}>J{m.matchday}: {m.home_team_name} vs {m.away_team_name}</option>
+                    ))}
+                  </select>
+                )}
               </Field>
-              <Field label="Minuto">
-                <input type="number" min="1" max="120" value={eventForm.minute} onChange={e => setEventForm(f => ({ ...f, minute: e.target.value }))} className={INPUT} placeholder="45" />
+
+              {/* Tipo de evento — visual con colores */}
+              <Field label="Tipo de evento *">
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { value: 'goal', label: '⚽ Gol', active: 'bg-green-600 text-white border-green-600' },
+                    { value: 'yellow_card', label: '🟨 Amarilla', active: 'bg-yellow-400 text-white border-yellow-400' },
+                    { value: 'red_card', label: '🟥 Roja', active: 'bg-red-600 text-white border-red-600' },
+                  ].map(opt => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setEventForm(f => ({ ...f, event_type: opt.value }))}
+                      className={`py-2 px-3 text-sm font-medium rounded-lg border-2 transition-all ${
+                        eventForm.event_type === opt.value
+                          ? opt.active
+                          : 'border-gray-200 text-gray-600 hover:border-gray-300'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
               </Field>
-            </div>
-            <ModalActions onCancel={() => setEventModal(null)} pending={saveEvent.isPending} />
-          </form>
-        </Modal>
-      )}
+
+              <Field label="Equipo">
+                <select value={eventForm.team_id} onChange={e => setEventForm(f => ({ ...f, team_id: e.target.value }))} className={INPUT}>
+                  <option value="">Seleccionar...</option>
+                  {availableTeams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
+              </Field>
+
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Nombre del jugador">
+                  <input value={eventForm.player_name} onChange={e => setEventForm(f => ({ ...f, player_name: e.target.value }))} className={INPUT} placeholder="Ej. J. García" />
+                </Field>
+                <Field label="Minuto">
+                  <input type="number" min="1" max="120" value={eventForm.minute} onChange={e => setEventForm(f => ({ ...f, minute: e.target.value }))} className={INPUT} placeholder="45" />
+                </Field>
+              </div>
+
+              <ModalActions onCancel={closeEventModal} pending={saveEvent.isPending} />
+            </form>
+          </Modal>
+        )
+      })()}
 
       {/* ── DELETE CONFIRMS ───────────────────────────────────────────────── */}
       {deletingTeam && <DeleteConfirm name={deletingTeam.name} onCancel={() => setDeletingTeam(null)} onConfirm={() => deleteTeam.mutate(deletingTeam.id)} pending={deleteTeam.isPending} />}
