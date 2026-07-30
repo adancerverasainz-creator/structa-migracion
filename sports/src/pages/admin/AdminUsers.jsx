@@ -241,16 +241,20 @@ export default function AdminUsers() {
 
   async function handleEditSave() {
     const currentIds = (editUser.tournament_admins ?? []).map(ta => ta.tournament_id)
-    // Update role if changed
-    if (editForm.role !== editUser.role) {
-      await editRoleMutation.mutateAsync({ userId: editUser.id, role: editForm.role })
+    try {
+      // Update role if changed
+      if (editForm.role !== editUser.role) {
+        await editRoleMutation.mutateAsync({ userId: editUser.id, role: editForm.role })
+      }
+      // Update tournament assignments
+      await editTournamentsMutation.mutateAsync({
+        userId: editUser.id,
+        tournamentIds: editForm.tournament_ids,
+        currentIds,
+      })
+    } catch (e) {
+      // errors are already surfaced via onError toasts in each mutation
     }
-    // Update tournament assignments
-    editTournamentsMutation.mutate({
-      userId: editUser.id,
-      tournamentIds: editForm.tournament_ids,
-      currentIds,
-    })
   }
 
   /* ─────────────────────────────────── render ─────────────── */
