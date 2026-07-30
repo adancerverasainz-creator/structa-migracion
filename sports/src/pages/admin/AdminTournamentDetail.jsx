@@ -399,7 +399,7 @@ export default function AdminTournamentDetail() {
                   <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
                     <ul className="divide-y divide-gray-100">
                       {matchesByDay[day].map(m => {
-                        const isPlayed = m.status === 'played'
+                        const isPlayed = m.status === 'completed'
                         const hWin = isPlayed && m.home_goals > m.away_goals
                         const aWin = isPlayed && m.away_goals > m.home_goals
                         const matchEvents = events.filter(ev => ev.match_id === m.id)
@@ -432,8 +432,17 @@ export default function AdminTournamentDetail() {
                                   {m.forfait_team_id && <span className="ml-1 text-red-500">· FORFAIT</span>}
                                 </p>
                               </div>
-                              <span className={`text-xs px-2 py-0.5 rounded-full shrink-0 ${isPlayed ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
-                                {isPlayed ? 'Jugado' : 'Programado'}
+                              <span className={`text-xs px-2 py-0.5 rounded-full shrink-0 ${
+                                m.status === 'completed' ? 'bg-green-100 text-green-700'
+                                : m.status === 'in_progress' ? 'bg-blue-100 text-blue-700'
+                                : m.status === 'forfait' || m.status === 'cancelled' ? 'bg-red-100 text-red-600'
+                                : 'bg-gray-100 text-gray-500'
+                              }`}>
+                                {m.status === 'completed' ? 'Jugado'
+                                  : m.status === 'in_progress' ? 'En curso'
+                                  : m.status === 'forfait' ? 'Forfait'
+                                  : m.status === 'cancelled' ? 'Cancelado'
+                                  : 'Programado'}
                               </span>
                               <button
                                 onClick={() => openEventForMatch(m)}
@@ -564,7 +573,10 @@ export default function AdminTournamentDetail() {
               <Field label="Estado">
                 <select value={matchForm.status} onChange={e => setMatchForm(f => ({ ...f, status: e.target.value }))} className={INPUT}>
                   <option value="scheduled">Programado</option>
-                  <option value="played">Jugado</option>
+                  <option value="in_progress">En curso</option>
+                  <option value="completed">Jugado</option>
+                  <option value="forfait">Forfait</option>
+                  <option value="cancelled">Cancelado</option>
                 </select>
               </Field>
             </div>
@@ -580,7 +592,7 @@ export default function AdminTournamentDetail() {
                 {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
               </select>
             </Field>
-            {matchForm.status === 'played' && (
+            {matchForm.status === 'completed' && (
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Goles local">
                   <input type="number" min="0" value={matchForm.home_goals} onChange={e => setMatchForm(f => ({ ...f, home_goals: e.target.value }))} className={INPUT} />
@@ -590,7 +602,7 @@ export default function AdminTournamentDetail() {
                 </Field>
               </div>
             )}
-            {matchForm.status === 'played' && (
+            {matchForm.status === 'completed' && (
               <Field label="Forfait (equipo que no se presentó)">
                 <select value={matchForm.forfait_team_id} onChange={e => setMatchForm(f => ({ ...f, forfait_team_id: e.target.value }))} className={INPUT}>
                   <option value="">Ninguno</option>
