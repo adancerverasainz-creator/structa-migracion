@@ -20,7 +20,7 @@ export default function PublicLayout() {
         </div>
       </header>
 
-      <main className="flex-1 max-w-6xl mx-auto w-full px-4 py-8">
+      <main className="flex-1">
         <Outlet />
       </main>
 

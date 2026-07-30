@@ -24,57 +24,95 @@ export default function HomePage() {
     },
   })
 
+  const { data: matchCount = 0 } = useQuery({
+    queryKey: ['public-match-count'],
+    queryFn: async () => {
+      const { count, error } = await supabase
+        .from('matches')
+        .select('id', { count: 'exact', head: true })
+      if (error) return 0
+      return count ?? 0
+    },
+  })
+
   const active = tournaments.filter(t => t.status === 'active')
   const others = tournaments.filter(t => t.status !== 'active')
 
+  const totalTeams = tournaments.reduce((acc, t) => acc + (t.teams?.[0]?.count ?? 0), 0)
+
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-24">
+      <div className="flex items-center justify-center py-32">
         <div className="w-10 h-10 border-4 border-green-200 border-t-green-600 rounded-full animate-spin" />
       </div>
     )
   }
 
   return (
-    <div className="space-y-10">
-      {/* Hero */}
-      <div className="text-center py-8">
-        <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-green-100 mb-4">
-          <Trophy className="w-8 h-8 text-green-700" />
+    <div>
+      {/* ── Hero ── */}
+      <div className="bg-[#14532d] text-white">
+        <div className="max-w-6xl mx-auto px-4 py-16 text-center">
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-white/10 ring-1 ring-white/20 mb-5">
+            <Trophy className="w-8 h-8 text-white" />
+          </div>
+          <h1 className="text-3xl sm:text-4xl font-bold mb-3 tracking-tight">
+            Torneos y Ligas
+          </h1>
+          <p className="text-green-200 text-base max-w-md mx-auto">
+            Consulta standings, resultados y tabla de goleo sin necesidad de registrarte
+          </p>
         </div>
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Torneos y Ligas</h1>
-        <p className="text-gray-500 text-base">Consulta standings, resultados y tabla de goleo sin necesidad de registrarte</p>
       </div>
 
-      {/* Torneos activos */}
-      {active.length > 0 && (
-        <section>
-          <h2 className="text-lg font-semibold text-gray-700 mb-4 flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-green-500 inline-block animate-pulse" />
-            En curso
-          </h2>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {active.map(t => <TournamentCard key={t.id} tournament={t} />)}
+      {/* ── Stats strip ── */}
+      <div className="bg-white border-b border-gray-200 shadow-sm">
+        <div className="max-w-6xl mx-auto px-4 py-5 grid grid-cols-3 divide-x divide-gray-200 text-center">
+          <div className="px-4">
+            <p className="text-2xl font-bold text-green-700">{active.length}</p>
+            <p className="text-xs text-gray-500 mt-0.5">Ligas activas</p>
           </div>
-        </section>
-      )}
-
-      {/* Otros torneos */}
-      {others.length > 0 && (
-        <section>
-          <h2 className="text-lg font-semibold text-gray-700 mb-4">Otros torneos</h2>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {others.map(t => <TournamentCard key={t.id} tournament={t} />)}
+          <div className="px-4">
+            <p className="text-2xl font-bold text-green-700">{totalTeams}</p>
+            <p className="text-xs text-gray-500 mt-0.5">Equipos participantes</p>
           </div>
-        </section>
-      )}
-
-      {tournaments.length === 0 && (
-        <div className="text-center py-16 text-gray-400">
-          <Trophy className="w-12 h-12 mx-auto mb-3 opacity-30" />
-          <p>No hay torneos disponibles aún.</p>
+          <div className="px-4">
+            <p className="text-2xl font-bold text-green-700">{matchCount}</p>
+            <p className="text-xs text-gray-500 mt-0.5">Partidos registrados</p>
+          </div>
         </div>
-      )}
+      </div>
+
+      {/* ── Tournaments ── */}
+      <div className="max-w-6xl mx-auto px-4 py-10 space-y-10">
+        {active.length > 0 && (
+          <section>
+            <h2 className="text-base font-semibold text-gray-700 mb-4 flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-green-500 inline-block animate-pulse" />
+              En curso
+            </h2>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {active.map(t => <TournamentCard key={t.id} tournament={t} />)}
+            </div>
+          </section>
+        )}
+
+        {others.length > 0 && (
+          <section>
+            <h2 className="text-base font-semibold text-gray-700 mb-4">Otros torneos</h2>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {others.map(t => <TournamentCard key={t.id} tournament={t} />)}
+            </div>
+          </section>
+        )}
+
+        {tournaments.length === 0 && (
+          <div className="text-center py-24 text-gray-400">
+            <Trophy className="w-12 h-12 mx-auto mb-3 opacity-30" />
+            <p>No hay torneos disponibles aún.</p>
+          </div>
+        )}
+      </div>
     </div>
   )
 }

@@ -108,7 +108,7 @@ export default function TournamentPage() {
   const matchdays = [...new Set(matches.map(m => m.matchday))].sort((a, b) => a - b)
 
   return (
-    <div className="space-y-6">
+    <div className="max-w-6xl mx-auto px-4 py-8 space-y-6">
       {/* Header */}
       <div>
         <Link to="/" className="inline-flex items-center gap-1 text-sm text-gray-400 hover:text-green-700 mb-4 transition-colors">
