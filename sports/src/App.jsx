@@ -7,6 +7,7 @@ import { supabase } from './lib/supabase'
 import PublicLayout from './pages/public/PublicLayout'
 import HomePage from './pages/public/HomePage'
 import TournamentPage from './pages/public/TournamentPage'
+import CaptainPortal from './pages/public/CaptainPortal'
 
 // Admin pages
 import LoginPage from './pages/admin/LoginPage'
@@ -92,6 +93,9 @@ export default function App() {
         <Route path="/" element={<HomePage />} />
         <Route path="/torneo/:id" element={<TournamentPage />} />
       </Route>
+
+      {/* Portal del capitán (público, sin auth) */}
+      <Route path="/capitan/:token" element={<CaptainPortal />} />
 
       {/* Login admin */}
       <Route path="/admin/login" element={<LoginPage />} />

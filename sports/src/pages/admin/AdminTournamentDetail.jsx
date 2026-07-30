@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../../lib/supabase'
 import { formatDate } from '../../lib/utils'
 import {
-  ArrowLeft, Plus, Pencil, Trash2, X, Users, Calendar, Zap
+  ArrowLeft, Plus, Pencil, Trash2, X, Users, Calendar, Zap, Link2
 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -62,7 +62,7 @@ export default function AdminTournamentDetail() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('teams')
-        .select('*')
+        .select('*, captain_token')
         .eq('tournament_id', id)
         .order('name')
       if (error) throw error
@@ -341,6 +341,19 @@ export default function AdminTournamentDetail() {
                       <span className={`text-xs px-2 py-0.5 rounded-full ${t.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
                         {t.status === 'active' ? 'Activo' : 'Inactivo'}
                       </span>
+                      {t.captain_token && (
+                        <button
+                          onClick={() => {
+                            const url = `${window.location.origin}/capitan/${t.captain_token}`
+                            navigator.clipboard.writeText(url)
+                            toast.success('Enlace del capitán copiado')
+                          }}
+                          title="Copiar enlace del capitán"
+                          className="p-1.5 text-gray-400 hover:text-blue-600 rounded-lg transition-colors"
+                        >
+                          <Link2 className="w-4 h-4" />
+                        </button>
+                      )}
                       <button onClick={() => { setTeamForm({ name: t.name, captain_name: t.captain_name || '', color: t.color || '#16a34a', logo_url: t.logo_url || '', status: t.status || 'active', group_id: t.group_id || '' }); setTeamModal(t) }} className="p-1.5 text-gray-400 hover:text-green-600 rounded-lg transition-colors">
                         <Pencil className="w-4 h-4" />
                       </button>
@@ -689,7 +702,7 @@ export default function AdminTournamentDetail() {
       {/* ── DELETE CONFIRMS ───────────────────────────────────────────────── */}
       {deletingTeam && <DeleteConfirm name={deletingTeam.name} onCancel={() => setDeletingTeam(null)} onConfirm={() => deleteTeam.mutate(deletingTeam.id)} pending={deleteTeam.isPending} />}
       {deletingMatch && <DeleteConfirm name={`J${deletingMatch.matchday}: ${deletingMatch.home_team_name} vs ${deletingMatch.away_team_name}`} onCancel={() => setDeletingMatch(null)} onConfirm={() => deleteMatch.mutate(deletingMatch.id)} pending={deleteMatch.isPending} />}
-      {deletingEvent && <DeleteConfirm name={`${EVENT_LABELS[deletingEvent.event_type]} de ${deletingEvent.player_name || 'jugador'}`} onCancel={() => setDeletingEvent(null)} onConfirm={() => deleteEvent.mutate(deletingEvent.id)} pending={deleteEvent.isPending} />}
+      {deletingEvent && <DeleteConfirm name={`Evento de ${deletingEvent.player_name || 'jugador'}`} onCancel={() => setDeletingEvent(null)} onConfirm={() => deleteEvent.mutate(deletingEvent.id)} pending={deleteEvent.isPending} />}
     </div>
   )
 }
