@@ -4,12 +4,11 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../../lib/supabase'
 import { formatDate } from '../../lib/utils'
 import {
-  ArrowLeft, Plus, Pencil, Trash2, X, Users, Calendar,
-  CheckCircle, Circle, Trophy, Zap, ShieldAlert
+  ArrowLeft, Plus, Pencil, Trash2, X, Users, Calendar, Zap
 } from 'lucide-react'
 import { toast } from 'sonner'
 
-const TAB_LABELS = ['Equipos', 'Partidos', 'Eventos']
+const TAB_LABELS = ['Equipos', 'Partidos']
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 const EMPTY_TEAM = { name: '', captain_name: '', color: '#16a34a', logo_url: '', status: 'active', group_id: '' }
@@ -21,8 +20,6 @@ const EMPTY_MATCH = {
 }
 const EMPTY_EVENT = { match_id: '', team_id: '', player_name: '', minute: '', event_type: 'goal' }
 
-const EVENT_LABELS = { goal: 'Gol', yellow_card: 'Amarilla', red_card: 'Roja' }
-const EVENT_COLORS = { goal: 'text-green-600', yellow_card: 'text-yellow-500', red_card: 'text-red-600' }
 
 export default function AdminTournamentDetail() {
   const { id } = useParams()
@@ -195,6 +192,7 @@ export default function AdminTournamentDetail() {
   const [eventForm, setEventForm] = useState(EMPTY_EVENT)
   const [deletingEvent, setDeletingEvent] = useState(null)
   const [matchTeamsFilter, setMatchTeamsFilter] = useState(null) // [home_id, away_id] when opened from a match row
+  const [expandedMatch, setExpandedMatch] = useState(null) // match id whose events are shown inline
 
   const saveEvent = useMutation({
     mutationFn: async (values) => {
@@ -391,59 +389,105 @@ export default function AdminTournamentDetail() {
                         const isPlayed = m.status === 'played'
                         const hWin = isPlayed && m.home_goals > m.away_goals
                         const aWin = isPlayed && m.away_goals > m.home_goals
+                        const matchEvents = events.filter(ev => ev.match_id === m.id)
+                        const goalCount = matchEvents.filter(ev => ev.event_type === 'goal').length
+                        const yellowCount = matchEvents.filter(ev => ev.event_type === 'yellow_card').length
+                        const redCount = matchEvents.filter(ev => ev.event_type === 'red_card').length
+                        const hasEvents = matchEvents.length > 0
+                        const isExpanded = expandedMatch === m.id
+
                         return (
-                          <li key={m.id} className="flex items-center gap-3 px-5 py-3 hover:bg-gray-50">
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 text-sm">
-                                <span className={`font-medium truncate ${hWin ? 'text-green-700' : 'text-gray-900'}`}>
-                                  {m.home_team_name}
-                                </span>
-                                <span className="shrink-0 text-xs font-mono bg-gray-100 px-2 py-0.5 rounded">
-                                  {isPlayed ? `${m.home_goals} - ${m.away_goals}` : 'vs'}
-                                </span>
-                                <span className={`font-medium truncate ${aWin ? 'text-green-700' : 'text-gray-900'}`}>
-                                  {m.away_team_name}
-                                </span>
+                          <li key={m.id} className="px-5 py-3 hover:bg-gray-50">
+                            {/* Fila principal */}
+                            <div className="flex items-center gap-3">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 text-sm">
+                                  <span className={`font-medium truncate ${hWin ? 'text-green-700' : 'text-gray-900'}`}>
+                                    {m.home_team_name}
+                                  </span>
+                                  <span className="shrink-0 text-xs font-mono bg-gray-100 px-2 py-0.5 rounded">
+                                    {isPlayed ? `${m.home_goals} - ${m.away_goals}` : 'vs'}
+                                  </span>
+                                  <span className={`font-medium truncate ${aWin ? 'text-green-700' : 'text-gray-900'}`}>
+                                    {m.away_team_name}
+                                  </span>
+                                </div>
+                                <p className="text-xs text-gray-400 mt-0.5">
+                                  {m.match_date ? formatDate(m.match_date) : 'Fecha TBD'}
+                                  {m.match_time ? ` · ${m.match_time.slice(0, 5)}` : ''}
+                                  {m.field ? ` · ${m.field}` : ''}
+                                  {m.forfait_team_id && <span className="ml-1 text-red-500">· FORFAIT</span>}
+                                </p>
                               </div>
-                              <p className="text-xs text-gray-400 mt-0.5">
-                                {m.match_date ? formatDate(m.match_date) : 'Fecha TBD'}
-                                {m.match_time ? ` · ${m.match_time.slice(0, 5)}` : ''}
-                                {m.field ? ` · ${m.field}` : ''}
-                                {m.forfait_team_id && <span className="ml-1 text-red-500">· FORFAIT</span>}
-                              </p>
+                              <span className={`text-xs px-2 py-0.5 rounded-full shrink-0 ${isPlayed ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                                {isPlayed ? 'Jugado' : 'Programado'}
+                              </span>
+                              <button
+                                onClick={() => openEventForMatch(m)}
+                                title="Registrar evento (gol, tarjeta…)"
+                                className="p-1.5 text-gray-400 hover:text-yellow-500 hover:bg-yellow-50 rounded-lg transition-colors"
+                              >
+                                <Zap className="w-4 h-4" />
+                              </button>
+                              <button onClick={() => {
+                                setMatchForm({
+                                  matchday: m.matchday,
+                                  home_team_id: m.home_team_id,
+                                  away_team_id: m.away_team_id,
+                                  field: m.field || '',
+                                  match_date: m.match_date || '',
+                                  match_time: m.match_time ? m.match_time.slice(0, 5) : '',
+                                  status: m.status || 'scheduled',
+                                  home_goals: m.home_goals ?? '',
+                                  away_goals: m.away_goals ?? '',
+                                  forfait_team_id: m.forfait_team_id || '',
+                                  group_id: m.group_id || '',
+                                  category_id: m.category_id || '',
+                                })
+                                setMatchModal(m)
+                              }} className="p-1.5 text-gray-400 hover:text-green-600 rounded-lg transition-colors">
+                                <Pencil className="w-4 h-4" />
+                              </button>
+                              <button onClick={() => setDeletingMatch(m)} className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg transition-colors">
+                                <Trash2 className="w-4 h-4" />
+                              </button>
                             </div>
-                            <span className={`text-xs px-2 py-0.5 rounded-full shrink-0 ${isPlayed ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
-                              {isPlayed ? 'Jugado' : 'Programado'}
-                            </span>
-                            <button
-                              onClick={() => openEventForMatch(m)}
-                              title="Registrar evento (gol, tarjeta…)"
-                              className="p-1.5 text-gray-400 hover:text-yellow-500 hover:bg-yellow-50 rounded-lg transition-colors"
-                            >
-                              <Zap className="w-4 h-4" />
-                            </button>
-                            <button onClick={() => {
-                              setMatchForm({
-                                matchday: m.matchday,
-                                home_team_id: m.home_team_id,
-                                away_team_id: m.away_team_id,
-                                field: m.field || '',
-                                match_date: m.match_date || '',
-                                match_time: m.match_time ? m.match_time.slice(0, 5) : '',
-                                status: m.status || 'scheduled',
-                                home_goals: m.home_goals ?? '',
-                                away_goals: m.away_goals ?? '',
-                                forfait_team_id: m.forfait_team_id || '',
-                                group_id: m.group_id || '',
-                                category_id: m.category_id || '',
-                              })
-                              setMatchModal(m)
-                            }} className="p-1.5 text-gray-400 hover:text-green-600 rounded-lg transition-colors">
-                              <Pencil className="w-4 h-4" />
-                            </button>
-                            <button onClick={() => setDeletingMatch(m)} className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg transition-colors">
-                              <Trash2 className="w-4 h-4" />
-                            </button>
+
+                            {/* Contador de eventos — clickeable para expandir */}
+                            {hasEvents && (
+                              <button
+                                onClick={() => setExpandedMatch(isExpanded ? null : m.id)}
+                                className="mt-2 ml-0 flex items-center gap-3 text-xs text-gray-400 hover:text-gray-600 transition-colors"
+                              >
+                                {goalCount > 0 && <span>⚽ {goalCount} {goalCount === 1 ? 'gol' : 'goles'}</span>}
+                                {yellowCount > 0 && <span>🟨 {yellowCount} amarilla{yellowCount !== 1 ? 's' : ''}</span>}
+                                {redCount > 0 && <span>🟥 {redCount} roja{redCount !== 1 ? 's' : ''}</span>}
+                                <span className="text-gray-300 ml-1">{isExpanded ? '▲' : '▼'}</span>
+                              </button>
+                            )}
+
+                            {/* Lista de eventos expandida */}
+                            {isExpanded && (
+                              <ul className="mt-2 ml-1 space-y-1 border-l-2 border-gray-100 pl-3">
+                                {matchEvents.map(ev => (
+                                  <li key={ev.id} className="flex items-center gap-2 text-xs text-gray-600">
+                                    <span>
+                                      {ev.event_type === 'goal' ? '⚽' : ev.event_type === 'yellow_card' ? '🟨' : '🟥'}
+                                    </span>
+                                    <span className="font-medium">{ev.player_name || '—'}</span>
+                                    {ev.minute && <span className="text-gray-400">{ev.minute}'</span>}
+                                    {ev.team_name && <span className="text-gray-400">· {ev.team_name}</span>}
+                                    <button
+                                      onClick={() => setDeletingEvent(ev)}
+                                      className="ml-auto p-0.5 text-gray-300 hover:text-red-500 transition-colors"
+                                      title="Eliminar evento"
+                                    >
+                                      <Trash2 className="w-3 h-3" />
+                                    </button>
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
                           </li>
                         )
                       })}
@@ -451,72 +495,6 @@ export default function AdminTournamentDetail() {
                   </div>
                 </div>
               ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ── TAB 2: EVENTOS ───────────────────────────────────────────────── */}
-      {tab === 2 && (
-        <div className="space-y-4">
-          <div className="flex justify-between items-center">
-            <p className="text-sm text-gray-500">{events.length} evento{events.length !== 1 ? 's' : ''}</p>
-            <button
-              onClick={() => { setEventForm(EMPTY_EVENT); setEventModal('create') }}
-              className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium px-3 py-1.5 rounded-lg transition-colors"
-            >
-              <Plus className="w-4 h-4" /> Evento
-            </button>
-          </div>
-
-          {eventsLoading ? (
-            <div className="flex justify-center py-8">
-              <div className="w-6 h-6 border-4 border-green-200 border-t-green-600 rounded-full animate-spin" />
-            </div>
-          ) : events.length === 0 ? (
-            <div className="text-center py-12 text-gray-400">
-              <Zap className="w-10 h-10 mx-auto mb-2 opacity-30" />
-              <p className="text-sm">No hay eventos registrados</p>
-            </div>
-          ) : (
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-              <ul className="divide-y divide-gray-100">
-                {events.map(ev => (
-                  <li key={ev.id} className="flex items-center gap-3 px-5 py-3 hover:bg-gray-50">
-                    <span className={`shrink-0 ${EVENT_COLORS[ev.event_type] || 'text-gray-400'}`}>
-                      {ev.event_type === 'goal' ? <Trophy className="w-4 h-4" /> :
-                        ev.event_type === 'red_card' ? <ShieldAlert className="w-4 h-4" /> :
-                        <ShieldAlert className="w-4 h-4" />}
-                    </span>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-900">
-                        {ev.player_name || '—'}
-                        {ev.minute && <span className="text-gray-400 font-normal ml-1">({ev.minute}')</span>}
-                      </p>
-                      <p className="text-xs text-gray-400">
-                        {EVENT_LABELS[ev.event_type] || ev.event_type}
-                        {ev.team_name && ` · ${ev.team_name}`}
-                        {ev.match && ` · J${ev.match.matchday}: ${ev.match.home_team_name} vs ${ev.match.away_team_name}`}
-                      </p>
-                    </div>
-                    <button onClick={() => {
-                      setEventForm({
-                        match_id: ev.match_id || '',
-                        team_id: ev.team_id || '',
-                        player_name: ev.player_name || '',
-                        minute: ev.minute ?? '',
-                        event_type: ev.event_type || 'goal',
-                      })
-                      setEventModal(ev)
-                    }} className="p-1.5 text-gray-400 hover:text-green-600 rounded-lg transition-colors">
-                      <Pencil className="w-4 h-4" />
-                    </button>
-                    <button onClick={() => setDeletingEvent(ev)} className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg transition-colors">
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </li>
-                ))}
-              </ul>
             </div>
           )}
         </div>
