@@ -34,9 +34,6 @@ export default function TournamentPage() {
       return data
     },
     enabled: !!id,
-    onSuccess: (data) => {
-      if (data.length > 0 && !selectedCategory) setSelectedCategory(data[0].id)
-    },
   })
 
   const activeCategory = selectedCategory || (categories[0]?.id ?? null)
