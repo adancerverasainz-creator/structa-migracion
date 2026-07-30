@@ -399,7 +399,7 @@ export default function AdminTournamentDetail() {
                   <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
                     <ul className="divide-y divide-gray-100">
                       {matchesByDay[day].map(m => {
-                        const isPlayed = m.status === 'completed'
+                        const isPlayed = m.status === 'completed' || m.status === 'forfait'
                         const hWin = isPlayed && m.home_goals > m.away_goals
                         const aWin = isPlayed && m.away_goals > m.home_goals
                         const matchEvents = events.filter(ev => ev.match_id === m.id)

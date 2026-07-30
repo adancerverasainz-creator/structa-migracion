@@ -198,7 +198,7 @@ export default function CaptainPortal() {
           {status === 'saving' && <Loader className="w-4 h-4 animate-spin" />}
           {status === 'saved'  && <CheckCircle className="w-4 h-4" />}
           {status === 'error'  && <AlertCircle className="w-4 h-4" />}
-          {!isBusy && <Save className="w-4 h-4" />}
+          {status === 'ready'  && <Save className="w-4 h-4" />}
           {status === 'saving' ? 'Guardando...'
             : status === 'saved'  ? '¡Guardado correctamente!'
             : status === 'error'  ? 'Error al guardar — intenta de nuevo'
