@@ -5,7 +5,11 @@ export function cn(...inputs) {
   return twMerge(clsx(inputs))
 }
 
-export function calcStandings(teams, matches) {
+export function calcStandings(teams, matches, tournament = {}) {
+  const PTS_WIN  = tournament.points_win  ?? 3
+  const PTS_DRAW = tournament.points_draw ?? 1
+  const PTS_LOSS = tournament.points_loss ?? 0
+
   const table = {}
   teams.forEach(t => {
     table[t.id] = {
@@ -29,8 +33,8 @@ export function calcStandings(teams, matches) {
     if (m.status === 'forfait') {
       const winner = m.forfait_team_id === h ? a : h
       const loser = m.forfait_team_id
-      if (table[winner]) { table[winner].pg++; table[winner].pts += 3; table[winner].pj++ }
-      if (table[loser]) { table[loser].pp++; table[loser].pj++ }
+      if (table[winner]) { table[winner].pg++; table[winner].pts += PTS_WIN; table[winner].pj++ }
+      if (table[loser])  { table[loser].pp  += 1; table[loser].pts += PTS_LOSS; table[loser].pj++ }
       return
     }
 
@@ -39,12 +43,12 @@ export function calcStandings(teams, matches) {
     table[a].gf += ag; table[a].gc += hg
 
     if (hg > ag) {
-      table[h].pg++; table[h].pts += 3; table[a].pp++
+      table[h].pg++; table[h].pts += PTS_WIN;  table[a].pp++; table[a].pts += PTS_LOSS
     } else if (hg < ag) {
-      table[a].pg++; table[a].pts += 3; table[h].pp++
+      table[a].pg++; table[a].pts += PTS_WIN;  table[h].pp++; table[h].pts += PTS_LOSS
     } else {
-      table[h].pe++; table[h].pts += 1
-      table[a].pe++; table[a].pts += 1
+      table[h].pe++; table[h].pts += PTS_DRAW
+      table[a].pe++; table[a].pts += PTS_DRAW
     }
   })
 

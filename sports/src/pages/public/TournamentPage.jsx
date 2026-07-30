@@ -101,7 +101,7 @@ export default function TournamentPage() {
     return <div className="text-center py-16 text-gray-400">Torneo no encontrado.</div>
   }
 
-  const standings = calcStandings(teams, matches)
+  const standings = calcStandings(teams, matches, tournament)
   const scorers = calcScorers(events)
 
   // Group matches by matchday
@@ -171,7 +171,7 @@ export default function TournamentPage() {
 
       {/* Tab content */}
       {tab === 'posiciones' && (
-        <StandingsTab standings={standings} groups={groups} teams={teams} matches={matches} />
+        <StandingsTab standings={standings} groups={groups} teams={teams} matches={matches} tournament={tournament} />
       )}
       {tab === 'jornadas' && (
         <JornadasTab matchdays={matchdays} matches={matches} />
@@ -187,7 +187,7 @@ export default function TournamentPage() {
 }
 
 // ── Standings ──────────────────────────────────────────────────
-function StandingsTab({ standings, groups, teams, matches }) {
+function StandingsTab({ standings, groups, teams, matches, tournament }) {
   if (groups.length > 1) {
     return (
       <div className="space-y-6">
@@ -199,7 +199,7 @@ function StandingsTab({ standings, groups, teams, matches }) {
               ? m.group_id === g.id
               : groupTeamIds.has(m.home_team_id) && groupTeamIds.has(m.away_team_id)
           )
-          const gs = calcStandings(groupTeams, groupMatches)
+          const gs = calcStandings(groupTeams, groupMatches, tournament)
           return (
             <div key={g.id}>
               <h3 className="font-semibold text-gray-700 mb-2 text-sm uppercase tracking-wide">{g.name}</h3>
