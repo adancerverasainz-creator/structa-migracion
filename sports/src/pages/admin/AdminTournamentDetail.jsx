@@ -12,7 +12,7 @@ import AdminFinanzasTab from './AdminFinanzasTab'
 const TAB_LABELS = ['Equipos', 'Partidos', 'Finanzas']
 
 // ─── helpers ────────────────────────────────────────────────────────────────
-const EMPTY_TEAM = { name: '', captain_name: '', color: '#16a34a', logo_url: '', status: 'active', group_id: '', category_id: '', pays_arbitrage: true, inscription_discount_pct: 0 }
+const EMPTY_TEAM = { name: '', captain_name: '', color: '#16a34a', logo_url: '', status: 'active', group_id: '', category_id: '', pays_arbitrage: true, inscription_discount_pct: 0, inscription_amount: 0 }
 const EMPTY_MATCH = {
   matchday: 1, home_team_id: '', away_team_id: '',
   field: '', match_date: '', match_time: '',
@@ -107,33 +107,55 @@ export default function AdminTournamentDetail() {
 
   const saveTeam = useMutation({
     mutationFn: async (values) => {
+      // Excluir inscription_amount del payload — no es columna en teams
+      const { inscription_amount, ...restValues } = values
       const payload = {
-        ...values,
+        ...restValues,
         tournament_id: id,
         group_id: values.group_id || null,
         category_id: values.category_id || null,
         inscription_discount_pct: Number(values.inscription_discount_pct),
       }
+      const inscFee = Number(inscription_amount ?? 0)
+      const discount = Number(values.inscription_discount_pct) / 100
+      const inscAmount = inscFee > 0 ? inscFee * (1 - discount) : 0
+      const inscDesc = `Inscripción${values.inscription_discount_pct > 0 ? ` (${values.inscription_discount_pct}% dto.)` : ''}`
+
       if (teamModal === 'create') {
         const { data: newTeam, error } = await supabase
           .from('teams').insert(payload).select('id').single()
         if (error) throw error
-        // Auto-crear cargo de inscripción si el torneo lo tiene configurado
-        const inscFee = Number(tournament?.inscription_fee ?? 0)
-        if (inscFee > 0) {
-          const discount = Number(values.inscription_discount_pct) / 100
-          const amount = inscFee * (1 - discount)
+        // Auto-crear cargo de inscripción si se especificó un monto
+        if (inscAmount > 0) {
           await supabase.from('charges').insert({
             tournament_id: id,
             team_id: newTeam.id,
             type: 'inscription',
-            amount,
-            description: `Inscripción${values.inscription_discount_pct > 0 ? ` (${values.inscription_discount_pct}% dto.)` : ''}`,
+            amount: inscAmount,
+            description: inscDesc,
           })
         }
       } else {
         const { error } = await supabase.from('teams').update(payload).eq('id', teamModal.id)
         if (error) throw error
+        // Si se especificó monto y aún no existe cargo de inscripción → crearlo
+        if (inscAmount > 0) {
+          const { data: existing } = await supabase
+            .from('charges')
+            .select('id')
+            .eq('team_id', teamModal.id)
+            .eq('type', 'inscription')
+            .maybeSingle()
+          if (!existing) {
+            await supabase.from('charges').insert({
+              tournament_id: id,
+              team_id: teamModal.id,
+              type: 'inscription',
+              amount: inscAmount,
+              description: inscDesc,
+            })
+          }
+        }
       }
     },
     onSuccess: () => {
@@ -435,7 +457,7 @@ export default function AdminTournamentDetail() {
                           <Link2 className="w-4 h-4" />
                         </button>
                       )}
-                      <button onClick={() => { setTeamForm({ name: t.name, captain_name: t.captain_name || '', color: t.color || '#16a34a', logo_url: t.logo_url || '', status: t.status || 'active', group_id: t.group_id || '', category_id: t.category_id || '', pays_arbitrage: t.pays_arbitrage ?? true, inscription_discount_pct: t.inscription_discount_pct ?? 0 }); setTeamModal(t) }} className="p-1.5 text-gray-400 hover:text-green-600 rounded-lg transition-colors">
+                      <button onClick={() => { setTeamForm({ name: t.name, captain_name: t.captain_name || '', color: t.color || '#16a34a', logo_url: t.logo_url || '', status: t.status || 'active', group_id: t.group_id || '', category_id: t.category_id || '', pays_arbitrage: t.pays_arbitrage ?? true, inscription_discount_pct: t.inscription_discount_pct ?? 0, inscription_amount: 0 }); setTeamModal(t) }} className="p-1.5 text-gray-400 hover:text-green-600 rounded-lg transition-colors">
                         <Pencil className="w-4 h-4" />
                       </button>
                       <button onClick={() => setDeletingTeam(t)} className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg transition-colors">
@@ -678,6 +700,25 @@ export default function AdminTournamentDetail() {
                 </select>
               </Field>
             </div>
+            <Field label={`Inscripción ($)${teamModal !== 'create' ? ' — dejar en 0 si ya existe' : ''}`}>
+              <input
+                type="number"
+                min="0"
+                step="100"
+                value={teamForm.inscription_amount}
+                onChange={e => setTeamForm(f => ({ ...f, inscription_amount: Number(e.target.value) }))}
+                placeholder="0"
+                className={INPUT}
+              />
+              {teamForm.inscription_amount > 0 && (
+                <p className="text-xs text-gray-500 mt-1">
+                  {teamForm.inscription_discount_pct > 0
+                    ? `Con ${teamForm.inscription_discount_pct}% de descuento → $${(teamForm.inscription_amount * (1 - teamForm.inscription_discount_pct / 100)).toLocaleString()}`
+                    : `Cargo: $${Number(teamForm.inscription_amount).toLocaleString()}`
+                  }
+                </p>
+              )}
+            </Field>
             <Field label="URL Logo">
               <input value={teamForm.logo_url} onChange={e => setTeamForm(f => ({ ...f, logo_url: e.target.value }))} className={INPUT} placeholder="https://..." />
             </Field>
