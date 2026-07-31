@@ -189,7 +189,7 @@ export default function AdminTournamentDetail() {
         // Auto-generar cargos de arbitraje para los equipos que pagan
         const fee = Number(tournament?.arbitrage_fee ?? 350)
         const chargesToInsert = []
-        if (homeTeam?.pays_arbitrage !== false) {
+        if (homeTeam && homeTeam.pays_arbitrage !== false) {
           chargesToInsert.push({
             tournament_id: id,
             team_id: homeTeam.id,
@@ -199,7 +199,7 @@ export default function AdminTournamentDetail() {
             description: `Arbitraje J${values.matchday} vs ${awayTeam?.name || ''}`,
           })
         }
-        if (awayTeam?.pays_arbitrage !== false) {
+        if (awayTeam && awayTeam.pays_arbitrage !== false) {
           chargesToInsert.push({
             tournament_id: id,
             team_id: awayTeam.id,
@@ -213,8 +213,12 @@ export default function AdminTournamentDetail() {
           await supabase.from('charges').insert(chargesToInsert)
         }
       } else {
-        // Al marcar como jugado/en curso, verificar que el arbitraje esté pagado
-        if (['in_progress', 'completed', 'forfait'].includes(values.status)) {
+        // Solo verificar arbitraje cuando el status CAMBIA de no-activo a activo
+        const ACTIVE = ['in_progress', 'completed', 'forfait']
+        const wasAlreadyActive = ACTIVE.includes(matchModal.status)
+        const becomesActive    = ACTIVE.includes(values.status)
+
+        if (becomesActive && !wasAlreadyActive) {
           const { data: matchCharges } = await supabase
             .from('charges')
             .select('*, payments(amount)')

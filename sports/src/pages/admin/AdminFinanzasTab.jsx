@@ -293,11 +293,13 @@ export default function AdminFinanzasTab({ tournament, teams, tournamentId }) {
                 required
                 type="number"
                 min="0.01"
+                max={paymentModal.balance.toFixed(2)}
                 step="0.01"
                 value={paymentForm.amount}
                 onChange={e => setPaymentForm(f => ({ ...f, amount: e.target.value }))}
                 className={INPUT}
               />
+              <p className="text-xs text-gray-400 mt-1">Máximo: ${paymentModal.balance.toFixed(2)}</p>
             </Field>
             <Field label="Notas">
               <input
