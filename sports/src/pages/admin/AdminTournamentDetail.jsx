@@ -7,11 +7,12 @@ import {
   ArrowLeft, Plus, Pencil, Trash2, X, Users, Calendar, Zap, Link2
 } from 'lucide-react'
 import { toast } from 'sonner'
+import AdminFinanzasTab from './AdminFinanzasTab'
 
-const TAB_LABELS = ['Equipos', 'Partidos']
+const TAB_LABELS = ['Equipos', 'Partidos', 'Finanzas']
 
 // ─── helpers ────────────────────────────────────────────────────────────────
-const EMPTY_TEAM = { name: '', captain_name: '', color: '#16a34a', logo_url: '', status: 'active', group_id: '', category_id: '' }
+const EMPTY_TEAM = { name: '', captain_name: '', color: '#16a34a', logo_url: '', status: 'active', group_id: '', category_id: '', pays_arbitrage: true, inscription_discount_pct: 0 }
 const EMPTY_MATCH = {
   matchday: 1, home_team_id: '', away_team_id: '',
   field: '', match_date: '', match_time: '',
@@ -106,10 +107,30 @@ export default function AdminTournamentDetail() {
 
   const saveTeam = useMutation({
     mutationFn: async (values) => {
-      const payload = { ...values, tournament_id: id, group_id: values.group_id || null, category_id: values.category_id || null }
+      const payload = {
+        ...values,
+        tournament_id: id,
+        group_id: values.group_id || null,
+        category_id: values.category_id || null,
+        inscription_discount_pct: Number(values.inscription_discount_pct),
+      }
       if (teamModal === 'create') {
-        const { error } = await supabase.from('teams').insert(payload)
+        const { data: newTeam, error } = await supabase
+          .from('teams').insert(payload).select('id').single()
         if (error) throw error
+        // Auto-crear cargo de inscripción si el torneo lo tiene configurado
+        const inscFee = Number(tournament?.inscription_fee ?? 0)
+        if (inscFee > 0) {
+          const discount = Number(values.inscription_discount_pct) / 100
+          const amount = inscFee * (1 - discount)
+          await supabase.from('charges').insert({
+            tournament_id: id,
+            team_id: newTeam.id,
+            type: 'inscription',
+            amount,
+            description: `Inscripción${values.inscription_discount_pct > 0 ? ` (${values.inscription_discount_pct}% dto.)` : ''}`,
+          })
+        }
       } else {
         const { error } = await supabase.from('teams').update(payload).eq('id', teamModal.id)
         if (error) throw error
@@ -117,10 +138,11 @@ export default function AdminTournamentDetail() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['admin-teams', id] })
+      qc.invalidateQueries({ queryKey: ['charges', id] })
       toast.success(teamModal === 'create' ? 'Equipo creado' : 'Equipo actualizado')
       setTeamModal(null)
     },
-    onError: () => toast.error('Error al guardar equipo'),
+    onError: (e) => toast.error('Error al guardar equipo: ' + e.message),
   })
 
   const deleteTeam = useMutation({
@@ -143,6 +165,8 @@ export default function AdminTournamentDetail() {
 
   const saveMatch = useMutation({
     mutationFn: async (values) => {
+      const homeTeam = teams.find(t => t.id === values.home_team_id)
+      const awayTeam = teams.find(t => t.id === values.away_team_id)
       const payload = {
         ...values,
         tournament_id: id,
@@ -154,24 +178,71 @@ export default function AdminTournamentDetail() {
         field: values.field || null,
         match_date: values.match_date || null,
         match_time: values.match_time || null,
-        // denormalize team names
-        home_team_name: teams.find(t => t.id === values.home_team_id)?.name || '',
-        away_team_name: teams.find(t => t.id === values.away_team_id)?.name || '',
+        home_team_name: homeTeam?.name || '',
+        away_team_name: awayTeam?.name || '',
       }
+
       if (matchModal === 'create') {
-        const { error } = await supabase.from('matches').insert(payload)
+        const { data: newMatch, error } = await supabase
+          .from('matches').insert(payload).select('id').single()
         if (error) throw error
+        // Auto-generar cargos de arbitraje para los equipos que pagan
+        const fee = Number(tournament?.arbitrage_fee ?? 350)
+        const chargesToInsert = []
+        if (homeTeam?.pays_arbitrage !== false) {
+          chargesToInsert.push({
+            tournament_id: id,
+            team_id: homeTeam.id,
+            match_id: newMatch.id,
+            type: 'arbitrage',
+            amount: fee,
+            description: `Arbitraje J${values.matchday} vs ${awayTeam?.name || ''}`,
+          })
+        }
+        if (awayTeam?.pays_arbitrage !== false) {
+          chargesToInsert.push({
+            tournament_id: id,
+            team_id: awayTeam.id,
+            match_id: newMatch.id,
+            type: 'arbitrage',
+            amount: fee,
+            description: `Arbitraje J${values.matchday} vs ${homeTeam?.name || ''}`,
+          })
+        }
+        if (chargesToInsert.length > 0) {
+          await supabase.from('charges').insert(chargesToInsert)
+        }
       } else {
+        // Al marcar como jugado/en curso, verificar que el arbitraje esté pagado
+        if (['in_progress', 'completed', 'forfait'].includes(values.status)) {
+          const { data: matchCharges } = await supabase
+            .from('charges')
+            .select('*, payments(amount)')
+            .eq('match_id', matchModal.id)
+            .eq('type', 'arbitrage')
+
+          const unpaid = (matchCharges || []).filter(c => {
+            const paid = (c.payments || []).reduce((s, p) => s + Number(p.amount), 0)
+            return paid < Number(c.amount)
+          })
+
+          if (unpaid.length > 0) {
+            const teamName = teams.find(t => t.id === unpaid[0].team_id)?.name || 'Un equipo'
+            const balance  = Number(unpaid[0].amount) - (unpaid[0].payments || []).reduce((s, p) => s + Number(p.amount), 0)
+            throw new Error(`${teamName} tiene arbitraje pendiente ($${balance})`)
+          }
+        }
         const { error } = await supabase.from('matches').update(payload).eq('id', matchModal.id)
         if (error) throw error
       }
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['admin-matches', id] })
+      qc.invalidateQueries({ queryKey: ['charges', id] })
       toast.success(matchModal === 'create' ? 'Partido creado' : 'Partido actualizado')
       setMatchModal(null)
     },
-    onError: (e) => toast.error('Error al guardar partido: ' + e.message),
+    onError: (e) => toast.error('Error: ' + e.message),
   })
 
   const deleteMatch = useMutation({
@@ -341,6 +412,12 @@ export default function AdminTournamentDetail() {
                       <span className={`text-xs px-2 py-0.5 rounded-full ${t.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
                         {t.status === 'active' ? 'Activo' : 'Inactivo'}
                       </span>
+                      {!t.pays_arbitrage && (
+                        <span className="text-xs bg-purple-50 text-purple-600 px-2 py-0.5 rounded-full">Sin arbitraje</span>
+                      )}
+                      {t.inscription_discount_pct > 0 && (
+                        <span className="text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full">{t.inscription_discount_pct}% dto.</span>
+                      )}
                       {t.captain_token && (
                         <button
                           onClick={() => {
@@ -354,7 +431,7 @@ export default function AdminTournamentDetail() {
                           <Link2 className="w-4 h-4" />
                         </button>
                       )}
-                      <button onClick={() => { setTeamForm({ name: t.name, captain_name: t.captain_name || '', color: t.color || '#16a34a', logo_url: t.logo_url || '', status: t.status || 'active', group_id: t.group_id || '', category_id: t.category_id || '' }); setTeamModal(t) }} className="p-1.5 text-gray-400 hover:text-green-600 rounded-lg transition-colors">
+                      <button onClick={() => { setTeamForm({ name: t.name, captain_name: t.captain_name || '', color: t.color || '#16a34a', logo_url: t.logo_url || '', status: t.status || 'active', group_id: t.group_id || '', category_id: t.category_id || '', pays_arbitrage: t.pays_arbitrage ?? true, inscription_discount_pct: t.inscription_discount_pct ?? 0 }); setTeamModal(t) }} className="p-1.5 text-gray-400 hover:text-green-600 rounded-lg transition-colors">
                         <Pencil className="w-4 h-4" />
                       </button>
                       <button onClick={() => setDeletingTeam(t)} className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg transition-colors">
@@ -522,6 +599,15 @@ export default function AdminTournamentDetail() {
         </div>
       )}
 
+      {/* ── TAB 2: FINANZAS ──────────────────────────────────────────────── */}
+      {tab === 2 && (
+        <AdminFinanzasTab
+          tournament={tournament}
+          teams={teams}
+          tournamentId={id}
+        />
+      )}
+
       {/* ── TEAM MODAL ───────────────────────────────────────────────────── */}
       {teamModal !== null && (
         <Modal title={teamModal === 'create' ? 'Nuevo equipo' : 'Editar equipo'} onClose={() => setTeamModal(null)}>
@@ -562,6 +648,32 @@ export default function AdminTournamentDetail() {
                 </select>
               </Field>
             )}
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="¿Paga arbitraje?">
+                <button
+                  type="button"
+                  onClick={() => setTeamForm(f => ({ ...f, pays_arbitrage: !f.pays_arbitrage }))}
+                  className={`w-full py-2 px-3 rounded-lg border-2 text-sm font-medium transition-all ${
+                    teamForm.pays_arbitrage
+                      ? 'bg-green-50 border-green-500 text-green-700'
+                      : 'bg-gray-50 border-gray-300 text-gray-500'
+                  }`}
+                >
+                  {teamForm.pays_arbitrage ? '✓ Sí paga' : '✗ No paga'}
+                </button>
+              </Field>
+              <Field label="Dto. inscripción">
+                <select
+                  value={teamForm.inscription_discount_pct}
+                  onChange={e => setTeamForm(f => ({ ...f, inscription_discount_pct: Number(e.target.value) }))}
+                  className={INPUT}
+                >
+                  <option value={0}>Sin descuento</option>
+                  <option value={25}>25% descuento</option>
+                  <option value={50}>50% descuento</option>
+                </select>
+              </Field>
+            </div>
             <Field label="URL Logo">
               <input value={teamForm.logo_url} onChange={e => setTeamForm(f => ({ ...f, logo_url: e.target.value }))} className={INPUT} placeholder="https://..." />
             </Field>
