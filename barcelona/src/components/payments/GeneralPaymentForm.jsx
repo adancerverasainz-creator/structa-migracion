@@ -19,8 +19,15 @@ export default function GeneralPaymentForm({ payment, onSubmit, onCancel, isLoad
     notes: ''
   });
 
+  // Candado anti doble-envío: si la página se congela antes de cerrar el modal,
+  // un segundo clic NO vuelve a registrar el pago. Se libera si la mutación falla.
+  const submittedRef = React.useRef(false);
+  React.useEffect(() => { if (!isLoading) submittedRef.current = false; }, [isLoading]);
+
   const handleSubmit = (e) => {
     e.preventDefault();
+    if (submittedRef.current) return; // envío ya en curso — ignora clics repetidos
+    submittedRef.current = true;
     // Preserve the date as selected by adding time to avoid timezone shift
     const dateWithTime = formData.payment_date + 'T12:00:00';
     onSubmit({

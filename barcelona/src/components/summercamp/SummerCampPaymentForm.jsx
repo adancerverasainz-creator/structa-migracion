@@ -78,8 +78,15 @@ export default function SummerCampPaymentForm({
     return p?.full_name || '';
   };
 
+  // Candado anti doble-envío: si la página se congela antes de cerrar el modal,
+  // un segundo clic NO vuelve a registrar el pago. Se libera si la mutación falla.
+  const submittedRef = React.useRef(false);
+  React.useEffect(() => { if (!isLoading) submittedRef.current = false; }, [isLoading]);
+
   const handleSubmit = (e) => {
     e.preventDefault();
+    if (submittedRef.current) return; // envío ya en curso — ignora clics repetidos
+    submittedRef.current = true;
     const playerName = getPlayerName();
     const disc = parseFloat(discount) || 0;
 

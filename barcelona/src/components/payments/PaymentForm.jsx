@@ -108,8 +108,15 @@ export default function PaymentForm({ payment, players, onSubmit, onCancel, isLo
   const cambio = montoRecibidoNum > totalUniforme ? montoRecibidoNum - totalUniforme : 0;
   const pendiente = montoRecibidoNum < totalUniforme ? totalUniforme - montoRecibidoNum : 0;
 
+  // Candado anti doble-envío: si la página se congela antes de cerrar el modal,
+  // un segundo clic NO vuelve a registrar el pago. Se libera si la mutación falla.
+  const submittedRef = React.useRef(false);
+  React.useEffect(() => { if (!isLoading) submittedRef.current = false; }, [isLoading]);
+
   const handleSubmit = (e) => {
     e.preventDefault();
+    if (submittedRef.current) return; // envío ya en curso — ignora clics repetidos
+    submittedRef.current = true;
     const dateWithTime = formData.payment_date + 'T12:00:00';
     const currentMonth = format(new Date(), 'MMMM yyyy', { locale: es });
     if (isUniforme) {
