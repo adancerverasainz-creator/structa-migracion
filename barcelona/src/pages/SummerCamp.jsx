@@ -13,6 +13,7 @@ import ExternalPlayerForm from '../components/summercamp/ExternalPlayerForm';
 import ExternalPlayersList from '../components/summercamp/ExternalPlayersList';
 import { formatCurrency } from '../components/lib/formatCurrency';
 import { logAudit } from '../components/lib/auditLogger';
+import { toast } from 'sonner';
 
 const WEEK_PRICE = 1200;
 const UNIFORM_PRICE = 950;
@@ -53,11 +54,9 @@ export default function SummerCamp() {
       });
       return result;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['summerCampPayments'] });
-      setShowForm(false);
-      setEditingPayment(null);
-    },
+    // El cierre del modal lo maneja handleSubmit (en multi-semana solo al último)
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['summerCampPayments'] }),
+    onError: (err) => toast.error(`No se pudo registrar el pago: ${err?.message || 'error desconocido'}`),
   });
 
   const updateMutation = useMutation({
@@ -75,7 +74,9 @@ export default function SummerCamp() {
       queryClient.invalidateQueries({ queryKey: ['summerCampPayments'] });
       setShowForm(false);
       setEditingPayment(null);
+      toast.success('Pago actualizado');
     },
+    onError: (err) => toast.error(`No se pudo actualizar el pago: ${err?.message || 'error desconocido'}`),
   });
 
   const deleteMutation = useMutation({
@@ -90,26 +91,23 @@ export default function SummerCamp() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['summerCampPayments'] }),
   });
 
-  const handleSubmit = (data, isLast = true) => {
+  const handleSubmit = async (data, isLast = true) => {
     if (editingPayment?.id) {
       updateMutation.mutate({ id: editingPayment.id, data, prev: editingPayment });
-    } else {
-      // Para mes_completo se llama 4 veces; solo cerrar modal en el último
-      base44.entities.SummerCampPayment.create(data).then(async (result) => {
-        await logAudit({
-          action: 'CREACIÓN', module: 'Summer Camp', entity_type: 'SummerCampPayment',
-          entity_id: result.id,
-          entity_name: `${data.player_name} - ${data.payment_type === 'semana' ? `Semana ${data.week_number}` : 'Uniformes'}`,
-          newData: data,
-          details: `Monto: ${formatCurrency(data.amount)}, Descuento: ${formatCurrency(data.discount || 0)}`,
-        });
-        if (isLast) {
-          queryClient.invalidateQueries({ queryKey: ['summerCampPayments'] });
-          setShowForm(false);
-          setEditingPayment(null);
-          setPayingExternalPlayer(null);
-        }
-      });
+      return;
+    }
+    // Para multi-semana se llama N veces; solo cerrar modal tras el último éxito.
+    // mutateAsync garantiza estado isPending (botón "Guardando...") y errores visibles.
+    try {
+      await createMutation.mutateAsync(data);
+      if (isLast) {
+        setShowForm(false);
+        setEditingPayment(null);
+        setPayingExternalPlayer(null);
+        toast.success('Pago registrado');
+      }
+    } catch {
+      // onError de la mutación ya mostró el toast; el modal queda abierto para reintentar
     }
   };
 

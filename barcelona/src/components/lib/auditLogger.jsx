@@ -1,10 +1,23 @@
-import { base44 } from '@/api/base44Client';
+import { base44, supabase } from '@/api/base44Client';
 
 /**
  * Central audit logging helper.
  * Accepts both camelCase and snake_case parameter names for flexibility.
  */
-export async function logAudit({
+/**
+ * REGLA DE ORO (estilo SAP/Dynamics): la bitácora NUNCA debe bloquear la
+ * operación de negocio. Si el log falla (RLS, red, etc.) se reporta en consola
+ * y la operación continúa. Por eso este helper jamás lanza excepción.
+ */
+export async function logAudit(params) {
+  try {
+    await _logAudit(params);
+  } catch (err) {
+    console.error('[auditoría] no se pudo registrar el evento (la operación de negocio NO se afectó):', err?.message || err);
+  }
+}
+
+async function _logAudit({
   action,
   module,
   // Accept both camelCase and snake_case
@@ -49,5 +62,7 @@ export async function logAudit({
     entry.monetary_diff = resolvedMonetaryDiff;
   }
 
-  await base44.entities.AuditLog.create(entry);
+  // Insert sin RETURNING: no requiere permiso de lectura sobre audit_logs
+  const { error } = await supabase.from('audit_logs').insert(entry);
+  if (error) throw error;
 }
