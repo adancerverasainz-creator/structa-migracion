@@ -6,6 +6,17 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [resetMsg, setResetMsg] = useState('');
+
+  const handleForgot = async () => {
+    setError(''); setResetMsg('');
+    if (!email) { setError('Escribe tu correo arriba y vuelve a pulsar el enlace'); return; }
+    const { error: err } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin + '/reset-password',
+    });
+    if (err) { setError(err.message); return; }
+    setResetMsg('Te enviamos un correo con el enlace para crear tu contraseña. Revisa tu bandeja (y spam).');
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -60,12 +71,19 @@ export default function Login() {
           {error && (
             <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>
           )}
+          {resetMsg && (
+            <p className="text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2">{resetMsg}</p>
+          )}
           <button
             type="submit"
             disabled={loading}
             className="w-full bg-blue-900 hover:bg-blue-800 text-white font-semibold rounded-lg py-2.5 transition disabled:opacity-60"
           >
             {loading ? 'Entrando…' : 'Iniciar sesión'}
+          </button>
+          <button type="button" onClick={handleForgot}
+            className="w-full text-sm text-blue-800 hover:text-blue-600 hover:underline pt-1">
+            ¿Olvidaste tu contraseña? Te enviamos un enlace
           </button>
         </form>
       </div>

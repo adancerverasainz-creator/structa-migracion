@@ -14,6 +14,7 @@ import Permissions from './pages/Permissions';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import Login from './pages/Login';
+import ResetPassword from './pages/ResetPassword';
 
 const { Pages, Layout, mainPage } = pagesConfig;
 const mainPageKey = mainPage ?? Object.keys(Pages)[0];
@@ -36,6 +37,10 @@ const AuthenticatedApp = () => {
   }
 
   // Página de login (accesible sin sesión; compatible con hash router del staging)
+  const isResetRoute = window.location.pathname.toLowerCase() === '/reset-password';
+  if (isResetRoute) {
+    return <ResetPassword />;
+  }
   const isLoginRoute = window.location.pathname.toLowerCase() === '/login'
     || window.location.hash.toLowerCase().startsWith('#/login');
   if (isLoginRoute) {

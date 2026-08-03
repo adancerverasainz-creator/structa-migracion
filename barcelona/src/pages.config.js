@@ -60,6 +60,7 @@ import Tournaments from './pages/Tournaments';
 import CuentasPorPagar from './pages/CuentasPorPagar';
 import Diagnostico from './pages/Diagnostico';
 import Permissions from './pages/Permissions';
+import ResetPassword from './pages/ResetPassword';
 import SummerCamp from './pages/SummerCamp';
 import Liga from './pages/Liga';
 import AdminProspectos from './pages/AdminProspectos';
@@ -80,6 +81,7 @@ export const PAGES = {
     "CuentasPorPagar": CuentasPorPagar,
     "Diagnostico": Diagnostico,
     "Permissions": Permissions,
+    "ResetPassword": ResetPassword,
     "SummerCamp": SummerCamp,
     "Liga": Liga,
     "AdminProspectos": AdminProspectos,
