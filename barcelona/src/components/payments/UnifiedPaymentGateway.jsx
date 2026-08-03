@@ -119,7 +119,10 @@ export default function UnifiedPaymentGateway({ config, onSubmit, onCancel, isLo
   const baseAmount = parseFloat(amount) || 0;
   const isMensualidad = (type || itemPaymentType) === 'mensualidad';
   const isTorneo = type === 'torneo';
-  const isUniformes = (type || itemPaymentType) === 'uniformes';
+  // Patrón "partidas abiertas" (SAP/Dynamics/Odoo): una venta NUEVA usa el catálogo
+  // de artículos; cobrar un SALDO existente es un abono contra la partida abierta.
+  const isUniformAbono = (type || itemPaymentType) === 'uniformes' && !!existingPaymentId;
+  const isUniformes = (type || itemPaymentType) === 'uniformes' && !existingPaymentId;
   
   const { suggestedSurcharge, isLate, monthsLate } = 
     isMensualidad ? calculateSuggestedSurcharge(month, paymentDate) : { suggestedSurcharge: 0, isLate: false, monthsLate: 0 };
@@ -128,7 +131,9 @@ export default function UnifiedPaymentGateway({ config, onSubmit, onCancel, isLo
   const subtotal = isTorneo ? baseAmount : (isUniformes ? effectiveAmount : (baseAmount + surcharge));
   const { iva, total } = calculateIVA(subtotal, requiresInvoice);
 
-  const isValid = isUniformes ? (totalUniforme > 0) : (baseAmount > 0 && !isNaN(baseAmount));
+  const isValid = isUniformes
+    ? (totalUniforme > 0)
+    : (baseAmount > 0 && !isNaN(baseAmount) && (!isUniformAbono || baseAmount <= pendingAmount));
   const isFullyPaid = isTorneo 
     ? ((totalPaid + total) >= registrationFee)
     : isUniformes
@@ -231,6 +236,7 @@ export default function UnifiedPaymentGateway({ config, onSubmit, onCancel, isLo
         amount: total,
         surcharge,
         payment_date: paymentDate + 'T12:00:00',
+        ...(isUniformAbono ? { payment_type: 'uniformes' } : {}),
         month: month || '',
         payment_method: paymentMethod,
         bank_name: bankName,
@@ -251,7 +257,7 @@ export default function UnifiedPaymentGateway({ config, onSubmit, onCancel, isLo
           <CardTitle className="flex items-center justify-between">
             <span className="flex items-center gap-2">
               {isTorneo ? <Trophy className={`w-5 h-5 ${colors.text}`} /> : isUniformes ? <ShoppingBag className={`w-5 h-5 ${colors.text}`} /> : <DollarSign className={`w-5 h-5 ${colors.text}`} />}
-              {isTorneo ? 'Registrar Pago — Torneo' : isUniformes ? 'Registrar Venta — Uniformes' : 'Registrar Abono'}
+              {isTorneo ? 'Registrar Pago — Torneo' : isUniformes ? 'Registrar Venta — Uniformes' : isUniformAbono ? 'Registrar Abono — Uniformes' : 'Registrar Abono'}
             </span>
             <Button variant="ghost" size="icon" onClick={onCancel}><X className="w-5 h-5" /></Button>
           </CardTitle>
@@ -274,6 +280,11 @@ export default function UnifiedPaymentGateway({ config, onSubmit, onCancel, isLo
                     <span className="flex items-center gap-1">
                       <ShoppingBag className="w-3.5 h-3.5 text-yellow-600" />
                       Uniformes {existingPaymentId ? '(Pendiente)' : '(Nueva venta)'}
+                    </span>
+                  ) : isUniformAbono ? (
+                    <span className="flex items-center gap-1">
+                      <ShoppingBag className="w-3.5 h-3.5 text-yellow-600" />
+                      Uniformes — Abono a saldo pendiente
                     </span>
                   ) : (
                     `${typeLabel} — ${month}`
@@ -440,7 +451,7 @@ export default function UnifiedPaymentGateway({ config, onSubmit, onCancel, isLo
                       </>
                     )}
                   </div>
-                  {((amountsByType[itemPaymentType || type] || amountsByType.mensualidad).length > 0) && (
+                  {!isUniformAbono && ((amountsByType[itemPaymentType || type] || amountsByType.mensualidad).length > 0) && (
                     <div className="grid grid-cols-4 sm:grid-cols-5 gap-1.5">
                       {(amountsByType[itemPaymentType || type] || amountsByType.mensualidad).map((value) => (
                         <Button

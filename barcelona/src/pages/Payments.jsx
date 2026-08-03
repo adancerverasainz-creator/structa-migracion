@@ -226,20 +226,32 @@ const { type, existingPaymentId, ...paymentData } = data;
 const isUniformes = paymentData.payment_type === 'uniformes';
 
 if (isUniformes && existingPaymentId) {
-const abonoRecord = { ...paymentData, status: 'pagado' };
-createMutation.mutate(abonoRecord, {
-onSuccess: () => {
+// Abono contra partida abierta (estilo SAP): liquidar convierte el registro
+// pendiente en pago real (sin duplicar ingreso); parcial crea el abono y
+// deja el saldo restante en la partida.
 const existing = payments.find(p => p.id === existingPaymentId);
-if (existing) {
+const pendMatch = existing?.notes?.match(/[Pp]endiente[:\s]*\$?([\d.,]+)/);
+const pendiente = existing ? (pendMatch ? parseFloat(pendMatch[1].replace(/,/g, '')) : (existing.amount || 0)) : (paymentData.amount || 0);
+const abonado = Math.min(paymentData.amount || 0, pendiente);
+const resto = Math.max(0, pendiente - abonado);
+const baseLabel = existing?.notes?.replace(/\s*\|\s*Pendiente:.*/, '') || 'Uniformes';
+if (resto <= 0) {
 updateMutation.mutate({
 id: existingPaymentId,
-data: { ...existing, notes: paymentData.notes },
-previousPayment: existing
+data: { ...existing, ...paymentData, amount: abonado, status: 'pagado', notes: `${baseLabel} | Liquidado` },
+previousPayment: existing,
+}, { onSuccess: () => setPaymentConfig(null) });
+} else {
+createMutation.mutate({ ...paymentData, amount: abonado, status: 'pagado', notes: `Abono a ${baseLabel} — resta $${resto}` }, {
+onSuccess: () => {
+updateMutation.mutate({
+id: existingPaymentId,
+data: { ...existing, amount: resto, notes: `${baseLabel} | Pendiente: $${resto}` },
+previousPayment: existing,
+}, { onSuccess: () => setPaymentConfig(null) });
+}
 });
 }
-setPaymentConfig(null);
-}
-});
 } else if (existingPaymentId && paymentData.status === 'pagado') {
 updateMutation.mutate(
 { id: existingPaymentId, data: { ...paymentData }, previousPayment: payments.find(p => p.id === existingPaymentId) },
@@ -278,11 +290,20 @@ const { type, ...rpData } = p;
 // Use the existing abono logic
 const { existingPaymentId, ...paymentData } = rpData;
 if (existingPaymentId && paymentData.payment_type === 'uniformes') {
-const abonoRecord = { ...paymentData, status: 'pagado' };
-await base44.entities.Payment.create(abonoRecord);
+// Misma lógica de partida abierta que handleUnifiedSubmit
 const existing = payments.find(ep => ep.id === existingPaymentId);
+const pendMatch = existing?.notes?.match(/[Pp]endiente[:\s]*\$?([\d.,]+)/);
+const pendiente = existing ? (pendMatch ? parseFloat(pendMatch[1].replace(/,/g, '')) : (existing.amount || 0)) : (paymentData.amount || 0);
+const abonado = Math.min(paymentData.amount || 0, pendiente);
+const resto = Math.max(0, pendiente - abonado);
+const baseLabel = existing?.notes?.replace(/\s*\|\s*Pendiente:.*/, '') || 'Uniformes';
+if (resto <= 0 && existing) {
+await base44.entities.Payment.update(existingPaymentId, { ...existing, ...paymentData, amount: abonado, status: 'pagado', notes: `${baseLabel} | Liquidado` });
+} else {
+await base44.entities.Payment.create({ ...paymentData, amount: abonado, status: 'pagado', notes: `Abono a ${baseLabel} — resta $${resto}` });
 if (existing) {
-await base44.entities.Payment.update(existingPaymentId, { ...existing, notes: paymentData.notes });
+await base44.entities.Payment.update(existingPaymentId, { ...existing, amount: resto, notes: `${baseLabel} | Pendiente: $${resto}` });
+}
 }
 } else if (existingPaymentId && paymentData.status === 'pagado') {
 await base44.entities.Payment.update(existingPaymentId, paymentData);
