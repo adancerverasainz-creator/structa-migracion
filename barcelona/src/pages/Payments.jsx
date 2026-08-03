@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import ERPPageHeader from '../components/layout/ERPPageHeader';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { base44 } from '@/api/base44Client';
+import { base44, supabase } from '@/api/base44Client';
+import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -226,37 +227,67 @@ const { type, existingPaymentId, ...paymentData } = data;
 const isUniformes = paymentData.payment_type === 'uniformes';
 
 if (isUniformes && existingPaymentId) {
-// Abono contra partida abierta (estilo SAP): liquidar convierte el registro
-// pendiente en pago real (sin duplicar ingreso); parcial crea el abono y
-// deja el saldo restante en la partida.
+// Abono a partida abierta vía RPC atómica (estilo caja SAP): basta permiso de
+// captura, y nunca queda aplicado a medias. Todo ocurre en Supabase en una transacción.
+(async () => {
 const existing = payments.find(p => p.id === existingPaymentId);
-const pendMatch = existing?.notes?.match(/[Pp]endiente[:\s]*\$?([\d.,]+)/);
-const pendiente = existing ? (pendMatch ? parseFloat(pendMatch[1].replace(/,/g, '')) : (existing.amount || 0)) : (paymentData.amount || 0);
-const abonado = Math.min(paymentData.amount || 0, pendiente);
-const resto = Math.max(0, pendiente - abonado);
-const baseLabel = existing?.notes?.replace(/\s*\|\s*Pendiente:.*/, '') || 'Uniformes';
-if (resto <= 0) {
-updateMutation.mutate({
-id: existingPaymentId,
-data: { ...existing, ...paymentData, amount: abonado, status: 'pagado', notes: `${baseLabel} | Liquidado` },
-previousPayment: existing,
-}, { onSuccess: () => setPaymentConfig(null) });
-} else {
-createMutation.mutate({ ...paymentData, amount: abonado, status: 'pagado', notes: `Abono a ${baseLabel} — resta $${resto}` }, {
-onSuccess: () => {
-updateMutation.mutate({
-id: existingPaymentId,
-data: { ...existing, amount: resto, notes: `${baseLabel} | Pendiente: $${resto}` },
-previousPayment: existing,
-}, { onSuccess: () => setPaymentConfig(null) });
-}
+try {
+const { data: res, error } = await supabase.rpc('abonar_partida', {
+p_payment_id: existingPaymentId,
+p_monto: paymentData.amount || 0,
+p_metodo: paymentData.payment_method || 'efectivo',
+p_banco: paymentData.bank_name || null,
+p_referencia: paymentData.reference_number || null,
+p_fecha: (paymentData.payment_date || '').slice(0, 10) || null,
 });
+if (error) throw error;
+await logAudit({
+action: res?.liquidado ? 'MODIFICACIÓN' : 'CREACIÓN', module: 'Pagos', entity_type: 'Payment',
+entity_id: String(res?.abono_id || existingPaymentId),
+entity_name: `Abono a uniformes`,
+previousData: existing, newData: { ...paymentData, resto: res?.resto },
+monetaryDiff: paymentData.amount || 0,
+details: res?.liquidado ? `Saldo de uniformes liquidado: $${paymentData.amount}` : `Abono a uniformes: $${paymentData.amount} — resta $${res?.resto}`,
+});
+queryClient.invalidateQueries({ queryKey: ['payments'] });
+toast.success(res?.liquidado ? 'Saldo de uniformes liquidado' : `Abono registrado — resta $${res?.resto}`);
+setPaymentConfig(null);
+} catch (err) {
+toast.error(`No se pudo aplicar el abono: ${err?.message || 'error desconocido'}`);
 }
+})();
 } else if (existingPaymentId && paymentData.status === 'pagado') {
-updateMutation.mutate(
-{ id: existingPaymentId, data: { ...paymentData }, previousPayment: payments.find(p => p.id === existingPaymentId) },
-{ onSuccess: () => setPaymentConfig(null) }
-);
+// Liquidar partida pendiente (mensualidad/inscripción) vía RPC atómica:
+// funciona también para roles de solo-captura (operación de caja, no edición)
+(async () => {
+const existing = payments.find(p => p.id === existingPaymentId);
+try {
+const { error } = await supabase.rpc('abonar_partida', {
+p_payment_id: existingPaymentId,
+p_monto: paymentData.amount || 0,
+p_metodo: paymentData.payment_method || 'efectivo',
+p_banco: paymentData.bank_name || null,
+p_referencia: paymentData.reference_number || null,
+p_fecha: (paymentData.payment_date || '').slice(0, 10) || null,
+p_surcharge: paymentData.surcharge || 0,
+p_notas: paymentData.notes || null,
+});
+if (error) throw error;
+await logAudit({
+action: 'MODIFICACIÓN', module: 'Pagos', entity_type: 'Payment',
+entity_id: existingPaymentId,
+entity_name: `Liquidación de partida pendiente`,
+previousData: existing, newData: paymentData,
+monetaryDiff: (paymentData.amount || 0) - (existing?.amount || 0),
+details: `Partida liquidada: ${paymentData.month} por $${paymentData.amount}`,
+});
+queryClient.invalidateQueries({ queryKey: ['payments'] });
+toast.success('Pago registrado');
+setPaymentConfig(null);
+} catch (err) {
+toast.error(`No se pudo registrar el pago: ${err?.message || 'error desconocido'}`);
+}
+})();
 } else if (existingPaymentId && paymentData.status === 'pendiente') {
 const existing = payments.find(p => p.id === existingPaymentId);
 updateMutation.mutate(
@@ -290,23 +321,29 @@ const { type, ...rpData } = p;
 // Use the existing abono logic
 const { existingPaymentId, ...paymentData } = rpData;
 if (existingPaymentId && paymentData.payment_type === 'uniformes') {
-// Misma lógica de partida abierta que handleUnifiedSubmit
-const existing = payments.find(ep => ep.id === existingPaymentId);
-const pendMatch = existing?.notes?.match(/[Pp]endiente[:\s]*\$?([\d.,]+)/);
-const pendiente = existing ? (pendMatch ? parseFloat(pendMatch[1].replace(/,/g, '')) : (existing.amount || 0)) : (paymentData.amount || 0);
-const abonado = Math.min(paymentData.amount || 0, pendiente);
-const resto = Math.max(0, pendiente - abonado);
-const baseLabel = existing?.notes?.replace(/\s*\|\s*Pendiente:.*/, '') || 'Uniformes';
-if (resto <= 0 && existing) {
-await base44.entities.Payment.update(existingPaymentId, { ...existing, ...paymentData, amount: abonado, status: 'pagado', notes: `${baseLabel} | Liquidado` });
-} else {
-await base44.entities.Payment.create({ ...paymentData, amount: abonado, status: 'pagado', notes: `Abono a ${baseLabel} — resta $${resto}` });
-if (existing) {
-await base44.entities.Payment.update(existingPaymentId, { ...existing, amount: resto, notes: `${baseLabel} | Pendiente: $${resto}` });
-}
-}
+// Abono a partida abierta vía RPC atómica (misma lógica que handleUnifiedSubmit)
+const { error: rpcError } = await supabase.rpc('abonar_partida', {
+p_payment_id: existingPaymentId,
+p_monto: paymentData.amount || 0,
+p_metodo: paymentData.payment_method || 'efectivo',
+p_banco: paymentData.bank_name || null,
+p_referencia: paymentData.reference_number || null,
+p_fecha: (paymentData.payment_date || '').slice(0, 10) || null,
+});
+if (rpcError) throw new Error(`Abono a uniformes: ${rpcError.message}`);
 } else if (existingPaymentId && paymentData.status === 'pagado') {
-await base44.entities.Payment.update(existingPaymentId, paymentData);
+// Liquidación vía RPC atómica (funciona para roles de solo-captura)
+const { error: liqError } = await supabase.rpc('abonar_partida', {
+p_payment_id: existingPaymentId,
+p_monto: paymentData.amount || 0,
+p_metodo: paymentData.payment_method || 'efectivo',
+p_banco: paymentData.bank_name || null,
+p_referencia: paymentData.reference_number || null,
+p_fecha: (paymentData.payment_date || '').slice(0, 10) || null,
+p_surcharge: paymentData.surcharge || 0,
+p_notas: paymentData.notes || null,
+});
+if (liqError) throw new Error(`Liquidación: ${liqError.message}`);
 } else {
 await base44.entities.Payment.create(paymentData);
 }
