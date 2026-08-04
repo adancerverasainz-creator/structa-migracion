@@ -7,13 +7,15 @@ import { Edit, Trash2, Search, CreditCard, Calendar, User } from 'lucide-react';
 import { format } from 'date-fns';
 import { formatCurrency } from '../lib/formatCurrency';
 
+const PAGE_SIZE = 100;
+
 export default function PaymentsList({ payments, players, isLoading, onEdit, onDelete }) {
   const [searchTerm, setSearchTerm] = useState('');
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
-  const getPlayerName = (playerId) => {
-    const player = players.find(p => p.id === playerId);
-    return player?.full_name || 'Desconocido';
-  };
+  // Índice O(1): evita players.find() por cada una de las ~10k filas
+  const playerById = React.useMemo(() => new Map(players.map(p => [p.id, p])), [players]);
+  const getPlayerName = (playerId) => playerById.get(playerId)?.full_name || 'Desconocido';
 
   const getPaymentConcept = (payment) => {
     const typeLabels = {
@@ -37,11 +39,15 @@ export default function PaymentsList({ payments, players, isLoading, onEdit, onD
     return payment.month ? `${type} ${payment.month}` : type;
   };
 
-  const filteredPayments = payments.filter(payment => {
+  const filteredPayments = React.useMemo(() => payments.filter(payment => {
     const playerName = getPlayerName(payment.player_id);
     return playerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
            payment.month?.toLowerCase().includes(searchTerm.toLowerCase());
-  });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [payments, searchTerm, playerById]);
+
+  // Paginación: renderizar 10k tarjetas congela el navegador — se muestra por bloques
+  const visiblePayments = filteredPayments.slice(0, visibleCount);
 
   const methodColors = {
     efectivo: 'bg-green-100 text-green-800',
@@ -88,7 +94,7 @@ export default function PaymentsList({ payments, players, isLoading, onEdit, onD
         </Card>
       ) : (
         <div className="grid gap-4">
-          {filteredPayments.map((payment) => (
+          {visiblePayments.map((payment) => (
             <Card key={payment.id} className="hover:shadow-lg transition-all border-2">
               <CardContent className="pt-6">
                 <div className="flex flex-col md:flex-row justify-between gap-4">
@@ -160,6 +166,13 @@ export default function PaymentsList({ payments, players, isLoading, onEdit, onD
               </CardContent>
             </Card>
           ))}
+          {filteredPayments.length > visibleCount && (
+            <div className="text-center py-4">
+              <Button variant="outline" onClick={() => setVisibleCount(c => c + PAGE_SIZE)}>
+                Mostrar más ({filteredPayments.length - visibleCount} restantes)
+              </Button>
+            </div>
+          )}
         </div>
       )}
     </div>
