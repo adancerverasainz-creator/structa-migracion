@@ -69,7 +69,8 @@ export default function PlayerForm({ player, onSubmit, onCancel, isLoading }) {
   };
 
   return (
-    <Card className="shadow-lg border-2 border-blue-200">
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-start md:items-center justify-center p-4 overflow-y-auto" onClick={onCancel}>
+    <Card className="shadow-2xl border-2 border-blue-200 w-full max-w-3xl my-8 md:my-auto bg-white" onClick={(e) => e.stopPropagation()}>
       <CardHeader>
         <CardTitle className="flex items-center justify-between">
           <span>{player ? 'Editar Jugador' : 'Nuevo Jugador'}</span>
@@ -271,5 +272,6 @@ export default function PlayerForm({ player, onSubmit, onCancel, isLoading }) {
         </CardFooter>
       </form>
     </Card>
+    </div>
   );
 }
