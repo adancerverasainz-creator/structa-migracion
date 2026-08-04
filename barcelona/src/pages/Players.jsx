@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { toast } from 'sonner';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -49,7 +50,8 @@ export default function Players() {
       setShowForm(false);
       setEditingPlayer(null);
     },
-  });
+onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desconocido'}`),
+});
 
   const updateMutation = useMutation({
     mutationFn: async ({ id, data, prev }) => {
@@ -68,7 +70,8 @@ export default function Players() {
       setShowForm(false);
       setEditingPlayer(null);
     },
-  });
+onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desconocido'}`),
+});
 
   const deleteMutation = useMutation({
     mutationFn: async (player) => {
@@ -83,7 +86,8 @@ export default function Players() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['players'] });
     },
-  });
+onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desconocido'}`),
+});
 
   const handleSubmit = (data) => {
     if (editingPlayer) {

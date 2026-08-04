@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { toast } from 'sonner';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
@@ -37,17 +38,20 @@ export default function CuentasPorPagar() {
   const createMutation = useMutation({
     mutationFn: (data) => base44.entities.AccountPayable.create(data),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['accountsPayable'] }); setShowForm(false); },
-  });
+onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desconocido'}`),
+});
 
   const updateMutation = useMutation({
     mutationFn: ({ id, data }) => base44.entities.AccountPayable.update(id, data),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['accountsPayable'] }); setEditingAccount(null); },
-  });
+onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desconocido'}`),
+});
 
   const deleteMutation = useMutation({
     mutationFn: (id) => base44.entities.AccountPayable.delete(id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['accountsPayable'] }),
-  });
+onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desconocido'}`),
+});
 
   const abonoMutation = useMutation({
     mutationFn: async (data) => {
@@ -87,7 +91,8 @@ export default function CuentasPorPagar() {
       queryClient.invalidateQueries({ queryKey: ['accountsPayable'] });
       setAbonoAccount(null);
     },
-  });
+onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desconocido'}`),
+});
 
   const handleFormSubmit = (data) => {
     if (editingAccount) {

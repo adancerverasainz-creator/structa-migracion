@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { toast } from 'sonner';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Card, CardContent } from '@/components/ui/card';
@@ -46,7 +47,8 @@ export default function Tournaments() {
       setShowForm(false);
       setEditingTournament(null);
     },
-  });
+onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desconocido'}`),
+});
 
   const updateMutation = useMutation({
     mutationFn: ({ id, data }) => base44.entities.Tournament.update(id, data),
@@ -55,7 +57,8 @@ export default function Tournaments() {
       setShowForm(false);
       setEditingTournament(null);
     },
-  });
+onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desconocido'}`),
+});
 
   const deleteMutation = useMutation({
     mutationFn: async (tournament) => {
@@ -77,7 +80,8 @@ export default function Tournaments() {
       queryClient.invalidateQueries({ queryKey: ['players'] });
       setSelectedTournament(null);
     },
-  });
+onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desconocido'}`),
+});
 
   const handleSubmit = (data) => {
     if (editingTournament) {

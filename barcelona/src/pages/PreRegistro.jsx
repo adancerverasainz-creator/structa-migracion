@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { toast } from 'sonner';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -31,7 +32,8 @@ export default function PreRegistro() {
       setShowForm(false);
       setEditingRecord(null);
     },
-  });
+onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desconocido'}`),
+});
 
   const updateMutation = useMutation({
     mutationFn: ({ id, data }) => base44.entities.PreRegistro.update(id, data),
@@ -40,12 +42,14 @@ export default function PreRegistro() {
       setShowForm(false);
       setEditingRecord(null);
     },
-  });
+onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desconocido'}`),
+});
 
   const deleteMutation = useMutation({
     mutationFn: (id) => base44.entities.PreRegistro.delete(id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['preregistros'] }),
-  });
+onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desconocido'}`),
+});
 
   const handleSubmit = (data) => {
     if (editingRecord) {

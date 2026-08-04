@@ -70,7 +70,8 @@ export default function AdminProspectos() {
   const updateMutation = useMutation({
     mutationFn: ({ id, data }) => base44.entities.PreRegistro.update(id, data),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['preRegistros'] }),
-  });
+onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desconocido'}`),
+});
 
   const createProgramMutation = useMutation({
     mutationFn: (data) => base44.entities.Program.create(data),

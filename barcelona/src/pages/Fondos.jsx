@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { toast } from 'sonner';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -76,7 +77,8 @@ export default function Fondos() {
         source: 'Corte de caja'
       });
     },
-  });
+onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desconocido'}`),
+});
 
   const updateCashRegisterMutation = useMutation({
     mutationFn: ({ id, data }) => base44.entities.CashRegister.update(id, data),
@@ -91,7 +93,8 @@ export default function Fondos() {
         source: 'Corte de caja'
       });
     },
-  });
+onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desconocido'}`),
+});
 
   const deleteMutation = useMutation({
     mutationFn: async (register) => {
@@ -110,7 +113,8 @@ export default function Fondos() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['cashRegisters'] });
     },
-  });
+onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desconocido'}`),
+});
 
   const createExpenseMutation = useMutation({
     mutationFn: (data) => base44.entities.Expense.create({ ...data, payment_method: 'transferencia', account: 'Fondos', source_module: 'fondos', is_transfer: false }),
@@ -120,7 +124,8 @@ export default function Fondos() {
       setShowExpenseForm(false);
       setEditingExpense(null);
     },
-  });
+onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desconocido'}`),
+});
 
   const updateExpenseMutation = useMutation({
     mutationFn: ({ id, data }) => base44.entities.Expense.update(id, data),
@@ -130,7 +135,8 @@ export default function Fondos() {
       setShowExpenseForm(false);
       setEditingExpense(null);
     },
-  });
+onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desconocido'}`),
+});
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -184,7 +190,8 @@ export default function Fondos() {
       queryClient.invalidateQueries({ queryKey: ['allExpensesForFondos'] });
       queryClient.invalidateQueries({ queryKey: ['expenses'] });
     },
-  });
+onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desconocido'}`),
+});
 
   const handleDelete = (transaction) => {
     if (confirm('¿Estás seguro de eliminar este registro?')) {

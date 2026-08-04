@@ -74,6 +74,7 @@ queryClient.invalidateQueries({ queryKey: ['expenses'] });
 setShowForm(false);
 setEditingExpense(null);
 },
+onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desconocido'}`),
 });
 
 const updateMutation = useMutation({
@@ -92,6 +93,7 @@ queryClient.invalidateQueries({ queryKey: ['expenses'] });
 setShowForm(false);
 setEditingExpense(null);
 },
+onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desconocido'}`),
 });
 
 const deleteMutation = useMutation({
@@ -109,6 +111,7 @@ onSuccess: () => {
 queryClient.invalidateQueries({ queryKey: ['expenses'] });
 queryClient.invalidateQueries({ queryKey: ['payments'] });
 },
+onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desconocido'}`),
 });
 
 const handleSubmit = (data) => {
