@@ -353,7 +353,7 @@ export default function SummerCampPaymentForm({
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 font-semibold">$</span>
                     <Input
-                      type="number" min="0" step="0.01"
+                      type="number" onWheel={(e) => e.target.blur()} min="0" step="0.01"
                       value={discount}
                       onChange={e => setDiscount(e.target.value)}
                       onWheel={e => e.currentTarget.blur()}

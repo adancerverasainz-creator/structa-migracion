@@ -107,7 +107,8 @@ export default function TournamentCard({ tournament, tournamentPayments, players
               Editar
             </Button>
             {isAdmin && (
-              <Button
+              {onDelete && (
+<Button
                 variant="outline"
                 size="sm"
                 className="text-red-600 hover:text-red-700 hover:bg-red-50"
@@ -115,6 +116,7 @@ export default function TournamentCard({ tournament, tournamentPayments, players
               >
                 <Trash2 className="w-4 h-4" />
               </Button>
+)}
             )}
           </div>
         </div>

@@ -1,5 +1,6 @@
 import { Toaster } from "@/components/ui/toaster"
 import { Toaster as SonnerToaster } from 'sonner'
+import { ConfirmarHost } from '@/components/ui/confirmar'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { queryClientInstance } from '@/lib/query-client'
 import NavigationTracker from '@/lib/NavigationTracker'
@@ -100,6 +101,7 @@ function App() {
         </Router>
         <Toaster />
         <SonnerToaster position="top-right" richColors closeButton />
+        <ConfirmarHost />
       </QueryClientProvider>
     </AuthProvider>
   )

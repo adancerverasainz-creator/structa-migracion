@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { confirmar } from '@/components/ui/confirmar';
+import { usePerms } from '@/lib/usePerms';
 import ERPPageHeader from '../components/layout/ERPPageHeader';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44, supabase } from '@/api/base44Client';
@@ -19,6 +21,7 @@ import { formatCurrency } from '../components/lib/formatCurrency';
 import { logAudit } from '../components/lib/auditLogger';
 
 export default function Payments() {
+const { canDelete } = usePerms('payments');
 const [showForm, setShowForm] = useState(false);
 const [editingPayment, setEditingPayment] = useState(null);
 const [showGeneralForm, setShowGeneralForm] = useState(false);
@@ -393,9 +396,9 @@ setPagoGeneralInfo(null);
 };
 
 const handleDelete = (payment) => {
-if (confirm('¿Estás seguro de eliminar este pago?')) {
+confirmar('¿Estás seguro de eliminar este pago?').then((ok) => { if (!ok) return;
 deleteMutation.mutate(payment);
-}
+});
 };
 
 // General Payments
@@ -465,9 +468,9 @@ setShowGeneralForm(true);
 };
 
 const handleGeneralDelete = (payment) => {
-if (confirm('¿Estás seguro de eliminar este pago general?')) {
+confirmar('¿Estás seguro de eliminar este pago general?').then((ok) => { if (!ok) return;
 deleteGeneralMutation.mutate(payment);
-}
+});
 };
 
 return (
@@ -601,7 +604,7 @@ payments={payments}
 players={players}
 isLoading={paymentsLoading || playersLoading}
 onEdit={handleEdit}
-onDelete={handleDelete}
+onDelete={canDelete ? handleDelete : null}
 />
 </TabsContent>
 
@@ -610,7 +613,7 @@ onDelete={handleDelete}
 payments={generalPayments}
 isLoading={generalPaymentsLoading}
 onEdit={handleGeneralEdit}
-onDelete={handleGeneralDelete}
+onDelete={canDelete ? handleGeneralDelete : null}
 />
 </TabsContent>
 

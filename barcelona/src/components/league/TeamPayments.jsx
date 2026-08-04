@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { confirmar } from '@/components/ui/confirmar';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -350,9 +351,9 @@ export default function TeamPayments({ team, onBack }) {
                       variant="ghost"
                       size="icon"
                       onClick={() => {
-                        if (confirm('¿Eliminar este pago?')) {
+                        confirmar('¿Eliminar este pago?').then((ok) => { if (!ok) return;
                           deleteMutation.mutate(payment.id);
-                        }
+                        });
                       }}
                     >
                       <Trash2 className="w-4 h-4 text-red-500" />

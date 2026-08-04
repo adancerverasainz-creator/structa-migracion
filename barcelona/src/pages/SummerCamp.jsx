@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { confirmar } from '@/components/ui/confirmar';
+import { usePerms } from '@/lib/usePerms';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import ERPPageHeader from '../components/layout/ERPPageHeader';
@@ -19,6 +21,7 @@ const WEEK_PRICE = 1200;
 const UNIFORM_PRICE = 950;
 
 export default function SummerCamp() {
+  const { canDelete } = usePerms('summercamp');
   const [showForm, setShowForm] = useState(false);
   const [formType, setFormType] = useState('semana');
   const [editingPayment, setEditingPayment] = useState(null);
@@ -118,7 +121,7 @@ export default function SummerCamp() {
   };
 
   const handleEdit = (p) => { setEditingPayment(p); setFormType(p.payment_type); setShowForm(true); };
-  const handleDelete = (p) => { if (confirm('¿Eliminar este registro?')) deleteMutation.mutate(p); };
+  const handleDelete = (p) => { confirmar('¿Eliminar este registro?').then((ok) => ok && deleteMutation.mutate(p)); };
   const openNew = (type) => { setEditingPayment(null); setFormType(type); setShowForm(true); };
 
   // External players mutations
@@ -297,16 +300,16 @@ export default function SummerCamp() {
           </TabsTrigger>
         </TabsList>
         <TabsContent value="all" className="mt-4">
-          <SummerCampList payments={payments} players={players} isLoading={paymentsLoading || playersLoading} onEdit={handleEdit} onDelete={handleDelete} />
+          <SummerCampList payments={payments} players={players} isLoading={paymentsLoading || playersLoading} onEdit={handleEdit} onDelete={canDelete ? handleDelete : null} />
         </TabsContent>
         <TabsContent value="semana" className="mt-4">
-          <SummerCampList payments={payments} players={players} isLoading={paymentsLoading} onEdit={handleEdit} onDelete={handleDelete} filterType="semana" />
+          <SummerCampList payments={payments} players={players} isLoading={paymentsLoading} onEdit={handleEdit} onDelete={canDelete ? handleDelete : null} filterType="semana" />
         </TabsContent>
         <TabsContent value="uniforme" className="mt-4">
-          <SummerCampList payments={payments} players={players} isLoading={paymentsLoading} onEdit={handleEdit} onDelete={handleDelete} filterType="uniforme" />
+          <SummerCampList payments={payments} players={players} isLoading={paymentsLoading} onEdit={handleEdit} onDelete={canDelete ? handleDelete : null} filterType="uniforme" />
         </TabsContent>
         <TabsContent value="deudores" className="mt-4">
-          <SummerCampDebtors payments={payments} players={players} onEdit={handleEdit} onDelete={handleDelete} />
+          <SummerCampDebtors payments={payments} players={players} onEdit={handleEdit} onDelete={canDelete ? handleDelete : null} />
         </TabsContent>
         <TabsContent value="externos" className="mt-4">
           <ExternalPlayersList
@@ -314,7 +317,7 @@ export default function SummerCamp() {
             payments={payments}
             isLoading={externalLoading}
             onEdit={(p) => { setEditingExternal(p); setShowExternalForm(true); }}
-            onDelete={(p) => { if (confirm('¿Eliminar este jugador externo?')) deleteExternalMutation.mutate(p); }}
+            onDelete={(p) => { confirmar('¿Eliminar este jugador externo?').then((ok) => ok && deleteExternalMutation.mutate(p)); }}
             onRegisterPayment={(p) => { setPayingExternalPlayer(p); setFormType('semana'); setShowForm(true); }}
           />
         </TabsContent>

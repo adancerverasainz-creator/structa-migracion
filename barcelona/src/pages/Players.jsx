@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { confirmar } from '@/components/ui/confirmar';
+import { usePerms } from '@/lib/usePerms';
 import { toast } from 'sonner';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
@@ -16,6 +18,7 @@ import ERPPageHeader from '../components/layout/ERPPageHeader';
 import KPICard from '../components/layout/KPICard';
 
 export default function Players() {
+  const { canDelete } = usePerms('players');
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryExport, setCategoryExport] = useState('todas');
   const [statusFilter, setStatusFilter] = useState('todos');
@@ -103,9 +106,9 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
   };
 
   const handleDelete = (player) => {
-    if (confirm('¿Estás seguro de eliminar este jugador?')) {
+    confirmar('¿Estás seguro de eliminar este jugador?').then((ok) => { if (!ok) return;
       deleteMutation.mutate(player);
-    }
+    });
   };
 
   const filteredPlayers = players.filter(player => {
@@ -325,7 +328,7 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
               player={player}
               payments={payments}
               onEdit={handleEdit}
-              onDelete={handleDelete}
+              onDelete={canDelete ? handleDelete : null}
             />
           ))}
         </div>

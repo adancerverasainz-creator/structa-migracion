@@ -98,7 +98,7 @@ export default function AbonoForm({ account, pendingAmount, onSubmit, onCancel, 
               <div className="relative">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 font-semibold">$</span>
                 <Input
-                  type="number"
+                  type="number" min="0.01" onWheel={(e) => e.target.blur()}
                   min="0.01"
                   step="0.01"
                   value={formData.amount}

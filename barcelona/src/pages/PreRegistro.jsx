@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { confirmar } from '@/components/ui/confirmar';
 import { toast } from 'sonner';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
@@ -65,13 +66,13 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
   };
 
   const handleDelete = (record) => {
-    if (confirm(`¿Eliminar el pre-registro de ${record.full_name}?`)) {
+    confirmar(`¿Eliminar el pre-registro de ${record.full_name}?`).then((ok) => { if (!ok) return;
       deleteMutation.mutate(record.id);
-    }
+    });
   };
 
   const handleTransfer = async (record) => {
-    if (!confirm(`¿Inscribir a ${record.full_name} como jugador activo? Se creará su perfil en el módulo de Jugadores.`)) return;
+    if (!(await confirmar(`¿Inscribir a ${record.full_name} como jugador activo? Se creará su perfil en el módulo de Jugadores.`, { titulo: 'Inscribir jugador', confirmLabel: 'Sí, inscribir' }))) return;
     setTransferringId(record.id);
     try {
       // Crear jugador en el módulo Players

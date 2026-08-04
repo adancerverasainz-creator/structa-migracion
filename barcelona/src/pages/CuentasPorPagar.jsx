@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { confirmar } from '@/components/ui/confirmar';
+import { usePerms } from '@/lib/usePerms';
 import { toast } from 'sonner';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
@@ -13,6 +15,7 @@ import AccountPayableForm from '@/components/cuentas/AccountPayableForm';
 import AbonoForm from '@/components/cuentas/AbonoForm';
 
 export default function CuentasPorPagar() {
+  const { canDelete } = usePerms('cxp');
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [editingAccount, setEditingAccount] = useState(null);
@@ -115,9 +118,9 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
   };
 
   const handleDelete = (account) => {
-    if (confirm(`¿Eliminar "${account.concept}"? Esta acción no se puede deshacer.`)) {
+    confirmar(`¿Eliminar "${account.concept}"? Esta acción no se puede deshacer.`).then((ok) => { if (!ok) return;
       deleteMutation.mutate(account.id);
-    }
+    });
   };
 
   const getPaymentsForAccount = (accountId) =>
@@ -285,7 +288,7 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
               account={account}
               payments={getPaymentsForAccount(account.id)}
               onEdit={handleEdit}
-              onDelete={handleDelete}
+              onDelete={canDelete ? handleDelete : null}
               onAbono={handleAbono}
               isAdmin={currentUser?.role === 'admin'}
             />

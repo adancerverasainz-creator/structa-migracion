@@ -106,9 +106,11 @@ export default function SummerCampList({ payments, players, isLoading, onEdit, o
                       <Button size="icon" variant="ghost" className="h-7 w-7 text-gray-400 hover:text-blue-600" onClick={() => onEdit(p)}>
                         <Pencil className="w-3.5 h-3.5" />
                       </Button>
-                      <Button size="icon" variant="ghost" className="h-7 w-7 text-gray-400 hover:text-red-600" onClick={() => onDelete(p)}>
+                      {onDelete && (
+<Button size="icon" variant="ghost" className="h-7 w-7 text-gray-400 hover:text-red-600" onClick={() => onDelete(p)}>
                         <Trash2 className="w-3.5 h-3.5" />
                       </Button>
+)}
                     </div>
                   </td>
                 </tr>

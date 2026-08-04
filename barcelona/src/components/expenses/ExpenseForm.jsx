@@ -166,7 +166,7 @@ export default function ExpenseForm({ expense, onSubmit, onCancel, isLoading }) 
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 font-semibold">$</span>
                 <Input
                   id="amount"
-                  type="number"
+                  type="number" min="0.01" onWheel={(e) => e.target.blur()}
                   step="0.01"
                   value={formData.amount}
                   onChange={(e) => setFormData({ ...formData, amount: e.target.value })}

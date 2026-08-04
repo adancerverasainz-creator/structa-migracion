@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { confirmar } from '@/components/ui/confirmar';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -289,9 +290,9 @@ export default function MatchDetails({ match, players, onBack }) {
                     size="sm"
                     className="text-red-600 hover:bg-red-50 ml-4"
                     onClick={() => {
-                      if (confirm('¿Eliminar este jugador del partido?')) {
+                      confirmar('¿Eliminar este jugador del partido?').then((ok) => { if (!ok) return;
                         deleteMutation.mutate(mp.id);
-                      }
+                      });
                     }}
                   >
                     <Trash2 className="w-4 h-4" />

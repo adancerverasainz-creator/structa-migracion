@@ -86,9 +86,11 @@ export default function AccountPayableCard({ account, payments, onEdit, onDelete
                 <Edit className="w-3.5 h-3.5" />
               </Button>
               {isAdmin && (
-                <Button size="sm" variant="outline" className="h-8 text-xs border-red-300 text-red-600 hover:bg-red-50" onClick={() => onDelete(account)}>
+                {onDelete && (
+<Button size="sm" variant="outline" className="h-8 text-xs border-red-300 text-red-600 hover:bg-red-50" onClick={() => onDelete(account)}>
                   <Trash2 className="w-3.5 h-3.5" />
                 </Button>
+)}
               )}
             </div>
           </div>

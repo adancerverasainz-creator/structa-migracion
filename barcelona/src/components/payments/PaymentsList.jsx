@@ -152,7 +152,8 @@ export default function PaymentsList({ payments, players, isLoading, onEdit, onD
                       <Edit className="w-4 h-4 md:mr-0 mr-1" />
                       <span className="md:hidden">Editar</span>
                     </Button>
-                    <Button
+                    {onDelete && (
+<Button
                       variant="outline"
                       size="sm"
                       className="text-red-600 hover:text-red-700 hover:bg-red-50 flex-1 md:flex-none"
@@ -161,6 +162,7 @@ export default function PaymentsList({ payments, players, isLoading, onEdit, onD
                       <Trash2 className="w-4 h-4 md:mr-0 mr-1" />
                       <span className="md:hidden">Eliminar</span>
                     </Button>
+)}
                   </div>
                 </div>
               </CardContent>

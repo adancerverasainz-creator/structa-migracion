@@ -105,7 +105,8 @@ export default function GeneralPaymentsList({ payments, isLoading, onEdit, onDel
                   >
                     <Edit className="w-4 h-4" />
                   </Button>
-                  <Button
+                  {onDelete && (
+<Button
                     size="sm"
                     variant="outline"
                     onClick={() => onDelete(payment)}
@@ -113,6 +114,7 @@ export default function GeneralPaymentsList({ payments, isLoading, onEdit, onDel
                   >
                     <Trash2 className="w-4 h-4" />
                   </Button>
+)}
                 </div>
               </div>
             ))}

@@ -16,6 +16,7 @@ import ERPPageHeader from '../components/layout/ERPPageHeader';
 import KPICard from '../components/layout/KPICard';
 
 export default function Expenses() {
+  const { canDelete } = usePerms('expenses');
 const [showForm, setShowForm] = useState(false);
 const [editingExpense, setEditingExpense] = useState(null);
 const [searchTerm, setSearchTerm] = useState('');
@@ -128,9 +129,9 @@ setShowForm(true);
 };
 
 const handleDelete = (expense) => {
-if (confirm('¿Estás seguro de eliminar este gasto?')) {
+confirmar('¿Estás seguro de eliminar este gasto?').then((ok) => { if (!ok) return;
 deleteMutation.mutate(expense);
-}
+});
 };
 
 const categoryLabels = {
@@ -401,9 +402,11 @@ className="pl-9"
 <Button variant="ghost" size="icon" onClick={() => handleEdit(expense)}>
 <Edit className="w-4 h-4 text-blue-600" />
 </Button>
+{canDelete && (
 <Button variant="ghost" size="icon" onClick={() => handleDelete(expense)}>
 <Trash2 className="w-4 h-4 text-red-600" />
 </Button>
+)}
 </div>
 </div>
 </div>

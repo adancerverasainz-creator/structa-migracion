@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { confirmar } from '@/components/ui/confirmar';
+import { usePerms } from '@/lib/usePerms';
 import { toast } from 'sonner';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
@@ -13,6 +15,7 @@ import ERPPageHeader from '../components/layout/ERPPageHeader';
 import KPICard from '../components/layout/KPICard';
 
 export default function Tournaments() {
+  const { canDelete } = usePerms('tournaments');
   const [showForm, setShowForm] = useState(false);
   const [editingTournament, setEditingTournament] = useState(null);
   const [selectedTournament, setSelectedTournament] = useState(null);
@@ -102,9 +105,9 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
       alert('Solo administradores pueden eliminar torneos');
       return;
     }
-    if (confirm('¿Estás seguro de eliminar este torneo?')) {
+    confirmar('¿Estás seguro de eliminar este torneo?').then((ok) => { if (!ok) return;
       deleteMutation.mutate(tournament);
-    }
+    });
   };
 
   if (selectedTournament) {
@@ -213,7 +216,7 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
                 tournamentPayments={tournamentPayments}
                 players={players}
                 onEdit={handleEdit}
-                onDelete={handleDelete}
+                onDelete={canDelete ? handleDelete : null}
                 onViewPayments={() => setSelectedTournament(tournament)}
                 isAdmin={currentUser?.role === 'admin'}
               />

@@ -329,7 +329,7 @@ export default function PaymentForm({ payment, players, onSubmit, onCancel, isLo
                        <div className="relative">
                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 font-semibold">$</span>
                           <Input
-                            type="number"
+                            type="number" min="0.01" onWheel={(e) => e.target.blur()}
                             min="0"
                             placeholder="0.00"
                             value={montoRecibido}

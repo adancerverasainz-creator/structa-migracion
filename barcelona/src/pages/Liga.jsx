@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { confirmar } from '@/components/ui/confirmar';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Card, CardContent } from '@/components/ui/card';
@@ -65,9 +66,9 @@ export default function Liga() {
   };
 
   const handleDelete = (team) => {
-    if (confirm(`¿Eliminar el equipo "${team.name}"?`)) {
+    confirmar(`¿Eliminar el equipo "${team.name}"?`).then((ok) => { if (!ok) return;
       deleteMutation.mutate(team.id);
-    }
+    });
   };
 
   // KPIs

@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { confirmar } from '@/components/ui/confirmar';
+import { usePerms } from '@/lib/usePerms';
 import { toast } from 'sonner';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
@@ -16,6 +18,7 @@ import { formatCurrency } from '../components/lib/formatCurrency';
 import TraspasoModal from '../components/fondos/TraspasoModal';
 
 export default function Fondos() {
+  const { canDelete } = usePerms('fondos');
   const [showForm, setShowForm] = useState(false);
   const [showExpenseForm, setShowExpenseForm] = useState(false);
   const [showTraspasoModal, setShowTraspasoModal] = useState(false);
@@ -194,13 +197,13 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
 });
 
   const handleDelete = (transaction) => {
-    if (confirm('¿Estás seguro de eliminar este registro?')) {
+    confirmar('¿Estás seguro de eliminar este registro?').then((ok) => { if (!ok) return;
       if (transaction.type === 'ingreso') {
         deleteMutation.mutate(transaction.record);
       } else {
         deleteExpenseMutation.mutate(transaction.record);
       }
-    }
+    });
   };
 
   const handleExpenseSubmit = (data) => {
@@ -502,9 +505,11 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
                     <Button variant="ghost" size="icon" onClick={() => handleEditTransaction(transaction)}>
                       <Edit className="w-4 h-4 text-blue-600" />
                     </Button>
-                    <Button variant="ghost" size="icon" onClick={() => handleDelete(transaction)}>
+                    {canDelete && (
+<Button variant="ghost" size="icon" onClick={() => handleDelete(transaction)}>
                       <Trash2 className="w-4 h-4 text-red-600" />
                     </Button>
+)}
                   </div>
                 </div>
               ))}
