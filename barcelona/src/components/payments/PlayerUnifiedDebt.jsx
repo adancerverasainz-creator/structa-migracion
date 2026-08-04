@@ -54,6 +54,64 @@ export default function PlayerUnifiedDebt({
   const allPlayerDebts = useMemo(() => {
     const results = [];
 
+    // ── ÍNDICES O(N) — una sola pasada por cada colección ──
+    // Antes: filtros dentro de bucles anidados = ~12M operaciones de string por render
+    // (130 jugadores × 9 meses × 10,000 pagos) → congelamientos de 30-60 s.
+    const normMonthKey = (m) => {
+      if (!m) return null;
+      const lower = String(m).toLowerCase();
+      const name = monthNames.find(n => lower.includes(n));
+      const yr = (lower.match(/(20\d{2})/) || [])[1];
+      return name && yr ? `${name} ${yr}` : null;
+    };
+    const mensualidadIdx = new Map();   // `${pid}|${mes año}` -> suma pagada
+    const inscIdx = new Map();          // pid -> suma pagada temporada actual
+    const uniformIdx = new Map();       // pid -> [pagos de uniformes]
+    for (const pay of payments) {
+      const pid = pay.player_id;
+      if (!pid) continue;
+      const pt = pay.payment_type;
+      if (!pt || pt === 'mensualidad') {
+        const k = normMonthKey(pay.month);
+        if (k) {
+          const key = `${pid}|${k}`;
+          mensualidadIdx.set(key, (mensualidadIdx.get(key) || 0) + (pay.amount || 0));
+        }
+      } else if ((pt === 'inscripcion' || pt === 'reinscripcion') && pay.month === currentSeason) {
+        inscIdx.set(pid, (inscIdx.get(pid) || 0) + (pay.amount || 0));
+      } else if (pt === 'uniformes') {
+        if (!uniformIdx.has(pid)) uniformIdx.set(pid, []);
+        uniformIdx.get(pid).push(pay);
+      }
+    }
+    const waiverIdx = new Map();        // `${pid}|${mes año}` -> suma condonada
+    for (const w of debtWaivers) {
+      const key = `${w.player_id}|${(w.month || '').toLowerCase()}`;
+      waiverIdx.set(key, (waiverIdx.get(key) || 0) + (w.amount || 0));
+    }
+    const scIdx = new Map();            // pid -> [pagos summer camp]
+    for (const sp of summerCampPayments) {
+      if (!sp.player_id) continue;
+      if (!scIdx.has(sp.player_id)) scIdx.set(sp.player_id, []);
+      scIdx.get(sp.player_id).push(sp);
+    }
+    const attIdx = new Map();           // pid -> [attendees]
+    for (const a of tournamentAttendees) {
+      if (!a.player_id) continue;
+      if (!attIdx.has(a.player_id)) attIdx.set(a.player_id, []);
+      attIdx.get(a.player_id).push(a);
+    }
+    const tournamentById = new Map(tournaments.map(t => [t.id, t]));
+    const tpIdx = new Map();            // `${tournament_id}|p:${pid}` y `|e:${attendee_id}` -> suma
+    for (const tp of tournamentPayments) {
+      const amt = tp.paid_amount ?? tp.amount ?? 0;
+      // Un pago cuenta una sola vez: por jugador si está ligado, si no por asistente externo
+      const key = tp.player_id
+        ? `${tp.tournament_id}|p:${tp.player_id}`
+        : (tp.external_attendee_id ? `${tp.tournament_id}|e:${tp.external_attendee_id}` : null);
+      if (key) tpIdx.set(key, (tpIdx.get(key) || 0) + amt);
+    }
+
     for (const p of players) {
       // FIX 2026-07-15: inactivos/baja permanecen — su deuda sigue viva y cobrable.
       const monthlyFee = p.monthly_fee || 0;
@@ -103,16 +161,8 @@ export default function PlayerUnifiedDebt({
         if (p.scholarship === '50%') requiredFee *= 0.5;
         else if (p.scholarship === '100%') requiredFee = 0;
 
-        const paidForMonth = payments
-          .filter(pay => pay.player_id === p.id
-            && (!pay.payment_type || pay.payment_type === 'mensualidad')
-            && pay.month?.toLowerCase().includes(mName.toLowerCase())
-            && pay.month?.includes(String(mYear)))
-          .reduce((sum, pay) => sum + (pay.amount || 0), 0);
-
-        const waivedForMonth = debtWaivers
-          .filter(w => w.player_id === p.id && (w.month || '').toLowerCase() === mKey.toLowerCase())
-          .reduce((sum, w) => sum + (w.amount || 0), 0);
+        const paidForMonth = mensualidadIdx.get(`${p.id}|${mName.toLowerCase()} ${mYear}`) || 0;
+        const waivedForMonth = waiverIdx.get(`${p.id}|${mKey.toLowerCase()}`) || 0;
 
         const basePending = Math.max(0, requiredFee - paidForMonth - waivedForMonth);
 
@@ -168,12 +218,7 @@ export default function PlayerUnifiedDebt({
       }
 
       // ── 2. INSCRIPCIÓN / REINSCRIPCIÓN ──
-      const inscPayments = payments.filter(pay =>
-        pay.player_id === p.id
-        && (pay.payment_type === 'inscripcion' || pay.payment_type === 'reinscripcion')
-        && pay.month === currentSeason
-      );
-      const paidInscripcion = inscPayments.reduce((sum, pay) => sum + (pay.amount || 0), 0);
+      const paidInscripcion = inscIdx.get(p.id) || 0;
       const inscPending = paidInscripcion > 0 ? 0 : 1800;
 
       sections.push({
@@ -199,9 +244,7 @@ export default function PlayerUnifiedDebt({
       totalPaid += paidInscripcion;
 
       // ── 3. UNIFORMES ──
-      const allUniformPayments = payments.filter(pay =>
-        pay.player_id === p.id && pay.payment_type === 'uniformes'
-      );
+      const allUniformPayments = uniformIdx.get(p.id) || [];
       if (allUniformPayments.length > 0) {
         const uniformItems = allUniformPayments.map(up => {
           const isPending = up.status === 'pendiente';
@@ -241,21 +284,17 @@ export default function PlayerUnifiedDebt({
       }
 
       // ── 4. TORNEOS ──
-      const playerAttendees = tournamentAttendees.filter(a => a.player_id === p.id);
+      const playerAttendees = attIdx.get(p.id) || [];
       const tournamentDebtItems = [];
       let torneosPending = 0;
       let torneosPaid = 0;
 
       for (const att of playerAttendees) {
-        const tournament = tournaments.find(t => t.id === att.tournament_id);
+        const tournament = tournamentById.get(att.tournament_id);
         if (!tournament) continue;
         const fee = tournament.registration_fee || 0;
-        const paid = tournamentPayments
-          .filter(tp => tp.tournament_id === tournament.id && (
-            tp.player_id === p.id ||
-            (tp.external_attendee_id && tp.external_attendee_id === att.id)
-          ))
-          .reduce((sum, tp) => sum + (tp.paid_amount ?? tp.amount ?? 0), 0);
+        const paid = (tpIdx.get(`${tournament.id}|p:${p.id}`) || 0)
+          + (tpIdx.get(`${tournament.id}|e:${att.id}`) || 0);
         const pending = Math.max(0, fee - paid);
         tournamentDebtItems.push({
           label: tournament.name,
@@ -290,7 +329,7 @@ export default function PlayerUnifiedDebt({
       }
 
       // ── 5. SUMMER CAMP ──
-      const scPayments = summerCampPayments.filter(sp => sp.player_id === p.id);
+      const scPayments = scIdx.get(p.id) || [];
       if (scPayments.length > 0) {
         const scItems = scPayments.map(sc => ({
           label: sc.payment_type === 'semana' ? `Semana ${sc.week_number || '?'}` : 'Uniforme Summer',
@@ -324,7 +363,7 @@ export default function PlayerUnifiedDebt({
 
     results.sort((a, b) => b.totalDebt - a.totalDebt);
     return results;
-  }, [players, payments, tournamentPayments, tournaments, tournamentAttendees, summerCampPayments, selectedMonthDate, currentSeason]);
+  }, [players, payments, tournamentPayments, tournaments, tournamentAttendees, summerCampPayments, selectedMonthDate, currentSeason, debtWaivers, lateFeeSettings, seasonCalendar]);
 
   // Filter: show all OR only with debt
   const visibleDebts = useMemo(() => {
