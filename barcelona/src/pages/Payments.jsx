@@ -47,6 +47,15 @@ const lateFeeSettings = clubSettings.find(cs => cs.key === 'late_fee')?.value ||
 const seasonCalendar = clubSettings.find(cs => cs.key === 'season_calendar')?.value || null;
 const feesConfig = clubSettings.find(cs => cs.key === 'fees')?.value || null;
 
+const { data: saldosCuentas = [] } = useQuery({
+queryKey: ['saldosPorCuenta'],
+queryFn: async () => {
+const { data, error } = await supabase.rpc('saldos_por_cuenta');
+if (error) throw error;
+return data || [];
+},
+});
+
 const { data: bankAccounts = [] } = useQuery({
 queryKey: ['bankAccounts'],
 queryFn: () => base44.entities.BankAccount.list('sort_order'),
@@ -141,6 +150,7 @@ return result;
 },
 onSuccess: () => {
 queryClient.invalidateQueries({ queryKey: ['payments'] });
+queryClient.invalidateQueries({ queryKey: ['saldosPorCuenta'] });
 setShowForm(false);
 setEditingPayment(null);
 },
@@ -164,6 +174,7 @@ return base44.entities.Payment.update(id, data);
 },
 onSuccess: () => {
 queryClient.invalidateQueries({ queryKey: ['payments'] });
+queryClient.invalidateQueries({ queryKey: ['saldosPorCuenta'] });
 setShowForm(false);
 setEditingPayment(null);
 },
@@ -184,6 +195,7 @@ return base44.entities.Payment.delete(payment.id);
 },
 onSuccess: () => {
 queryClient.invalidateQueries({ queryKey: ['payments'] });
+queryClient.invalidateQueries({ queryKey: ['saldosPorCuenta'] });
 queryClient.invalidateQueries({ queryKey: ['players'] });
 },
 });
@@ -261,6 +273,7 @@ monetaryDiff: paymentData.amount || 0,
 details: res?.liquidado ? `Saldo de uniformes liquidado: $${paymentData.amount}` : `Abono a uniformes: $${paymentData.amount} — resta $${res?.resto}`,
 });
 queryClient.invalidateQueries({ queryKey: ['payments'] });
+queryClient.invalidateQueries({ queryKey: ['saldosPorCuenta'] });
 toast.success(res?.liquidado ? 'Saldo de uniformes liquidado' : `Abono registrado — resta $${res?.resto}`);
 setPaymentConfig(null);
 } catch (err) {
@@ -293,6 +306,7 @@ monetaryDiff: (paymentData.amount || 0) - (existing?.amount || 0),
 details: `Partida liquidada: ${paymentData.month} por $${paymentData.amount}`,
 });
 queryClient.invalidateQueries({ queryKey: ['payments'] });
+queryClient.invalidateQueries({ queryKey: ['saldosPorCuenta'] });
 toast.success('Pago registrado');
 setPaymentConfig(null);
 } catch (err) {
@@ -372,6 +386,7 @@ details: `Pago general — ${paymentData.payment_type || 'mensualidad'}: $${paym
 
 // Refresh all queries
 queryClient.invalidateQueries({ queryKey: ['payments'] });
+queryClient.invalidateQueries({ queryKey: ['saldosPorCuenta'] });
 queryClient.invalidateQueries({ queryKey: ['tournamentPayments'] });
 queryClient.invalidateQueries({ queryKey: ['players'] });
 setPagoGeneralInfo(null);
@@ -531,131 +546,29 @@ isLoading={createGeneralMutation.isPending || updateGeneralMutation.isPending}
 </CardHeader>
 <CardContent>
 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+{/* Fuente única: RPC saldos_por_cuenta() — misma cifra en Pagos, Egresos y Dashboard */}
 {(() => {
-// FIX: paid_amount null → usa amount como fallback (igual que Egresos/Dashboard)
-// El bug anterior: (paid_amount ?? 0) retornaba 0 cuando paid_amount=null,
-// ignorando $1,168,949 en torneos efectivo con paid_amount no asignado.
-const getAmt = (p) => (p.paid_amount !== undefined && p.paid_amount !== null) ? p.paid_amount : (p.amount || 0);
-
-// FIX: payments filtrado a status=pagado (consistente con Egresos/Dashboard)
-const allPayments = [
-  ...payments.filter(p => p.status === 'pagado'),
-  ...generalPayments,
-  ...tournamentPayments,
-  ...leaguePayments,
-  ...summerCampPayments.filter(p => p.status === 'pagado'),
-];
-
-// FIX saldos: cajaPrincipalExpenses excluido — ese efectivo ya salió vía traspasos registrados en expenses (evita doble conteo)
-const allExpenses = [...expenses];
-
-const efectivoIn = allPayments.filter(p => p.payment_method === 'efectivo').reduce((sum, p) => sum + getAmt(p), 0);
-const efectivoOut = allExpenses.filter(e => e.payment_method === 'efectivo').reduce((sum, e) => sum + (e.amount || 0), 0);
-const efectivoBalance = efectivoIn - efectivoOut;
-
-const tarjetaIn = allPayments.filter(p => p.payment_method === 'tarjeta').reduce((sum, p) => sum + getAmt(p), 0);
-const tarjetaOut = allExpenses.filter(e => e.payment_method === 'tarjeta').reduce((sum, e) => sum + (e.amount || 0), 0);
-const tarjetaBalance = tarjetaIn - tarjetaOut;
-
-const bbvaIn = allPayments.filter(p => p.payment_method === 'transferencia' && p.bank_name === 'BBVA').reduce((sum, p) => sum + getAmt(p), 0);
-const bbvaOut = allExpenses.filter(e => e.payment_method === 'transferencia' && e.account === 'BBVA').reduce((sum, e) => sum + (e.amount || 0), 0);
-const bbvaBalance = bbvaIn - bbvaOut;
-
-const mpIn = allPayments.filter(p => p.payment_method === 'transferencia' && p.bank_name === 'MP').reduce((sum, p) => sum + getAmt(p), 0);
-const mpOut = allExpenses.filter(e => e.payment_method === 'transferencia' && e.account === 'MP').reduce((sum, e) => sum + (e.amount || 0), 0);
-const mpBalance = mpIn - mpOut;
-
-const nuIn = allPayments.filter(p => p.payment_method === 'transferencia' && p.bank_name === 'NU').reduce((sum, p) => sum + getAmt(p), 0);
-const nuOut = allExpenses.filter(e => e.payment_method === 'transferencia' && e.account === 'NU').reduce((sum, e) => sum + (e.amount || 0), 0);
-const nuBalance = nuIn - nuOut;
-
-const obIn = allPayments.filter(p => p.payment_method === 'transferencia' && p.bank_name === 'OpenBank').reduce((sum, p) => sum + getAmt(p), 0);
-const obOut = allExpenses.filter(e => e.payment_method === 'transferencia' && e.account === 'OpenBank').reduce((sum, e) => sum + (e.amount || 0), 0);
-const obBalance = obIn - obOut;
-
-const mpbiaIn = allPayments.filter(p => p.payment_method === 'transferencia' && p.bank_name === 'MercadoPagoBIA').reduce((sum, p) => sum + getAmt(p), 0);
-const mpbiaOut = allExpenses.filter(e => e.payment_method === 'transferencia' && e.account === 'MercadoPagoBIA').reduce((sum, e) => sum + (e.amount || 0), 0);
-const mpbiaBalance = mpbiaIn - mpbiaOut;
-
-// Fondos (caja principal): In = cortes de caja + traspasos recibidos; Out = gastos pagados desde Fondos
-const fondosIn = cashRegisters.reduce((sum, r) => sum + (r.cash_amount || 0), 0);
-const fondosOut = allExpenses.filter(e => e.account === 'Fondos' && !e.is_transfer).reduce((sum, e) => sum + (e.amount || 0), 0);
-const fondosBalance = fondosIn - fondosOut;
-
-return (<>
-<div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
-<p className="text-sm text-gray-600 mb-1">Efectivo</p>
-<p className={`text-2xl font-bold ${efectivoBalance >= 0 ? 'text-blue-600' : 'text-red-600'}`}>
-{formatCurrency(efectivoBalance)}
-</p>
-<p className="text-xs text-gray-500 mt-1">
-In: {formatCurrency(efectivoIn)} | Out: {formatCurrency(efectivoOut)}
-</p>
+const estilos = {
+'Efectivo': ['bg-blue-50 border-blue-200', 'text-blue-600'],
+'Tarjeta': ['bg-purple-50 border-purple-200', 'text-purple-600'],
+'BBVA': ['bg-emerald-50 border-emerald-200', 'text-emerald-600'],
+'MP': ['bg-cyan-50 border-cyan-200', 'text-cyan-600'],
+'NU': ['bg-violet-50 border-violet-200', 'text-violet-600'],
+'OpenBank': ['bg-orange-50 border-orange-200', 'text-orange-600'],
+'MercadoPagoBIA': ['bg-teal-50 border-teal-200', 'text-teal-600'],
+'Fondos (caja)': ['bg-green-50 border-green-200', 'text-green-600'],
+};
+return saldosCuentas.map((c) => {
+const [box, txt] = estilos[c.cuenta] || ['bg-gray-50 border-gray-200', 'text-gray-700'];
+const saldo = parseFloat(c.saldo) || 0;
+return (
+<div key={c.cuenta} className={`p-4 rounded-lg border ${box}`}>
+<p className="text-sm text-gray-600 mb-1">{c.cuenta === 'MercadoPagoBIA' ? 'Mercado Pago BIA' : c.cuenta}</p>
+<p className={`text-2xl font-bold ${saldo >= 0 ? txt : 'text-red-600'}`}>{formatCurrency(saldo)}</p>
+<p className="text-xs text-gray-500 mt-1">In: {formatCurrency(parseFloat(c.ingresos) || 0)} | Out: {formatCurrency(parseFloat(c.egresos) || 0)}</p>
 </div>
-<div className="p-4 bg-purple-50 rounded-lg border border-purple-200">
-<p className="text-sm text-gray-600 mb-1">Tarjeta</p>
-<p className={`text-2xl font-bold ${tarjetaBalance >= 0 ? 'text-purple-600' : 'text-red-600'}`}>
-{formatCurrency(tarjetaBalance)}
-</p>
-<p className="text-xs text-gray-500 mt-1">
-In: {formatCurrency(tarjetaIn)} | Out: {formatCurrency(tarjetaOut)}
-</p>
-</div>
-<div className="p-4 bg-emerald-50 rounded-lg border border-emerald-200">
-<p className="text-sm text-gray-600 mb-1">BBVA</p>
-<p className={`text-2xl font-bold ${bbvaBalance >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-{formatCurrency(bbvaBalance)}
-</p>
-<p className="text-xs text-gray-500 mt-1">
-In: {formatCurrency(bbvaIn)} | Out: {formatCurrency(bbvaOut)}
-</p>
-</div>
-<div className="p-4 bg-cyan-50 rounded-lg border border-cyan-200">
-<p className="text-sm text-gray-600 mb-1">MP</p>
-<p className={`text-2xl font-bold ${mpBalance >= 0 ? 'text-cyan-600' : 'text-red-600'}`}>
-{formatCurrency(mpBalance)}
-</p>
-<p className="text-xs text-gray-500 mt-1">
-In: {formatCurrency(mpIn)} | Out: {formatCurrency(mpOut)}
-</p>
-</div>
-<div className="p-4 bg-violet-50 rounded-lg border border-violet-200">
-<p className="text-sm text-gray-600 mb-1">NU</p>
-<p className={`text-2xl font-bold ${nuBalance >= 0 ? 'text-violet-600' : 'text-red-600'}`}>
-{formatCurrency(nuBalance)}
-</p>
-<p className="text-xs text-gray-500 mt-1">
-In: {formatCurrency(nuIn)} | Out: {formatCurrency(nuOut)}
-</p>
-</div>
-<div className="p-4 bg-orange-50 rounded-lg border border-orange-200">
-<p className="text-sm text-gray-600 mb-1">OpenBank</p>
-<p className={`text-2xl font-bold ${obBalance >= 0 ? 'text-orange-600' : 'text-red-600'}`}>
-{formatCurrency(obBalance)}
-</p>
-<p className="text-xs text-gray-500 mt-1">
-In: {formatCurrency(obIn)} | Out: {formatCurrency(obOut)}
-</p>
-</div>
-<div className="p-4 bg-teal-50 rounded-lg border border-teal-200">
-<p className="text-sm text-gray-600 mb-1">Mercado Pago BIA</p>
-<p className={`text-2xl font-bold ${mpbiaBalance >= 0 ? 'text-teal-600' : 'text-red-600'}`}>
-{formatCurrency(mpbiaBalance)}
-</p>
-<p className="text-xs text-gray-500 mt-1">
-In: {formatCurrency(mpbiaIn)} | Out: {formatCurrency(mpbiaOut)}
-</p>
-</div>
-<div className="p-4 bg-green-50 rounded-lg border border-green-200">
-<p className="text-sm text-gray-600 mb-1">Fondos (caja)</p>
-<p className={`text-2xl font-bold ${fondosBalance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-{formatCurrency(fondosBalance)}
-</p>
-<p className="text-xs text-gray-500 mt-1">
-In: {formatCurrency(fondosIn)} | Out: {formatCurrency(fondosOut)}
-</p>
-</div>
-</>);
+);
+});
 })()}
 </div>
 </CardContent>
