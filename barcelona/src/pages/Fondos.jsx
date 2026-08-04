@@ -604,7 +604,8 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
                       // se corrigen en su módulo de origen — aquí son solo lectura.
                       const externo = transaction.readOnly
                         || transaction.record?.source_module === 'cxp'
-                        || transaction.record?.is_transfer;
+                        || transaction.record?.is_transfer
+                        || /^Abono CxP:/i.test(transaction.description || '');
                       if (externo) return (
                         <Badge variant="outline" className="text-xs text-gray-500">
                           {transaction.readOnly ? 'Origen: Pagos' : (transaction.record?.is_transfer ? 'Traspaso' : 'Origen: CxP')}
