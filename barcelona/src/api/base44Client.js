@@ -36,6 +36,7 @@ const TABLE = {
   CashRegister: 'cash_registers',
   Program: 'programs',
   BankAccount: 'bank_accounts',
+  PlayerPause: 'player_pauses',
   CatalogItem: 'catalog_items',
   AuditLog: 'audit_logs',
 };

@@ -30,6 +30,46 @@ export function getSeasonAdjustment(monthIndex, year, seasonCalendar = null) {
 }
 
 /**
+ * Pausa por lesión/permiso — "suspensión de contrato" estilo SAP.
+ * Regla del club: mes completamente cubierto por la pausa → sin cuota (factor 0);
+ * cobertura parcial del mes → media cuota (factor 0.5).
+ *
+ * @param {number} monthIndex - Mes 0-indexado
+ * @param {number} year - Año
+ * @param {Array} pauses - Pausas del jugador [{start_date, end_date|null, pause_type}]
+ * @returns {{ factor: number, active: boolean, type: string }}
+ */
+export function getPauseAdjustment(monthIndex, year, pauses = []) {
+  if (!pauses || !pauses.length) return { factor: 1, active: false, type: '' };
+  const mStart = new Date(year, monthIndex, 1);
+  const mEnd = new Date(year, monthIndex + 1, 0);
+  let factor = 1;
+  let type = '';
+  for (const p of pauses) {
+    if (!p?.start_date) continue;
+    const ps = new Date(p.start_date + 'T00:00:00');
+    const pe = p.end_date ? new Date(p.end_date + 'T00:00:00') : new Date(9999, 0, 1);
+    if (pe < mStart || ps > mEnd) continue; // no toca este mes
+    const cubreTodo = ps <= mStart && pe >= mEnd;
+    const f = cubreTodo ? 0 : 0.5;
+    if (f < factor) { factor = f; type = p.pause_type || 'lesion'; }
+  }
+  return { factor, active: factor < 1, type };
+}
+
+/** ¿El jugador está en pausa en una fecha dada? (para el badge "Lesionado") */
+export function isPausedOn(refDate, pauses = []) {
+  if (!pauses || !pauses.length) return false;
+  const d = refDate instanceof Date ? refDate : new Date(refDate);
+  return pauses.some(p => {
+    if (!p?.start_date) return false;
+    const ps = new Date(p.start_date + 'T00:00:00');
+    const pe = p.end_date ? new Date(p.end_date + 'T23:59:59') : null;
+    return d >= ps && (!pe || d <= pe);
+  });
+}
+
+/**
  * Temporada vigente del club (inicio configurable, default agosto).
  * Un club opera ago-jul: en enero 2027 la temporada sigue siendo "2026-2027".
  * Antes se calculaba por año calendario → el 1/ene el sistema exigía

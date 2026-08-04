@@ -68,6 +68,11 @@ queryKey: ['catalogItems'],
 queryFn: () => base44.entities.CatalogItem.list('sort_order'),
 });
 
+const { data: playerPauses = [] } = useQuery({
+queryKey: ['playerPauses'],
+queryFn: () => base44.entities.PlayerPause.list(null, 10000),
+});
+
 const { data: debtWaivers = [] } = useQuery({
 queryKey: ['debtWaivers'],
 queryFn: () => base44.entities.DebtWaiver.list(null, 10000),
@@ -627,6 +632,7 @@ onAbonar={handleAbonar}
 onAbonarInscripcion={handleAbonar}
 lateFeeSettings={lateFeeSettings}
 seasonCalendar={seasonCalendar}
+playerPauses={playerPauses}
 debtWaivers={debtWaivers}
 onCondonar={(player, month, amount) => setCondonarInfo({ player, month, amount })}
 />
@@ -634,11 +640,13 @@ onCondonar={(player, month, amount) => setCondonarInfo({ player, month, amount }
 
 <TabsContent value="unified" className="mt-6">
 <PlayerUnifiedDebt
+playerPauses={playerPauses}
 feesConfig={feesConfig}
 players={players}
 payments={payments}
 lateFeeSettings={lateFeeSettings}
 seasonCalendar={seasonCalendar}
+playerPauses={playerPauses}
 debtWaivers={debtWaivers}
 tournamentPayments={tournamentPayments}
 tournaments={tournaments}

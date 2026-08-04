@@ -6,7 +6,7 @@ import { Edit, Trash2, Phone, Mail, Calendar, DollarSign, CheckCircle, AlertCirc
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 
-export default function PlayerCard({ player, payments, onEdit, onDelete }) {
+export default function PlayerCard({ player, payments, onEdit, onDelete, onPauses, isPaused = false }) {
   const currentMonth = format(new Date(), 'MMMM yyyy', { locale: es });
   const now = new Date();
   
@@ -97,6 +97,11 @@ export default function PlayerCard({ player, payments, onEdit, onDelete }) {
         </div>
 
         <div className="flex gap-2">
+          {onPauses && (
+            <Button variant="outline" size="sm" className={isPaused ? 'border-amber-400 text-amber-700 bg-amber-50' : ''} onClick={() => onPauses(player)}>
+              ⚕ {isPaused ? 'Lesionado' : 'Pausa'}
+            </Button>
+          )}
           <Button
             variant="outline"
             size="sm"

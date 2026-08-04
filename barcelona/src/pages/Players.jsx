@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { isPausedOn } from '@/lib/financeEngine';
 import { confirmar } from '@/components/ui/confirmar';
 import { usePerms } from '@/lib/usePerms';
 import { toast } from 'sonner';
@@ -26,6 +27,32 @@ export default function Players() {
   const [showForm, setShowForm] = useState(false);
   const [editingPlayer, setEditingPlayer] = useState(null);
   const queryClient = useQueryClient();
+  // ── Pausas por lesión/permiso (suspensión de cuota estilo SAP) ──
+  const [pausePlayer, setPausePlayer] = useState(null);
+  const [pauseForm, setPauseForm] = useState({ pause_type: 'lesion', start_date: '', end_date: '', notes: '' });
+  const { data: playerPauses = [] } = useQuery({
+    queryKey: ['playerPauses'],
+    queryFn: () => base44.entities.PlayerPause.list(null, 10000),
+  });
+  const pausesOf = (pid) => playerPauses.filter(pp => pp.player_id === pid);
+  const pauseCreate = useMutation({
+    mutationFn: async (data) => {
+      const me = await base44.auth.me();
+      return base44.entities.PlayerPause.create({ ...data, end_date: data.end_date || null, created_by: me?.email || 'sistema' });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['playerPauses'] });
+      setPauseForm({ pause_type: 'lesion', start_date: '', end_date: '', notes: '' });
+      toast.success('Pausa registrada — los meses cubiertos dejan de generar cuota');
+    },
+    onError: (err) => toast.error(`No se pudo registrar la pausa: ${err?.message || 'error'}`),
+  });
+  const pauseEnd = useMutation({
+    mutationFn: (pp) => base44.entities.PlayerPause.update(pp.id, { end_date: new Date().toISOString().slice(0, 10) }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['playerPauses'] }); toast.success('Pausa finalizada hoy'); },
+    onError: (err) => toast.error(`No se pudo finalizar: ${err?.message || 'error'}`),
+  });
+
 
   const { data: players = [], isLoading } = useQuery({
     queryKey: ['players'],
@@ -324,6 +351,8 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredPlayers.map((player) => (
             <PlayerCard
+              onPauses={(pl) => setPausePlayer(pl)}
+              isPaused={isPausedOn(new Date(), pausesOf(player.id))}
               key={player.id}
               player={player}
               payments={payments}
@@ -331,6 +360,77 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
               onDelete={canDelete ? handleDelete : null}
             />
           ))}
+        </div>
+      )}
+    
+      {/* ── Pausas por lesión/permiso ── */}
+      {pausePlayer && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 overflow-y-auto" onClick={() => setPausePlayer(null)}>
+          <div className="w-full max-w-lg bg-white rounded-2xl shadow-2xl p-6 space-y-4 my-auto" onClick={(e) => e.stopPropagation()}>
+            <div>
+              <h3 className="font-bold text-lg text-gray-900">⚕ Pausas — {pausePlayer.full_name}</h3>
+              <p className="text-xs text-gray-500 mt-1">
+                Mes completamente cubierto por la pausa → sin cuota · cobertura parcial → media cuota.
+                La deuda se recalcula sola y todo queda en Auditoría.
+              </p>
+            </div>
+
+            {pausesOf(pausePlayer.id).length > 0 && (
+              <div className="space-y-2">
+                {pausesOf(pausePlayer.id).map(pp => (
+                  <div key={pp.id} className="flex items-center justify-between border rounded-lg px-3 py-2 text-sm">
+                    <div>
+                      <span className="font-medium capitalize">{pp.pause_type}</span>
+                      <span className="text-gray-600"> · {pp.start_date} → {pp.end_date || 'abierta'}</span>
+                      {pp.notes && <p className="text-xs text-gray-500">{pp.notes}</p>}
+                    </div>
+                    {!pp.end_date && (
+                      <Button size="sm" variant="outline" onClick={() => pauseEnd.mutate(pp)}>Finalizar hoy</Button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="border-t pt-3 space-y-3">
+              <p className="text-sm font-semibold text-gray-700">Nueva pausa</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs text-gray-600">Tipo</label>
+                  <select className="w-full border rounded-md px-2 py-2 text-sm" value={pauseForm.pause_type}
+                    onChange={(e) => setPauseForm(f => ({ ...f, pause_type: e.target.value }))}>
+                    <option value="lesion">Lesión</option>
+                    <option value="permiso">Permiso</option>
+                    <option value="otro">Otro</option>
+                  </select>
+                </div>
+                <div />
+                <div className="space-y-1">
+                  <label className="text-xs text-gray-600">Inicio *</label>
+                  <input type="date" className="w-full border rounded-md px-2 py-2 text-sm" value={pauseForm.start_date}
+                    onChange={(e) => setPauseForm(f => ({ ...f, start_date: e.target.value }))} />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs text-gray-600">Fin (vacío = sigue lesionado)</label>
+                  <input type="date" className="w-full border rounded-md px-2 py-2 text-sm" value={pauseForm.end_date}
+                    onChange={(e) => setPauseForm(f => ({ ...f, end_date: e.target.value }))} />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs text-gray-600">Notas</label>
+                <input className="w-full border rounded-md px-2 py-2 text-sm" placeholder="ej. Fractura de tobillo, reposo indicado"
+                  value={pauseForm.notes} onChange={(e) => setPauseForm(f => ({ ...f, notes: e.target.value }))} />
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setPausePlayer(null)}>Cerrar</Button>
+                <Button className="bg-amber-600 hover:bg-amber-700 text-white"
+                  disabled={!pauseForm.start_date || pauseCreate.isPending}
+                  onClick={() => pauseCreate.mutate({ ...pauseForm, player_id: pausePlayer.id })}>
+                  Registrar Pausa
+                </Button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>

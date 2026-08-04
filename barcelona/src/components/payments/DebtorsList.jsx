@@ -7,7 +7,7 @@ import { AlertCircle, Phone, Mail, DollarSign, Calendar, FileDown, Search, Clipb
 import TournamentDebtorsList from './TournamentDebtorsList';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { calculateMoratorio, getSeasonAdjustment } from '../../lib/financeEngine';
+import { calculateMoratorio, getSeasonAdjustment, getPauseAdjustment } from '../../lib/financeEngine';
 import { format, subMonths, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { formatCurrency } from '../lib/formatCurrency';
@@ -41,7 +41,7 @@ function getMonthOptions() {
   return options;
 }
 
-export default function DebtorsList({ players, payments, isLoading, tournamentPayments = [], onAbonar, onAbonarInscripcion, lateFeeSettings = null, debtWaivers = [] , onCondonar, seasonCalendar = null }) {
+export default function DebtorsList({ players, payments, isLoading, tournamentPayments = [], onAbonar, onAbonarInscripcion, lateFeeSettings = null, debtWaivers = [] , onCondonar, seasonCalendar = null, playerPauses = [] }) {
   const monthOptions = getMonthOptions();
   const [selectedMonth, setSelectedMonth] = useState(monthOptions[0].value);
   const [search, setSearch] = useState('');
@@ -98,7 +98,10 @@ export default function DebtorsList({ players, payments, isLoading, tournamentPa
     // Calendario de temporada: factor del mes (0.5 = medio mes, 0 = sin actividad → nadie es moroso)
     const season = getSeasonAdjustment(selMonthIndex, parseInt(selYear), seasonCalendar);
     if (season.factor === 0) return 0;
-    const fullFee = (player.monthly_fee || 0) * season.factor;
+    // Pausa por lesión/permiso del jugador en el mes seleccionado
+    const pausa = getPauseAdjustment(selMonthIndex, parseInt(selYear), playerPauses.filter(pp => pp.player_id === player.id));
+    if (pausa.factor === 0) return 0;
+    const fullFee = (player.monthly_fee || 0) * season.factor * pausa.factor;
     if (!player.join_date) return fullFee;
     const joined = parseISO(player.join_date);
     const joinedYear = joined.getFullYear();

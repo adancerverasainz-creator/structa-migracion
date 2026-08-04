@@ -13,7 +13,7 @@ import {
 import { format, subMonths } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { formatCurrency } from '../lib/formatCurrency';
-import { calculateMoratorio, getSeasonAdjustment, getCurrentSeason } from '../../lib/financeEngine';
+import { calculateMoratorio, getSeasonAdjustment, getCurrentSeason, getPauseAdjustment, isPausedOn } from '../../lib/financeEngine';
 import jsPDF from 'jspdf';
 import * as XLSX from 'xlsx';
 
@@ -35,7 +35,7 @@ const monthNames = ['enero','febrero','marzo','abril','mayo','junio','julio','ag
 export default function PlayerUnifiedDebt({
   players, payments, tournamentPayments, tournaments, tournamentAttendees,
   summerCampPayments, onAbonar, onAbonarTorneo, onPagoGeneral, isLoading
-, lateFeeSettings = null, debtWaivers = [], seasonCalendar = null, feesConfig = null}) {
+, lateFeeSettings = null, debtWaivers = [], seasonCalendar = null, feesConfig = null, playerPauses = []}) {
   const monthOptions = getMonthOptions();
   const [selectedMonth, setSelectedMonth] = useState(monthOptions[0]?.value || '');
   const [search, setSearch] = useState('');
@@ -84,6 +84,12 @@ export default function PlayerUnifiedDebt({
         if (!uniformIdx.has(pid)) uniformIdx.set(pid, []);
         uniformIdx.get(pid).push(pay);
       }
+    }
+    const pausesIdx = new Map();        // pid -> [pausas]
+    for (const pp of playerPauses) {
+      if (!pp.player_id) continue;
+      if (!pausesIdx.has(pp.player_id)) pausesIdx.set(pp.player_id, []);
+      pausesIdx.get(pp.player_id).push(pp);
     }
     const waiverIdx = new Map();        // `${pid}|${mes año}` -> suma condonada
     for (const w of debtWaivers) {
@@ -155,7 +161,9 @@ export default function PlayerUnifiedDebt({
           continue;
         }
 
-        let requiredFee = monthlyFee * season.factor;
+        // Pausa por lesión/permiso: mes completo → sin cuota; parcial → 50%
+        const pausa = getPauseAdjustment(genCursor.getMonth(), mYear, pausesIdx.get(p.id));
+        let requiredFee = monthlyFee * season.factor * pausa.factor;
         if (joinDate && genCursor.getFullYear() === joinDate.getFullYear() && genCursor.getMonth() === joinDate.getMonth() && joinDate.getDate() > 15) {
           requiredFee = requiredFee * 0.5;
         }
@@ -183,8 +191,8 @@ export default function PlayerUnifiedDebt({
         mensualidadItems.push({
           label: `${mName.charAt(0).toUpperCase() + mName.slice(1)} ${mYear}`,
           detail: requiredFee === 0
-            ? 'Beca 100% — sin cargo'
-            : `Cuota: ${formatCurrency(requiredFee)}${moratorio > 0 ? ` + Recargo día 15: ${formatCurrency(moratorio)}` : ''}${season.factor !== 1 && season.label ? ` (${season.label})` : (requiredFee !== monthlyFee && requiredFee > 0 ? ' (50%)' : '')}${waivedForMonth > 0 ? ` | Condonado: ${formatCurrency(waivedForMonth)}` : ''}`,
+            ? (pausa.factor === 0 ? '⚕ Lesión/Pausa — sin cargo' : 'Beca 100% — sin cargo')
+            : `Cuota: ${formatCurrency(requiredFee)}${moratorio > 0 ? ` + Recargo día 15: ${formatCurrency(moratorio)}` : ''}${pausa.active && pausa.factor > 0 ? ' (50% — lesión)' : (season.factor !== 1 && season.label ? ` (${season.label})` : (requiredFee !== monthlyFee && requiredFee > 0 ? ' (50%)' : ''))}${waivedForMonth > 0 ? ` | Condonado: ${formatCurrency(waivedForMonth)}` : ''}`,
           paid: paidForMonth,
           pending: totalPendingWithMoratorio,
           moratorio,
@@ -362,13 +370,13 @@ export default function PlayerUnifiedDebt({
       }
 
       if (sections.length > 0) {
-        results.push({ player: p, sections, totalDebt: totalPending, totalPaid });
+        results.push({ player: p, sections, totalDebt: totalPending, totalPaid, pausedNow: isPausedOn(new Date(), pausesIdx.get(p.id)) });
       }
     }
 
     results.sort((a, b) => b.totalDebt - a.totalDebt);
     return results;
-  }, [players, payments, tournamentPayments, tournaments, tournamentAttendees, summerCampPayments, selectedMonthDate, currentSeason, debtWaivers, lateFeeSettings, seasonCalendar, feesConfig]);
+  }, [players, payments, tournamentPayments, tournaments, tournamentAttendees, summerCampPayments, selectedMonthDate, currentSeason, debtWaivers, lateFeeSettings, seasonCalendar, feesConfig, playerPauses]);
 
   // Filter: show all OR only with debt
   const visibleDebts = useMemo(() => {
@@ -543,7 +551,7 @@ export default function PlayerUnifiedDebt({
         </Card>
       ) : (
         <div className="space-y-3">
-          {visibleDebts.map(({ player, sections, totalDebt, totalPaid }) => (
+          {visibleDebts.map(({ player, sections, totalDebt, totalPaid, pausedNow }) => (
             <Card key={player.id} className={`border-2 ${totalDebt > 0 ? 'border-red-200 hover:border-red-300' : 'border-green-200 hover:border-green-300'} hover:shadow-lg transition-all`}>
               <CardContent className="pt-4 pb-3">
                 {/* Player Header */}
@@ -557,6 +565,9 @@ export default function PlayerUnifiedDebt({
                         <h3 className="text-base font-bold text-gray-900">{player.full_name}</h3>
                         {player.status && player.status !== 'activo' && (
                           <Badge className="bg-gray-700 text-white text-xs">{player.status === 'baja' ? 'Baja' : 'Inactivo'}</Badge>
+                        )}
+                        {pausedNow && (
+                          <Badge className="bg-amber-100 text-amber-800 text-xs">⚕ Lesionado</Badge>
                         )}
                         {player.category && <Badge variant="outline">{player.category}</Badge>}
                         {(player.scholarship && player.scholarship !== 'ninguna') && (
