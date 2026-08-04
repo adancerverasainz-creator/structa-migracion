@@ -212,7 +212,7 @@ export default function GeneralPaymentForm({ payment, onSubmit, onCancel, isLoad
               type="button"
               variant="outline"
               onClick={onCancel}
-              disabled={isLoading}
+              disabled={isLoading || (formData.payment_method === 'transferencia' && !formData.bank_name)}
             >
               Cancelar
             </Button>

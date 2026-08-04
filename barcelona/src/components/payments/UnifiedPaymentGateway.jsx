@@ -144,9 +144,11 @@ export default function UnifiedPaymentGateway({ config, onSubmit, onCancel, isLo
   const subtotal = isTorneo ? baseAmount : (isUniformes ? effectiveAmount : (baseAmount + surcharge));
   const { iva, total } = calculateIVA(subtotal, requiresInvoice);
 
-  const isValid = isUniformes
+  // Transferencia sin banco destino = dinero sin rastro → inválido
+  const bankOk = paymentMethod !== 'transferencia' || !!bankName;
+  const isValid = (isUniformes
     ? (totalUniforme > 0)
-    : (baseAmount > 0 && !isNaN(baseAmount) && (!isUniformAbono || baseAmount <= pendingAmount));
+    : (baseAmount > 0 && !isNaN(baseAmount) && (!isUniformAbono || baseAmount <= pendingAmount))) && bankOk;
   const isFullyPaid = isTorneo 
     ? ((totalPaid + total) >= registrationFee)
     : isUniformes
@@ -591,17 +593,31 @@ export default function UnifiedPaymentGateway({ config, onSubmit, onCancel, isLo
               </Select>
             </div>
 
-            {paymentMethod === 'transferencia' && (
+            {/* Cuenta destino SIEMPRE visible: trazabilidad de a dónde entra el dinero */}
+            {paymentMethod === 'transferencia' ? (
               <div className="space-y-2">
-                <Label>Banco *</Label>
+                <Label>Cuenta destino (banco) *</Label>
                 <Select value={bankName} onValueChange={setBankName}>
-                  <SelectTrigger><SelectValue placeholder="Seleccionar banco" /></SelectTrigger>
+                  <SelectTrigger className={!bankName ? 'border-red-300' : ''}>
+                    <SelectValue placeholder="Seleccionar banco destino..." />
+                  </SelectTrigger>
                   <SelectContent>
                     {BANKS.map(b => (
                       <SelectItem key={b} value={b}>{b}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+                {!bankName && (
+                  <p className="text-xs text-red-600">Obligatorio: indica a qué banco entró la transferencia.</p>
+                )}
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 text-sm bg-gray-50 border rounded-lg px-3 py-2">
+                <Wallet className="w-4 h-4 text-green-600" />
+                <span className="text-gray-600">El dinero entra a la cuenta:</span>
+                <span className="font-semibold text-gray-900">
+                  {paymentMethod === 'efectivo' ? 'Efectivo (caja del club)' : 'Tarjeta'}
+                </span>
               </div>
             )}
 

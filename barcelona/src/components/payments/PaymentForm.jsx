@@ -541,7 +541,7 @@ export default function PaymentForm({ payment, players, onSubmit, onCancel, isLo
           </div>
         </CardContent>
         <CardFooter className="flex justify-end gap-3">
-          <Button type="button" variant="outline" onClick={onCancel} disabled={isLoading}>
+          <Button type="button" variant="outline" onClick={onCancel} disabled={isLoading || (formData.payment_method === 'transferencia' && !formData.bank_name)}>
             Cancelar
           </Button>
           <Button type="submit" disabled={isLoading} className="bg-green-600 hover:bg-green-700">

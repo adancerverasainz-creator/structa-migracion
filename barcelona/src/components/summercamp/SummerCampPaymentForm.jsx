@@ -457,7 +457,7 @@ export default function SummerCampPaymentForm({
             <Button type="button" variant="outline" onClick={onCancel} disabled={isLoading}>Cancelar</Button>
             <Button
               type="submit"
-              disabled={isLoading || !hasParticipant || !hasWeeks}
+              disabled={isLoading || !hasParticipant || !hasWeeks || (isTransfer && !bankName)}
               className={`${submitColor} gap-2`}
             >
               <Save className="w-4 h-4" />
