@@ -220,7 +220,13 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
     }
   };
 
-  const totalCash = cashRegisters.reduce((sum, r) => sum + (r.cash_amount || 0), 0);
+  // Cobros en efectivo con destino "Fondos — caja CEO" (bank_name='Fondos'):
+  // entran a esta caja automáticamente desde el módulo Pagos (solo lectura aquí)
+  const pagosAFondos = allPayments.filter(p =>
+    p.payment_method === 'efectivo' && p.bank_name === 'Fondos' && (!p.status || p.status === 'pagado'));
+  const pagosAFondosTotal = pagosAFondos.reduce((sum, p) => sum + (p.paid_amount ?? p.amount ?? 0), 0);
+
+  const totalCash = cashRegisters.reduce((sum, r) => sum + (r.cash_amount || 0), 0) + pagosAFondosTotal;
   const totalExpenses = expenses.reduce((sum, e) => sum + (e.amount || 0), 0);
   const balance = totalCash - totalExpenses;
 
@@ -243,6 +249,16 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
 
   // Combine and sort transactions
   const allTransactions = [
+    ...pagosAFondos.map(p => ({
+      id: p.id,
+      type: 'ingreso',
+      amount: p.paid_amount ?? p.amount ?? 0,
+      date: (p.payment_date || '').slice(0, 10),
+      description: `Cobro en efectivo → caja Fondos${p.month ? ` (${p.month})` : ''}`,
+      notes: 'Registrado en módulo Pagos — editar/eliminar allá',
+      readOnly: true,
+      record: p
+    })),
     ...cashRegisters.map(r => ({
       id: r.id,
       type: 'ingreso',
@@ -508,6 +524,18 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
                     <span className={`text-2xl font-bold ${transaction.type === 'ingreso' ? 'text-green-600' : 'text-red-600'}`}>
                       {transaction.type === 'ingreso' ? '+' : '-'}{formatCurrency(transaction.amount)}
                     </span>
+                    {(() => {
+                      // Movimientos generados por otros módulos (Pagos, CxP, traspasos)
+                      // se corrigen en su módulo de origen — aquí son solo lectura.
+                      const externo = transaction.readOnly
+                        || transaction.record?.source_module === 'cxp'
+                        || transaction.record?.is_transfer;
+                      if (externo) return (
+                        <Badge variant="outline" className="text-xs text-gray-500">
+                          {transaction.readOnly ? 'Origen: Pagos' : (transaction.record?.is_transfer ? 'Traspaso' : 'Origen: CxP')}
+                        </Badge>
+                      );
+                      return (<>
                     <Button variant="ghost" size="icon" onClick={() => handleEditTransaction(transaction)}>
                       <Edit className="w-4 h-4 text-blue-600" />
                     </Button>
@@ -516,6 +544,8 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
                       <Trash2 className="w-4 h-4 text-red-600" />
                     </Button>
 )}
+                      </>);
+                    })()}
                   </div>
                 </div>
               ))}
