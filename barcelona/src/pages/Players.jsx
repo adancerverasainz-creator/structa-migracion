@@ -30,6 +30,7 @@ export default function Players() {
   // ── Pausas por lesión/permiso (suspensión de cuota estilo SAP) ──
   const [pausePlayer, setPausePlayer] = useState(null);
   const [pauseForm, setPauseForm] = useState({ pause_type: 'lesion', start_date: '', end_date: '', notes: '' });
+  const [bajaDate, setBajaDate] = useState(new Date().toISOString().slice(0, 10));
   const { data: playerPauses = [] } = useQuery({
     queryKey: ['playerPauses'],
     queryFn: () => base44.entities.PlayerPause.list(null, 10000),
@@ -368,10 +369,10 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 overflow-y-auto" onClick={() => setPausePlayer(null)}>
           <div className="w-full max-w-lg bg-white rounded-2xl shadow-2xl p-6 space-y-4 my-auto" onClick={(e) => e.stopPropagation()}>
             <div>
-              <h3 className="font-bold text-lg text-gray-900">⚕ Pausas — {pausePlayer.full_name}</h3>
+              <h3 className="font-bold text-lg text-gray-900">⚕ Pausas y Baja — {pausePlayer.full_name}</h3>
               <p className="text-xs text-gray-500 mt-1">
-                Mes completamente cubierto por la pausa → sin cuota · cobertura parcial → media cuota.
-                La deuda se recalcula sola y todo queda en Auditoría.
+                <b>Pausa</b> (lesión/permiso): sigue en el club, sin cuota el mes completo o media cuota si es parcial.
+                <b> Baja definitiva</b>: sale del club y su deuda se congela a la fecha. Todo queda en Auditoría.
               </p>
             </div>
 
@@ -429,6 +430,42 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
                   Registrar Pausa
                 </Button>
               </div>
+            </div>
+
+            {/* ── Baja definitiva ── */}
+            <div className="border-t pt-3 space-y-2">
+              {pausePlayer.status === 'baja' || pausePlayer.baja_date ? (
+                <div className="flex items-center justify-between bg-gray-50 border rounded-lg px-3 py-2 text-sm">
+                  <span className="text-gray-700">
+                    Jugador dado de <b>baja</b>{pausePlayer.baja_date ? ` desde ${pausePlayer.baja_date}` : ''} — su deuda quedó congelada a esa fecha.
+                  </span>
+                  <Button size="sm" variant="outline"
+                    onClick={async () => {
+                      if (!(await confirmar(`¿Reactivar a ${pausePlayer.full_name}? Volverá a generar cuota desde ahora.`, { titulo: 'Reactivar jugador', confirmLabel: 'Sí, reactivar' }))) return;
+                      updateMutation.mutate({ id: pausePlayer.id, data: { ...pausePlayer, status: 'activo', baja_date: null }, prev: pausePlayer });
+                      setPausePlayer(null);
+                    }}>
+                    Reactivar
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex items-end gap-3">
+                  <div className="space-y-1 flex-1">
+                    <p className="text-sm font-semibold text-red-700">Baja definitiva del club</p>
+                    <label className="text-xs text-gray-600">Fecha de baja</label>
+                    <input type="date" className="w-full border rounded-md px-2 py-2 text-sm" value={bajaDate}
+                      onChange={(e) => setBajaDate(e.target.value)} />
+                  </div>
+                  <Button variant="outline" className="border-red-300 text-red-700 hover:bg-red-50"
+                    onClick={async () => {
+                      if (!(await confirmar(`¿Dar de BAJA definitiva a ${pausePlayer.full_name} con fecha ${bajaDate}? Su deuda se congela a esa fecha y se le sigue cobrando lo pendiente.`, { titulo: 'Baja definitiva', confirmLabel: 'Sí, dar de baja' }))) return;
+                      updateMutation.mutate({ id: pausePlayer.id, data: { ...pausePlayer, status: 'baja', baja_date: bajaDate }, prev: pausePlayer });
+                      setPausePlayer(null);
+                    }}>
+                    Dar de Baja
+                  </Button>
+                </div>
+              )}
             </div>
           </div>
         </div>
