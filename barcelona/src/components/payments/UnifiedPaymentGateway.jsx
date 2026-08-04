@@ -48,7 +48,7 @@ const PAYMENT_METHODS = [
 ];
 const DEFAULT_BANKS = ['BBVA', 'MP', 'NU', 'OpenBank', 'MercadoPagoBIA'];
 
-export default function UnifiedPaymentGateway({ config, onSubmit, onCancel, isLoading, feesConfig = null, uniformCatalog = null, bankAccounts = null }) {
+export default function UnifiedPaymentGateway({ config, onSubmit, onCancel, isLoading, feesConfig = null, uniformCatalog = null, bankAccounts = null, lateFeeSettings = null }) {
   // Configuración del club desde BD (catálogos/cuentas/precios editables sin deploy)
   const amountsByType = {
     mensualidad: DEFAULT_AMOUNTS.mensualidad,
@@ -120,7 +120,7 @@ export default function UnifiedPaymentGateway({ config, onSubmit, onCancel, isLo
   // Auto-calculate suggested surcharge for mensualidad
   useEffect(() => {
     if ((type || itemPaymentType) === 'mensualidad' && month) {
-      const { suggestedSurcharge, isLate, monthsLate } = calculateSuggestedSurcharge(month, paymentDate);
+      const { suggestedSurcharge, isLate, monthsLate } = calculateSuggestedSurcharge(month, paymentDate, lateFeeSettings);
       // Only auto-set if surcharge hasn't been manually changed
       if (isLate && surcharge === 0) {
         setSurcharge(suggestedSurcharge);
@@ -138,7 +138,7 @@ export default function UnifiedPaymentGateway({ config, onSubmit, onCancel, isLo
   const isUniformes = (type || itemPaymentType) === 'uniformes' && !existingPaymentId;
   
   const { suggestedSurcharge, isLate, monthsLate } = 
-    isMensualidad ? calculateSuggestedSurcharge(month, paymentDate) : { suggestedSurcharge: 0, isLate: false, monthsLate: 0 };
+    isMensualidad ? calculateSuggestedSurcharge(month, paymentDate, lateFeeSettings) : { suggestedSurcharge: 0, isLate: false, monthsLate: 0 };
 
   const effectiveAmount = isUniformes ? (montoRecibidoNum > 0 ? Math.min(montoRecibidoNum, totalUniforme) : totalUniforme) : baseAmount;
   const subtotal = isTorneo ? baseAmount : (isUniformes ? effectiveAmount : (baseAmount + surcharge));

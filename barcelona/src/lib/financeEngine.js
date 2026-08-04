@@ -68,32 +68,15 @@ export function calculateIVA(subtotal, requiresInvoice = false) {
  * @param {string} paymentDate - Fecha de pago (YYYY-MM-DD)
  * @returns {{ suggestedSurcharge: number, isLate: boolean, monthsLate: number }}
  */
-export function calculateSuggestedSurcharge(monthKey, paymentDate) {
+// Regla vigente del club (2026-07): recargo FIJO desde el día 16 del mes,
+// vigente a partir de start_month — misma regla que calculateMoratorio.
+// (La escala progresiva $50/$100/$200 quedó obsoleta; el cajero puede
+// ajustar el recargo manualmente si un caso lo amerita.)
+export function calculateSuggestedSurcharge(monthKey, paymentDate, lateFeeSettings = null) {
   if (!monthKey || !paymentDate) return { suggestedSurcharge: 0, isLate: false, monthsLate: 0 };
-
-  const monthNames = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
-  const parts = monthKey.toLowerCase().split(' ');
-  const monthName = parts[0];
-  const year = parseInt(parts[1]);
-  const monthIndex = monthNames.indexOf(monthName);
-
-  if (monthIndex < 0 || !year) return { suggestedSurcharge: 0, isLate: false, monthsLate: 0 };
-
-  const dueDate = new Date(year, monthIndex, 1);
-  const payDate = new Date(paymentDate);
-
-  // Calculate months difference
-  const monthsLate = (payDate.getFullYear() - dueDate.getFullYear()) * 12 + (payDate.getMonth() - dueDate.getMonth());
-
-  if (monthsLate <= 0) return { suggestedSurcharge: 0, isLate: false, monthsLate: 0 };
-
-  // Progressive surcharge: $50 for 1 month late, $100 for 2+, $200 for 4+
-  let suggestedSurcharge = 0;
-  if (monthsLate >= 4) suggestedSurcharge = 200;
-  else if (monthsLate >= 2) suggestedSurcharge = 100;
-  else suggestedSurcharge = 50;
-
-  return { suggestedSurcharge, isLate: true, monthsLate };
+  const ref = new Date(paymentDate + (String(paymentDate).length === 10 ? 'T12:00:00' : ''));
+  const { moratorio, isLate, monthsLate } = calculateMoratorio(monthKey, ref, lateFeeSettings);
+  return { suggestedSurcharge: moratorio, isLate, monthsLate };
 }
 
 /**

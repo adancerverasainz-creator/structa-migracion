@@ -477,6 +477,7 @@ return (
 <div className="space-y-5">
 {paymentConfig && paymentConfig.type !== 'pago_general' && (
 <UnifiedPaymentGateway
+lateFeeSettings={lateFeeSettings}
 feesConfig={feesConfig}
 uniformCatalog={uniformCatalog}
 bankAccounts={bankAccounts}
