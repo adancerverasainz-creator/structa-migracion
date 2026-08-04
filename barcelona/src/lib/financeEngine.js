@@ -11,6 +11,25 @@
  */
 
 /**
+ * Calendario de temporada del club (configurable en club_settings.season_calendar).
+ * Permite meses con cuota ajustada (medio mes = factor 0.5) o sin actividad (factor 0).
+ * Formato: { "2026-07": { "factor": 0.5, "label": "Medio mes" }, "2026-08": { "factor": 0, "label": "Sin actividad" } }
+ *
+ * @param {number} monthIndex - Mes 0-indexado (0 = enero)
+ * @param {number} year - Año
+ * @param {object|null} seasonCalendar - Valor de club_settings.season_calendar
+ * @returns {{ factor: number, label: string }}
+ */
+export function getSeasonAdjustment(monthIndex, year, seasonCalendar = null) {
+  if (!seasonCalendar || monthIndex == null || !year) return { factor: 1, label: '' };
+  const key = `${year}-${String(monthIndex + 1).padStart(2, '0')}`;
+  const entry = seasonCalendar[key];
+  if (entry === undefined || entry === null) return { factor: 1, label: '' };
+  if (typeof entry === 'number') return { factor: entry, label: '' };
+  return { factor: entry.factor ?? 1, label: entry.label || '' };
+}
+
+/**
  * Calcula el IVA (16%) sobre un subtotal.
  * @param {number} subtotal - Monto base
  * @param {boolean} requiresInvoice - Si requiere factura

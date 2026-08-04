@@ -7,7 +7,7 @@ import { AlertCircle, Phone, Mail, DollarSign, Calendar, FileDown, Search, Clipb
 import TournamentDebtorsList from './TournamentDebtorsList';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { calculateMoratorio } from '../../lib/financeEngine';
+import { calculateMoratorio, getSeasonAdjustment } from '../../lib/financeEngine';
 import { format, subMonths, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { formatCurrency } from '../lib/formatCurrency';
@@ -41,7 +41,7 @@ function getMonthOptions() {
   return options;
 }
 
-export default function DebtorsList({ players, payments, isLoading, tournamentPayments = [], onAbonar, onAbonarInscripcion, lateFeeSettings = null, debtWaivers = [] , onCondonar }) {
+export default function DebtorsList({ players, payments, isLoading, tournamentPayments = [], onAbonar, onAbonarInscripcion, lateFeeSettings = null, debtWaivers = [] , onCondonar, seasonCalendar = null }) {
   const monthOptions = getMonthOptions();
   const [selectedMonth, setSelectedMonth] = useState(monthOptions[0].value);
   const [search, setSearch] = useState('');
@@ -95,7 +95,10 @@ export default function DebtorsList({ players, payments, isLoading, tournamentPa
   // Calcula la cuota requerida para el mes seleccionado:
   // Si el jugador ingresó después del día 15 de ese mismo mes → 50%, si no → 100%
   const getRequiredFee = (player) => {
-    const fullFee = player.monthly_fee || 0;
+    // Calendario de temporada: factor del mes (0.5 = medio mes, 0 = sin actividad → nadie es moroso)
+    const season = getSeasonAdjustment(selMonthIndex, parseInt(selYear), seasonCalendar);
+    if (season.factor === 0) return 0;
+    const fullFee = (player.monthly_fee || 0) * season.factor;
     if (!player.join_date) return fullFee;
     const joined = parseISO(player.join_date);
     const joinedYear = joined.getFullYear();

@@ -44,6 +44,7 @@ queryKey: ['clubSettings'],
 queryFn: () => base44.entities.ClubSetting.list(),
 });
 const lateFeeSettings = clubSettings.find(cs => cs.key === 'late_fee')?.value || null;
+const seasonCalendar = clubSettings.find(cs => cs.key === 'season_calendar')?.value || null;
 
 const { data: debtWaivers = [] } = useQuery({
 queryKey: ['debtWaivers'],
@@ -695,6 +696,7 @@ isLoading={playersLoading || paymentsLoading}
 onAbonar={handleAbonar}
 onAbonarInscripcion={handleAbonar}
 lateFeeSettings={lateFeeSettings}
+seasonCalendar={seasonCalendar}
 debtWaivers={debtWaivers}
 onCondonar={(player, month, amount) => setCondonarInfo({ player, month, amount })}
 />
@@ -705,6 +707,7 @@ onCondonar={(player, month, amount) => setCondonarInfo({ player, month, amount }
 players={players}
 payments={payments}
 lateFeeSettings={lateFeeSettings}
+seasonCalendar={seasonCalendar}
 debtWaivers={debtWaivers}
 tournamentPayments={tournamentPayments}
 tournaments={tournaments}

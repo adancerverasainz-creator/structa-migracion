@@ -13,7 +13,7 @@ import {
 import { format, subMonths } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { formatCurrency } from '../lib/formatCurrency';
-import { calculateMoratorio } from '../../lib/financeEngine';
+import { calculateMoratorio, getSeasonAdjustment } from '../../lib/financeEngine';
 import jsPDF from 'jspdf';
 import * as XLSX from 'xlsx';
 
@@ -35,7 +35,7 @@ const monthNames = ['enero','febrero','marzo','abril','mayo','junio','julio','ag
 export default function PlayerUnifiedDebt({
   players, payments, tournamentPayments, tournaments, tournamentAttendees,
   summerCampPayments, onAbonar, onAbonarTorneo, onPagoGeneral, isLoading
-, lateFeeSettings = null, debtWaivers = []}) {
+, lateFeeSettings = null, debtWaivers = [], seasonCalendar = null}) {
   const monthOptions = getMonthOptions();
   const [selectedMonth, setSelectedMonth] = useState(monthOptions[0]?.value || '');
   const [search, setSearch] = useState('');
@@ -89,9 +89,16 @@ export default function PlayerUnifiedDebt({
         const mYear = genCursor.getFullYear();
         const mKey = `${mName} ${mYear}`;
 
-        let requiredFee = monthlyFee;
+        // Calendario de temporada: meses sin actividad (factor 0) no generan deuda
+        const season = getSeasonAdjustment(genCursor.getMonth(), mYear, seasonCalendar);
+        if (season.factor === 0) {
+          genCursor.setMonth(genCursor.getMonth() + 1);
+          continue;
+        }
+
+        let requiredFee = monthlyFee * season.factor;
         if (joinDate && genCursor.getFullYear() === joinDate.getFullYear() && genCursor.getMonth() === joinDate.getMonth() && joinDate.getDate() > 15) {
-          requiredFee = monthlyFee * 0.5;
+          requiredFee = requiredFee * 0.5;
         }
         if (p.scholarship === '50%') requiredFee *= 0.5;
         else if (p.scholarship === '100%') requiredFee = 0;
@@ -126,7 +133,7 @@ export default function PlayerUnifiedDebt({
           label: `${mName.charAt(0).toUpperCase() + mName.slice(1)} ${mYear}`,
           detail: requiredFee === 0
             ? 'Beca 100% — sin cargo'
-            : `Cuota: ${formatCurrency(requiredFee)}${moratorio > 0 ? ` + Recargo día 15: ${formatCurrency(moratorio)}` : ''}${requiredFee !== monthlyFee && requiredFee > 0 ? ' (50%)' : ''}${waivedForMonth > 0 ? ` | Condonado: ${formatCurrency(waivedForMonth)}` : ''}`,
+            : `Cuota: ${formatCurrency(requiredFee)}${moratorio > 0 ? ` + Recargo día 15: ${formatCurrency(moratorio)}` : ''}${season.factor !== 1 && season.label ? ` (${season.label})` : (requiredFee !== monthlyFee && requiredFee > 0 ? ' (50%)' : '')}${waivedForMonth > 0 ? ` | Condonado: ${formatCurrency(waivedForMonth)}` : ''}`,
           paid: paidForMonth,
           pending: totalPendingWithMoratorio,
           moratorio,
