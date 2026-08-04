@@ -19,7 +19,8 @@ export default function SummerCampPaymentForm({
   onSubmit,
   onCancel,
   isLoading,
-, weekPrice = null}) {
+  weekPrice = null,
+}) {
   const isEditing = !!payment?.id;
 
   // Participant state — unified
