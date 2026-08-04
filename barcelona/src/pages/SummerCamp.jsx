@@ -37,6 +37,12 @@ export default function SummerCamp() {
     queryFn: () => base44.entities.Player.list(),
   });
 
+  const { data: clubSettings = [] } = useQuery({
+    queryKey: ['clubSettings'],
+    queryFn: () => base44.entities.ClubSetting.list(),
+  });
+  const weekPrice = clubSettings.find(cs => cs.key === 'fees')?.value?.summer_week || null;
+
   const { data: externalPlayers = [], isLoading: externalLoading } = useQuery({
     queryKey: ['summerCampExternalPlayers'],
     queryFn: () => base44.entities.SummerCampExternalPlayer.list(),
@@ -170,6 +176,7 @@ export default function SummerCamp() {
       {/* Modal Form unificado */}
       {showForm && (
         <SummerCampPaymentForm
+          weekPrice={weekPrice}
           payment={editingPayment}
           players={players}
           externalPlayers={externalPlayers}

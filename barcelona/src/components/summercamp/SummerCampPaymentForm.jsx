@@ -8,7 +8,7 @@ import { X, Save, User, CreditCard, Tag, Calendar, Shirt, CheckSquare, Square } 
 import { format } from 'date-fns';
 import { formatCurrency } from '../lib/formatCurrency';
 
-const WEEK_PRICE = 1200;
+const DEFAULT_WEEK_PRICE = 1200; // fallback si la config del club no ha cargado
 const UNIFORM_PRICE = 950;
 
 export default function SummerCampPaymentForm({
@@ -19,7 +19,7 @@ export default function SummerCampPaymentForm({
   onSubmit,
   onCancel,
   isLoading,
-}) {
+, weekPrice = null}) {
   const isEditing = !!payment?.id;
 
   // Participant state — unified
@@ -48,6 +48,7 @@ export default function SummerCampPaymentForm({
   };
 
   // Financial
+  const WEEK_PRICE = Number(weekPrice) > 0 ? Number(weekPrice) : DEFAULT_WEEK_PRICE;
   const baseUnitPrice = paymentType === 'uniforme' ? UNIFORM_PRICE : WEEK_PRICE;
   const weekCount = paymentType === 'semana' ? Math.max(selectedWeeks.length, 1) : 1;
   const baseTotal = baseUnitPrice * weekCount;

@@ -11,6 +11,7 @@ import CuentasPorPagar from './pages/CuentasPorPagar';
 import SummerCamp from './pages/SummerCamp';
 import Diagnostico from './pages/Diagnostico';
 import Permissions from './pages/Permissions';
+import Configuracion from './pages/Configuracion';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import Login from './pages/Login';
@@ -81,6 +82,7 @@ const AuthenticatedApp = () => {
       <Route path="/SummerCamp" element={<LayoutWrapper currentPageName="SummerCamp"><SummerCamp /></LayoutWrapper>} />
       <Route path="/Diagnostico" element={<LayoutWrapper currentPageName="Diagnostico"><Diagnostico /></LayoutWrapper>} />
       <Route path="/Permissions" element={<LayoutWrapper currentPageName="Permissions"><Permissions /></LayoutWrapper>} />
+      <Route path="/Configuracion" element={<LayoutWrapper currentPageName="Configuracion"><Configuracion /></LayoutWrapper>} />
       <Route path="*" element={<PageNotFound />} />
     </Routes>
   );

@@ -35,6 +35,7 @@ export default function Layout({ children, currentPageName }) {
     { name: 'Auditoría', page: 'AuditLogs', icon: FileText, roles: ['admin'] },
     { name: 'Diag', page: 'Diagnostico', icon: Stethoscope, roles: ['admin'] },
     { name: 'Permisos', page: 'Permissions', icon: FileText, roles: ['admin'] },
+    { name: 'Config', page: 'Configuracion', icon: FileText, roles: ['admin'] },
   ];
 
   const navItems = allNavItems.filter(item => !item.roles || item.roles.includes(currentUser?.role));

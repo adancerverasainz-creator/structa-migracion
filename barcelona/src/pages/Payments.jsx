@@ -45,6 +45,16 @@ queryFn: () => base44.entities.ClubSetting.list(),
 });
 const lateFeeSettings = clubSettings.find(cs => cs.key === 'late_fee')?.value || null;
 const seasonCalendar = clubSettings.find(cs => cs.key === 'season_calendar')?.value || null;
+const feesConfig = clubSettings.find(cs => cs.key === 'fees')?.value || null;
+
+const { data: bankAccounts = [] } = useQuery({
+queryKey: ['bankAccounts'],
+queryFn: () => base44.entities.BankAccount.list('sort_order'),
+});
+const { data: uniformCatalog = [] } = useQuery({
+queryKey: ['catalogItems'],
+queryFn: () => base44.entities.CatalogItem.list('sort_order'),
+});
 
 const { data: debtWaivers = [] } = useQuery({
 queryKey: ['debtWaivers'],
@@ -449,6 +459,9 @@ return (
 <div className="space-y-5">
 {paymentConfig && paymentConfig.type !== 'pago_general' && (
 <UnifiedPaymentGateway
+feesConfig={feesConfig}
+uniformCatalog={uniformCatalog}
+bankAccounts={bankAccounts}
 config={paymentConfig}
 onSubmit={handleUnifiedSubmit}
 onCancel={() => setPaymentConfig(null)}
@@ -704,6 +717,7 @@ onCondonar={(player, month, amount) => setCondonarInfo({ player, month, amount }
 
 <TabsContent value="unified" className="mt-6">
 <PlayerUnifiedDebt
+feesConfig={feesConfig}
 players={players}
 payments={payments}
 lateFeeSettings={lateFeeSettings}

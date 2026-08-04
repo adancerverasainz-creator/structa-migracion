@@ -35,7 +35,7 @@ const monthNames = ['enero','febrero','marzo','abril','mayo','junio','julio','ag
 export default function PlayerUnifiedDebt({
   players, payments, tournamentPayments, tournaments, tournamentAttendees,
   summerCampPayments, onAbonar, onAbonarTorneo, onPagoGeneral, isLoading
-, lateFeeSettings = null, debtWaivers = [], seasonCalendar = null}) {
+, lateFeeSettings = null, debtWaivers = [], seasonCalendar = null, feesConfig = null}) {
   const monthOptions = getMonthOptions();
   const [selectedMonth, setSelectedMonth] = useState(monthOptions[0]?.value || '');
   const [search, setSearch] = useState('');
@@ -219,7 +219,7 @@ export default function PlayerUnifiedDebt({
 
       // ── 2. INSCRIPCIÓN / REINSCRIPCIÓN ──
       const paidInscripcion = inscIdx.get(p.id) || 0;
-      const inscPending = paidInscripcion > 0 ? 0 : 1800;
+      const inscPending = paidInscripcion > 0 ? 0 : (feesConfig?.inscripcion_default ?? 1800);
 
       sections.push({
         id: 'inscripcion',
@@ -363,7 +363,7 @@ export default function PlayerUnifiedDebt({
 
     results.sort((a, b) => b.totalDebt - a.totalDebt);
     return results;
-  }, [players, payments, tournamentPayments, tournaments, tournamentAttendees, summerCampPayments, selectedMonthDate, currentSeason, debtWaivers, lateFeeSettings, seasonCalendar]);
+  }, [players, payments, tournamentPayments, tournaments, tournamentAttendees, summerCampPayments, selectedMonthDate, currentSeason, debtWaivers, lateFeeSettings, seasonCalendar, feesConfig]);
 
   // Filter: show all OR only with debt
   const visibleDebts = useMemo(() => {

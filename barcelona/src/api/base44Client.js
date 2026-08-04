@@ -35,6 +35,8 @@ const TABLE = {
   SummerCampExternalPlayer: 'summer_camp_external_players',
   CashRegister: 'cash_registers',
   Program: 'programs',
+  BankAccount: 'bank_accounts',
+  CatalogItem: 'catalog_items',
   AuditLog: 'audit_logs',
 };
 
