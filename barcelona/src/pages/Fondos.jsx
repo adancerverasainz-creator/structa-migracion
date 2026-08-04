@@ -3,7 +3,7 @@ import { confirmar } from '@/components/ui/confirmar';
 import { usePerms } from '@/lib/usePerms';
 import { toast } from 'sonner';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { base44 } from '@/api/base44Client';
+import { base44, supabase } from '@/api/base44Client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -33,6 +33,10 @@ export default function Fondos() {
   });
 
   const queryClient = useQueryClient();
+  const [periodo, setPeriodo] = useState('todo'); // libro de caja: todo | hoy | semana | mes
+  const [showArqueo, setShowArqueo] = useState(false);
+  const [arqueoContado, setArqueoContado] = useState('');
+  const [arqueoNotas, setArqueoNotas] = useState('');
 
   const { data: cashRegisters = [], isLoading } = useQuery({
     queryKey: ['cashRegisters'],
@@ -54,6 +58,15 @@ export default function Fondos() {
       return [...p, ...gp, ...tp, ...lp];
     },
   });
+  const { data: arqueos = [] } = useQuery({
+    queryKey: ['cajaArqueos'],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('caja_arqueos').select('*').order('created_at', { ascending: false }).limit(5);
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
   const { data: allExpenses = [] } = useQuery({
     queryKey: ['allExpensesForFondos'],
     queryFn: () => base44.entities.Expense.list(null, 10000),
@@ -280,8 +293,31 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
     }))
   ].sort((a, b) => new Date(b.date) - new Date(a.date));
 
+  // Saldo corrido (libro de caja): balance después de cada movimiento.
+  // Se calcula en orden cronológico ascendente y se muestra descendente.
+  {
+    let acumulado = 0;
+    [...allTransactions].reverse().forEach(t => {
+      acumulado += (t.type === 'ingreso' ? 1 : -1) * (t.amount || 0);
+      t.balanceAfter = acumulado;
+    });
+  }
+
+  // Filtro de periodo del libro
+  const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+  const periodStart = {
+    todo: null,
+    hoy: hoy,
+    semana: new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() - 6),
+    mes: new Date(hoy.getFullYear(), hoy.getMonth(), 1),
+  }[periodo] ?? null;
+  const inPeriod = (t) => !periodStart || new Date(t.date + 'T00:00:00') >= periodStart;
+  const periodTx = allTransactions.filter(inPeriod);
+  const periodIn = periodTx.filter(t => t.type === 'ingreso').reduce((s, t) => s + (t.amount || 0), 0);
+  const periodOut = periodTx.filter(t => t.type === 'egreso').reduce((s, t) => s + (t.amount || 0), 0);
+
   // Filter transactions based on search term
-  const transactions = allTransactions.filter(transaction => {
+  const transactions = periodTx.filter(transaction => {
     const searchLower = searchTerm.toLowerCase();
     const matchesDescription = transaction.description?.toLowerCase().includes(searchLower);
     const matchesNotes = transaction.notes?.toLowerCase().includes(searchLower);
@@ -290,6 +326,28 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
     const matchesType = transaction.type?.toLowerCase().includes(searchLower);
     const matchesCategory = transaction.category && categoryLabels[transaction.category]?.toLowerCase().includes(searchLower);
     return matchesDescription || matchesNotes || matchesDate || matchesAmount || matchesType || matchesCategory;
+  });
+
+  const arqueoMutation = useMutation({
+    mutationFn: async ({ contado, notas, saldoSistema }) => {
+      const me = await base44.auth.me();
+      const { error } = await supabase.from('caja_arqueos').insert({
+        saldo_sistema: saldoSistema,
+        efectivo_contado: contado,
+        notas: notas || null,
+        contado_por: me?.email || 'desconocido',
+      });
+      if (error) throw error;
+      return contado - saldoSistema;
+    },
+    onSuccess: (diff) => {
+      queryClient.invalidateQueries({ queryKey: ['cajaArqueos'] });
+      setShowArqueo(false); setArqueoContado(''); setArqueoNotas('');
+      if (Math.abs(diff) < 0.01) toast.success('Arqueo registrado: caja cuadrada ✓');
+      else if (diff > 0) toast.warning(`Arqueo registrado: SOBRAN ${formatCurrency(diff)} en caja`);
+      else toast.error(`Arqueo registrado: FALTAN ${formatCurrency(-diff)} en caja`);
+    },
+    onError: (err) => toast.error(`No se pudo registrar el arqueo: ${err?.message || 'error'}`),
   });
 
   return (
@@ -310,6 +368,9 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
           >
             <ArrowRightLeft className="w-4 h-4" />
             Traspaso Banco → Efectivo
+          </Button>
+          <Button variant="outline" className="border-blue-300 text-blue-700 hover:bg-blue-50" onClick={() => setShowArqueo(true)}>
+            <DollarSign className="w-4 h-4 mr-1" /> Arqueo de Caja
           </Button>
           <Button
             onClick={() => {
@@ -469,7 +530,18 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
           </CardTitle>
           <div className="relative mt-4">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-            <Input
+            {/* Libro de caja: filtro por periodo */}
+          <div className="flex flex-wrap items-center gap-2 mb-3">
+            {[['todo','Todo'],['hoy','Hoy'],['semana','7 días'],['mes','Mes actual']].map(([v,l]) => (
+              <Button key={v} size="sm" variant={periodo === v ? 'default' : 'outline'} onClick={() => setPeriodo(v)}>{l}</Button>
+            ))}
+            {periodo !== 'todo' && (
+              <span className="text-sm text-gray-600 ml-2">
+                Ingresos: <b className="text-green-600">{formatCurrency(periodIn)}</b> · Egresos: <b className="text-red-600">{formatCurrency(periodOut)}</b> · Neto: <b>{formatCurrency(periodIn - periodOut)}</b>
+              </span>
+            )}
+          </div>
+          <Input
               placeholder="Buscar por descripción, fecha, monto o categoría..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -521,9 +593,12 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
                     </div>
                   </div>
                   <div className="flex items-center gap-4">
-                    <span className={`text-2xl font-bold ${transaction.type === 'ingreso' ? 'text-green-600' : 'text-red-600'}`}>
-                      {transaction.type === 'ingreso' ? '+' : '-'}{formatCurrency(transaction.amount)}
-                    </span>
+                    <div className="text-right">
+                      <span className={`text-2xl font-bold ${transaction.type === 'ingreso' ? 'text-green-600' : 'text-red-600'}`}>
+                        {transaction.type === 'ingreso' ? '+' : '-'}{formatCurrency(transaction.amount)}
+                      </span>
+                      <p className="text-xs text-gray-500">Saldo: {formatCurrency(transaction.balanceAfter ?? 0)}</p>
+                    </div>
                     {(() => {
                       // Movimientos generados por otros módulos (Pagos, CxP, traspasos)
                       // se corrigen en su módulo de origen — aquí son solo lectura.
@@ -553,6 +628,53 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
           )}
         </CardContent>
       </Card>
+    
+      {/* ── Arqueo de Caja ── */}
+      {showArqueo && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowArqueo(false)}>
+          <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+            <h3 className="font-bold text-lg text-gray-900 flex items-center gap-2">
+              <DollarSign className="w-5 h-5 text-blue-600" /> Arqueo de Caja
+            </h3>
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm">
+              Saldo según sistema: <b className="text-lg">{formatCurrency(balance)}</b>
+            </div>
+            <div className="space-y-1">
+              <Label>Efectivo contado físicamente *</Label>
+              <Input type="number" min="0" step="0.01" value={arqueoContado}
+                onWheel={(e) => e.target.blur()}
+                onChange={(e) => setArqueoContado(e.target.value)} placeholder="0.00" />
+              {arqueoContado !== '' && (
+                <p className={`text-sm font-semibold ${Math.abs(parseFloat(arqueoContado) - balance) < 0.01 ? 'text-green-600' : (parseFloat(arqueoContado) - balance > 0 ? 'text-amber-600' : 'text-red-600')}`}>
+                  {Math.abs(parseFloat(arqueoContado) - balance) < 0.01
+                    ? 'Caja cuadrada ✓'
+                    : (parseFloat(arqueoContado) - balance > 0
+                      ? `Sobrante: ${formatCurrency(parseFloat(arqueoContado) - balance)}`
+                      : `Faltante: ${formatCurrency(balance - (parseFloat(arqueoContado) || 0))}`)}
+                </p>
+              )}
+            </div>
+            <div className="space-y-1">
+              <Label>Notas</Label>
+              <Input value={arqueoNotas} onChange={(e) => setArqueoNotas(e.target.value)} placeholder="Observaciones del conteo (opcional)" />
+            </div>
+            {arqueos.length > 0 && (
+              <p className="text-xs text-gray-500">
+                Último arqueo: {arqueos[0].arqueo_date} — contado {formatCurrency(arqueos[0].efectivo_contado)}, diferencia {formatCurrency(arqueos[0].diferencia)} ({arqueos[0].contado_por})
+              </p>
+            )}
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setShowArqueo(false)}>Cancelar</Button>
+              <Button className="bg-blue-600 hover:bg-blue-700 text-white"
+                disabled={arqueoContado === '' || isNaN(parseFloat(arqueoContado)) || arqueoMutation.isPending}
+                onClick={() => arqueoMutation.mutate({ contado: parseFloat(arqueoContado), notas: arqueoNotas, saldoSistema: balance })}>
+                Registrar Arqueo
+              </Button>
+            </div>
+            <p className="text-[11px] text-gray-400">El arqueo queda como acta inmutable en Auditoría (no se puede editar ni borrar).</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
