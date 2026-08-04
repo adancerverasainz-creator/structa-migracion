@@ -13,7 +13,7 @@ import {
 import { format, subMonths } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { formatCurrency } from '../lib/formatCurrency';
-import { calculateMoratorio, getSeasonAdjustment } from '../../lib/financeEngine';
+import { calculateMoratorio, getSeasonAdjustment, getCurrentSeason } from '../../lib/financeEngine';
 import jsPDF from 'jspdf';
 import * as XLSX from 'xlsx';
 
@@ -43,7 +43,8 @@ export default function PlayerUnifiedDebt({
 
   const now = new Date();
   const currentYear = now.getFullYear();
-  const currentSeason = `${currentYear}-${currentYear + 1}`;
+  // Temporada vigente (inicio configurable en Configuración → Precios; default agosto)
+  const currentSeason = getCurrentSeason(now, feesConfig?.season_start_month ?? 8);
 
   const selectedOption = monthOptions.find(o => o.value === selectedMonth) || monthOptions[0];
   const [selMonthName, selYear] = (selectedOption?.value || '').split(' ');
@@ -218,10 +219,14 @@ export default function PlayerUnifiedDebt({
       }
 
       // ── 2. INSCRIPCIÓN / REINSCRIPCIÓN ──
+      // Bajas/inactivos y becas 100% NO generan deuda de reinscripción de la
+      // temporada vigente (la deuda congelada de mensualidades sí se conserva).
       const paidInscripcion = inscIdx.get(p.id) || 0;
-      const inscPending = paidInscripcion > 0 ? 0 : (feesConfig?.inscripcion_default ?? 1800);
+      const esBajaOInactivo = !!p.baja_date || ['baja', 'inactivo'].includes((p.status || '').toLowerCase());
+      const exentoInscripcion = esBajaOInactivo || p.scholarship === '100%';
+      const inscPending = (paidInscripcion > 0 || exentoInscripcion) ? 0 : (feesConfig?.inscripcion_default ?? 1800);
 
-      sections.push({
+      if (paidInscripcion > 0 || !exentoInscripcion) sections.push({
         id: 'inscripcion',
         icon: ClipboardList,
         title: 'Inscripción / Reinscripción',

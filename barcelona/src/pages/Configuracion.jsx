@@ -194,6 +194,10 @@ export default function Configuracion() {
                   <Input type="number" value={f.summer_week ?? ''} onChange={e => setFeesDraft({ ...f, summer_week: parseFloat(e.target.value) || 0 })} />
                 </label>
                 <label className="text-sm space-y-1 block">
+                  <span className="text-gray-600">Mes de inicio de temporada (1-12, default 8 = agosto)</span>
+                  <Input type="number" min="1" max="12" value={f.season_start_month ?? 8} onChange={e => setFeesDraft({ ...f, season_start_month: Math.min(12, Math.max(1, parseInt(e.target.value) || 8)) })} />
+                </label>
+                <label className="text-sm space-y-1 block">
                   <span className="text-gray-600">Montos rápidos — Inscripción (separados por coma)</span>
                   <Input value={(f.inscripcion_montos || []).join(', ')} onChange={e => setFeesDraft({ ...f, inscripcion_montos: e.target.value.split(',').map(x => parseFloat(x.trim())).filter(x => !isNaN(x)) })} />
                 </label>

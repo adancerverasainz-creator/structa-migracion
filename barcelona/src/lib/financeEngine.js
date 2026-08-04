@@ -30,6 +30,23 @@ export function getSeasonAdjustment(monthIndex, year, seasonCalendar = null) {
 }
 
 /**
+ * Temporada vigente del club (inicio configurable, default agosto).
+ * Un club opera ago-jul: en enero 2027 la temporada sigue siendo "2026-2027".
+ * Antes se calculaba por año calendario → el 1/ene el sistema exigía
+ * reinscripción nueva a todos los jugadores a mitad de temporada.
+ *
+ * @param {Date} [refDate] - Fecha de referencia (default: hoy)
+ * @param {number} [seasonStartMonth] - Mes de inicio 1-12 (default 8 = agosto)
+ * @returns {string} ej. "2026-2027"
+ */
+export function getCurrentSeason(refDate = new Date(), seasonStartMonth = 8) {
+  const m = refDate.getMonth() + 1; // 1-12
+  const y = refDate.getFullYear();
+  const startYear = m >= (seasonStartMonth || 8) ? y : y - 1;
+  return `${startYear}-${startYear + 1}`;
+}
+
+/**
  * Calcula el IVA (16%) sobre un subtotal.
  * @param {number} subtotal - Monto base
  * @param {boolean} requiresInvoice - Si requiere factura
