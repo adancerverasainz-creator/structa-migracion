@@ -611,13 +611,22 @@ export default function UnifiedPaymentGateway({ config, onSubmit, onCancel, isLo
                   <p className="text-xs text-red-600">Obligatorio: indica a qué banco entró la transferencia.</p>
                 )}
               </div>
+            ) : paymentMethod === 'efectivo' ? (
+              <div className="space-y-2">
+                <Label>Caja destino *</Label>
+                <Select value={bankName || 'Efectivo'} onValueChange={v => setBankName(v === 'Efectivo' ? '' : v)}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Efectivo">Efectivo — caja fondos (operativa)</SelectItem>
+                    <SelectItem value="Fondos">Fondos — caja CEO</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             ) : (
               <div className="flex items-center gap-2 text-sm bg-gray-50 border rounded-lg px-3 py-2">
                 <Wallet className="w-4 h-4 text-green-600" />
                 <span className="text-gray-600">El dinero entra a la cuenta:</span>
-                <span className="font-semibold text-gray-900">
-                  {paymentMethod === 'efectivo' ? 'Efectivo (caja del club)' : 'Tarjeta'}
-                </span>
+                <span className="font-semibold text-gray-900">Tarjeta</span>
               </div>
             )}
 

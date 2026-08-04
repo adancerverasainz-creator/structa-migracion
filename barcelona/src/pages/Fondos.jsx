@@ -71,6 +71,7 @@ export default function Fondos() {
     mutationFn: (data) => base44.entities.CashRegister.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['cashRegisters'] });
+queryClient.invalidateQueries({ queryKey: ['saldosPorCuenta'] });
       setShowForm(false);
       setEditingCashRegister(null);
       setFormData({
@@ -87,6 +88,7 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
     mutationFn: ({ id, data }) => base44.entities.CashRegister.update(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['cashRegisters'] });
+queryClient.invalidateQueries({ queryKey: ['saldosPorCuenta'] });
       setShowForm(false);
       setEditingCashRegister(null);
       setFormData({
@@ -115,6 +117,7 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['cashRegisters'] });
+queryClient.invalidateQueries({ queryKey: ['saldosPorCuenta'] });
     },
 onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desconocido'}`),
 });
@@ -124,6 +127,7 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['allExpensesForFondos'] });
       queryClient.invalidateQueries({ queryKey: ['expenses'] });
+queryClient.invalidateQueries({ queryKey: ['saldosPorCuenta'] });
       setShowExpenseForm(false);
       setEditingExpense(null);
     },
@@ -135,6 +139,7 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['allExpensesForFondos'] });
       queryClient.invalidateQueries({ queryKey: ['expenses'] });
+queryClient.invalidateQueries({ queryKey: ['saldosPorCuenta'] });
       setShowExpenseForm(false);
       setEditingExpense(null);
     },
@@ -192,6 +197,7 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['allExpensesForFondos'] });
       queryClient.invalidateQueries({ queryKey: ['expenses'] });
+queryClient.invalidateQueries({ queryKey: ['saldosPorCuenta'] });
     },
 onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desconocido'}`),
 });

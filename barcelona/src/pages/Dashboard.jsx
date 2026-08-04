@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { base44 } from '@/api/base44Client';
+import { base44, supabase } from '@/api/base44Client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -20,6 +20,16 @@ queryKey: ['payments'],
 queryFn: () => base44.entities.Payment.list('-payment_date'),
 staleTime: 0,
 });
+
+const { data: saldosCuentas = [] } = useQuery({
+queryKey: ['saldosPorCuenta'],
+queryFn: async () => {
+const { data, error } = await supabase.rpc('saldos_por_cuenta');
+if (error) throw error;
+return data || [];
+},
+});
+
 
 const { data: tournamentPayments = [] } = useQuery({
 queryKey: ['tournamentPayments'],
@@ -637,54 +647,29 @@ className="w-full flex justify-between items-center p-4 hover:bg-red-100 transit
 </CardHeader>
 <CardContent>
 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-<div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
-<p className="text-sm text-gray-600 mb-1">Efectivo</p>
-<p className={`text-2xl font-bold ${accountBalances.efectivo >= 0 ? 'text-blue-600' : 'text-red-600'}`}>
-{formatCurrency(accountBalances.efectivo)}
-</p>
+{(() => {
+const estilos = {
+'Efectivo': ['bg-blue-50 border-blue-200', 'text-blue-600'],
+'Tarjeta': ['bg-purple-50 border-purple-200', 'text-purple-600'],
+'BBVA': ['bg-emerald-50 border-emerald-200', 'text-emerald-600'],
+'MP': ['bg-cyan-50 border-cyan-200', 'text-cyan-600'],
+'NU': ['bg-violet-50 border-violet-200', 'text-violet-600'],
+'OpenBank': ['bg-orange-50 border-orange-200', 'text-orange-600'],
+'MercadoPagoBIA': ['bg-teal-50 border-teal-200', 'text-teal-600'],
+'Fondos (caja)': ['bg-green-50 border-green-200', 'text-green-600'],
+};
+return saldosCuentas.map((c) => {
+const [box, txt] = estilos[c.cuenta] || ['bg-gray-50 border-gray-200', 'text-gray-700'];
+const saldo = parseFloat(c.saldo) || 0;
+return (
+<div key={c.cuenta} className={`p-4 rounded-lg border ${box}`}>
+<p className="text-sm text-gray-600 mb-1">{c.cuenta === 'MercadoPagoBIA' ? 'Mercado Pago BIA' : c.cuenta}</p>
+<p className={`text-2xl font-bold ${saldo >= 0 ? txt : 'text-red-600'}`}>{formatCurrency(saldo)}</p>
+<p className="text-xs text-gray-500 mt-1">In: {formatCurrency(parseFloat(c.ingresos) || 0)} | Out: {formatCurrency(parseFloat(c.egresos) || 0)}</p>
 </div>
-<div className="p-4 bg-purple-50 rounded-lg border border-purple-200">
-<p className="text-sm text-gray-600 mb-1">Tarjeta</p>
-<p className={`text-2xl font-bold ${accountBalances.tarjeta >= 0 ? 'text-purple-600' : 'text-red-600'}`}>
-{formatCurrency(accountBalances.tarjeta)}
-</p>
-</div>
-<div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
-<p className="text-sm text-gray-600 mb-1">BBVA</p>
-<p className={`text-2xl font-bold ${accountBalances.BBVA >= 0 ? 'text-blue-600' : 'text-red-600'}`}>
-{formatCurrency(accountBalances.BBVA)}
-</p>
-</div>
-<div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
-<p className="text-sm text-gray-600 mb-1">MP</p>
-<p className={`text-2xl font-bold ${accountBalances.MP >= 0 ? 'text-blue-600' : 'text-red-600'}`}>
-{formatCurrency(accountBalances.MP)}
-</p>
-</div>
-<div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
-<p className="text-sm text-gray-600 mb-1">NU</p>
-<p className={`text-2xl font-bold ${accountBalances.NU >= 0 ? 'text-blue-600' : 'text-red-600'}`}>
-{formatCurrency(accountBalances.NU)}
-</p>
-</div>
-<div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
-<p className="text-sm text-gray-600 mb-1">OpenBank</p>
-<p className={`text-2xl font-bold ${accountBalances.OpenBank >= 0 ? 'text-blue-600' : 'text-red-600'}`}>
-{formatCurrency(accountBalances.OpenBank)}
-</p>
-</div>
-<div className="p-4 bg-teal-50 rounded-lg border border-teal-200">
-<p className="text-sm text-gray-600 mb-1">Mercado Pago BIA</p>
-<p className={`text-2xl font-bold ${accountBalances.MercadoPagoBIA >= 0 ? 'text-teal-600' : 'text-red-600'}`}>
-{formatCurrency(accountBalances.MercadoPagoBIA)}
-</p>
-</div>
-<div className="p-4 bg-green-50 rounded-lg border border-green-200">
-<p className="text-sm text-gray-600 mb-1">Fondos (caja)</p>
-<p className={`text-2xl font-bold ${accountBalances.Fondos >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-{formatCurrency(accountBalances.Fondos)}
-</p>
-</div>
+);
+});
+})()}
 </div>
 </CardContent>
 </Card>
