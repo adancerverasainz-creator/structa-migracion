@@ -154,7 +154,8 @@ export default function TournamentPayments({ tournament, players, payments: allP
       status,
       payment_date: formData.payment_date ? formData.payment_date.split('T')[0] : format(new Date(), 'yyyy-MM-dd'),
     };
-    
+    delete paymentData.fee_type; // solo UI — no existe como columna en BD
+
     if (editingPayment && editingPayment.id) {
       updateMutation.mutate({ id: editingPayment.id, data: paymentData });
     } else {
