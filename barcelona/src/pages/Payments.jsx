@@ -22,6 +22,10 @@ import { logAudit } from '../components/lib/auditLogger';
 
 export default function Payments() {
 const { canDelete } = usePerms('payments');
+const { data: currentUser } = useQuery({ queryKey: ['currentUser'], queryFn: () => base44.auth.me() });
+const isAdmin = currentUser?.role === 'admin';
+const [reversarInfo, setReversarInfo] = useState(null);
+const [motivoReverso, setMotivoReverso] = useState('');
 const [showForm, setShowForm] = useState(false);
 const [editingPayment, setEditingPayment] = useState(null);
 const [showGeneralForm, setShowGeneralForm] = useState(false);
@@ -406,6 +410,31 @@ deleteMutation.mutate(payment);
 });
 };
 
+// #80 Storno: reverso de pago (solo admin) — el original nunca se modifica
+const reversarMutation = useMutation({
+mutationFn: async ({ payment, motivo }) => {
+const { data, error } = await supabase.rpc('reversar_pago', { p_payment_id: payment.id, p_motivo: motivo });
+if (error) throw new Error(error.message);
+return data;
+},
+onSuccess: async (newId, { payment, motivo }) => {
+const playerName = players.find(p => p.id === payment.player_id)?.full_name || '';
+await logAudit({
+action: 'REVERSO', module: 'Pagos', entity_type: 'Payment',
+entity_id: newId, entity_name: `${playerName} — ${payment.month || payment.payment_type}`,
+previousValue: payment,
+monetaryDiff: -(payment.amount || 0),
+details: `Reverso (storno) del pago ${payment.id}. Motivo: ${motivo}`,
+});
+queryClient.invalidateQueries({ queryKey: ['payments'] });
+queryClient.invalidateQueries({ queryKey: ['saldosPorCuenta'] });
+toast.success('Reverso registrado — el pago original queda anulado por contra-movimiento');
+setReversarInfo(null);
+setMotivoReverso('');
+},
+onError: (e) => toast.error(`No se pudo reversar: ${e.message}`),
+});
+
 // General Payments
 const createGeneralMutation = useMutation({
 mutationFn: async (data) => {
@@ -611,6 +640,9 @@ players={players}
 isLoading={paymentsLoading || playersLoading}
 onEdit={handleEdit}
 onDelete={canDelete ? handleDelete : null}
+onReverse={isAdmin ? (p) => { setReversarInfo(p); setMotivoReverso(''); } : null}
+currentUserEmail={currentUser?.email}
+isAdmin={isAdmin}
 />
 </TabsContent>
 
@@ -659,6 +691,39 @@ onPagoGeneral={(info) => setPagoGeneralInfo(info)}
 />
 </TabsContent>
 </Tabs>
+
+{/* Modal Reversar Pago (storno #80) */}
+{reversarInfo && (
+<div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+<div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6 space-y-4">
+<h3 className="text-lg font-bold text-gray-900">Reversar pago (storno)</h3>
+<p className="text-sm text-gray-600">
+{(players.find(p => p.id === reversarInfo.player_id)?.full_name) || 'Jugador'} — {reversarInfo.month || reversarInfo.payment_type} — <span className="font-bold text-red-600">{formatCurrency(reversarInfo.amount)}</span>
+</p>
+<p className="text-xs text-gray-500">Se creará un contra-movimiento negativo ligado al original. El pago original no se modifica ni se borra: así el libro siempre cuadra y queda todo en Auditoría.</p>
+<div>
+<label className="text-sm font-medium text-gray-700">Motivo del reverso (obligatorio)</label>
+<textarea
+className="mt-1 w-full border rounded-md p-2 text-sm"
+rows={3}
+value={motivoReverso}
+onChange={(e) => setMotivoReverso(e.target.value)}
+placeholder="Ej. Monto capturado incorrecto: fueron $600 MP y $600 efectivo"
+/>
+</div>
+<div className="flex justify-end gap-2">
+<Button variant="outline" onClick={() => { setReversarInfo(null); setMotivoReverso(''); }}>Cancelar</Button>
+<Button
+className="bg-amber-600 hover:bg-amber-700"
+disabled={motivoReverso.trim().length < 5 || reversarMutation.isPending}
+onClick={() => reversarMutation.mutate({ payment: reversarInfo, motivo: motivoReverso.trim() })}
+>
+Reversar pago
+</Button>
+</div>
+</div>
+</div>
+)}
 
 {/* Modal Condonar Deuda */}
 {condonarInfo && (
