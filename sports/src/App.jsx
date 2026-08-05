@@ -56,10 +56,10 @@ function RequireAuth({ children }) {
       if (s) {
         const { data: profile } = await supabase
           .from('profiles')
-          .select('role')
+          .select('role, organization_id')
           .eq('id', s.user.id)
           .single()
-        setRole(profile?.role ?? 'user')
+        setRole(profile?.role ?? 'visitante')
       } else {
         setRole(null)
       }
@@ -80,7 +80,10 @@ function RequireAuth({ children }) {
 
   if (!session) return <Navigate to="/admin/login" replace />
 
-  if (role === 'user') return <AccessDenied />
+  // Roles sin acceso al panel admin
+  const BLOCKED_ROLES = ['user', 'visitante']
+  if (BLOCKED_ROLES.includes(role)) return <AccessDenied />
+  // Roles permitidos: admin, editor, org_admin
 
   return children
 }
