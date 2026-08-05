@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from './utils';
-import { Home, Users, CreditCard, Trophy, Shield, LayoutGrid, Menu, X, LogOut, FileText, BarChart2, ChevronRight, Stethoscope } from 'lucide-react';
+import { Home, Users, CreditCard, Trophy, Shield, LayoutGrid, Menu, X, LogOut, FileText, BarChart2, ChevronRight, Stethoscope, LifeBuoy } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { base44 } from '@/api/base44Client';
 
@@ -36,6 +36,7 @@ export default function Layout({ children, currentPageName }) {
     { name: 'Diag', page: 'Diagnostico', icon: Stethoscope, roles: ['admin'] },
     { name: 'Permisos', page: 'Permissions', icon: FileText, roles: ['admin'] },
     { name: 'Config', page: 'Configuracion', icon: FileText, roles: ['admin'] },
+    { name: 'Ayuda', page: 'Ayuda', icon: LifeBuoy },
   ];
 
   const navItems = allNavItems.filter(item => !item.roles || item.roles.includes(currentUser?.role));
