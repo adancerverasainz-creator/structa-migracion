@@ -120,9 +120,10 @@ function makeEntity(name) {
     },
     update: async (id, data) => {
       const payload = toDb(data);
-      const { data: row, error } = await supabase.from(table).update(payload).eq('id', id).select().single();
+      const { data: rows, error } = await supabase.from(table).update(payload).eq('id', id).select();
       if (error) throw new Error(`${name}.update: ${error.message}`);
-      return fromDb(row);
+      if (!rows || rows.length === 0) throw new Error('No tienes permiso para modificar este registro (o ya no existe). Pide el cambio a un administrador.');
+      return fromDb(rows[0]);
     },
     delete: async (id) => {
       const { error } = await supabase.from(table).delete().eq('id', id);
