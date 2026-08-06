@@ -341,9 +341,10 @@ export default function AdminTournamentDetail() {
   // ── Generar jornadas de vuelta ────────────────────────────────────────────
   const generarVuelta = useMutation({
     mutationFn: async () => {
-      if (matches.length === 0) throw new Error('No hay partidos de ida')
-      const maxMatchday = Math.max(...matches.map(m => m.matchday))
-      const vueltaMatches = matches.map(m => ({
+      const idaMatches = matches.filter(m => m.home_team_id !== null && m.away_team_id !== null)
+      if (idaMatches.length === 0) throw new Error('No hay partidos de ida')
+      const maxMatchday = Math.max(...idaMatches.map(m => m.matchday))
+      const vueltaMatches = idaMatches.map(m => ({
         tournament_id: m.tournament_id,
         category_id: m.category_id ?? null,
         group_id: m.group_id ?? null,
@@ -371,7 +372,7 @@ export default function AdminTournamentDetail() {
     onError: (e) => toast.error('Error al generar vuelta: ' + e.message),
   })
 
-    // ── Open event modal pre-filled for a specific match ────────────────────
+  // ── Open event modal pre-filled for a specific match ────────────────────
   function openEventForMatch(m) {
     setEventForm({ ...EMPTY_EVENT, match_id: m.id })
     setMatchTeamsFilter([m.home_team_id, m.away_team_id])
@@ -936,7 +937,7 @@ export default function AdminTournamentDetail() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6">
             <h3 className="font-semibold text-gray-900 mb-2">Generar jornadas de vuelta</h3>
-            <p className="text-sm text-gray-600 mb-1">Se crearán <strong>{matches.length} partidos</strong> con los equipos invertidos (local↔visitante).</p>
+            <p className="text-sm text-gray-600 mb-1">Se crearán <strong>{matches.filter(m => m.home_team_id && m.away_team_id).length} partidos</strong> con los equipos invertidos (local↔visitante).</p>
             <p className="text-sm text-gray-500 mb-6">Las jornadas de vuelta quedarán sin fecha — puedes editarlas después.</p>
             <div className="flex gap-3">
               <button onClick={() => setConfirmVuelta(false)} className="flex-1 border border-gray-300 text-gray-700 font-medium py-2 rounded-lg text-sm hover:bg-gray-50 transition-colors">Cancelar</button>
