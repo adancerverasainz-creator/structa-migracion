@@ -66,8 +66,11 @@ export default function PlayerUnifiedDebt({
       return name && yr ? `${name} ${yr}` : null;
     };
     const mensualidadIdx = new Map();   // `${pid}|${mes año}` -> suma pagada
-    const inscIdx = new Map();          // pid -> suma pagada temporada actual
+    const inscIdx = new Map();          // pid -> { paid, liquidado } temporada actual
     const uniformIdx = new Map();       // pid -> [pagos de uniformes]
+    // Ids de pagos que fueron reversados (storno): ni el original reversado ni el
+    // contra-movimiento (status 'pagado' por diseño del RPC) deben marcar 'liquidado'.
+    const reversedPayIds = new Set(payments.filter(x => x.reversal_of).map(x => x.reversal_of));
     for (const pay of payments) {
       const pid = pay.player_id;
       if (!pid) continue;
@@ -81,8 +84,9 @@ export default function PlayerUnifiedDebt({
       } else if ((pt === 'inscripcion' || pt === 'reinscripcion') && pay.month === currentSeason) {
         const cur = inscIdx.get(pid) || { paid: 0, liquidado: false };
         cur.paid += (pay.amount || 0);
-        // Solo un pago con status 'pagado' salda la reinscripción; un abono no.
-        if (pay.status === 'pagado') cur.liquidado = true;
+        // Solo un pago con status 'pagado' salda la reinscripción; un abono no,
+        // y un pago reversado (o el propio reverso) tampoco.
+        if (pay.status === 'pagado' && !pay.reversal_of && !reversedPayIds.has(pay.id)) cur.liquidado = true;
         inscIdx.set(pid, cur);
       } else if (pt === 'uniformes') {
         if (!uniformIdx.has(pid)) uniformIdx.set(pid, []);
