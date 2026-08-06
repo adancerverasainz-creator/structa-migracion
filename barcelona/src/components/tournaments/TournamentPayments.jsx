@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { confirmar } from '@/components/ui/confirmar';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { base44 } from '@/api/base44Client';
+import { base44, supabase } from '@/api/base44Client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,7 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ArrowLeft, Plus, CheckCircle, AlertCircle, X, Save, Trash2, Search, Edit, Users, Clock, Globe } from 'lucide-react';
+import { ArrowLeft, Plus, CheckCircle, AlertCircle, X, Save, Trash2, Search, Edit, Users, Clock, Globe, Undo2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { formatCurrency } from '../lib/formatCurrency';
@@ -22,6 +23,13 @@ import { getTotalPaidForAttendee, isAttendeeBecado, buildDebtorsList, getPaidAtt
 
 export default function TournamentPayments({ tournament, players, payments: allPayments, onBack }) {
   const [activeTab, setActiveTab] = useState('asistentes');
+  // #80 Storno fase 2
+  const { data: currentUser } = useQuery({ queryKey: ['currentUser'], queryFn: () => base44.auth.me() });
+  const isAdmin = currentUser?.role === 'admin';
+  const [reversarInfo, setReversarInfo] = useState(null);
+  const [motivoReverso, setMotivoReverso] = useState('');
+  const hoyStr = new Date().toDateString();
+  const esMismoDia = (p) => p.created_date && new Date(p.created_date).toDateString() === hoyStr;
   const [showForm, setShowForm] = useState(false);
   const [editingPayment, setEditingPayment] = useState(null);
   const [paymentSearchTerm, setPaymentSearchTerm] = useState('');
@@ -60,6 +68,9 @@ export default function TournamentPayments({ tournament, players, payments: allP
   });
 
   const payments = tournamentPayments;
+  const reversedIds = new Set(payments.filter(p => p.reversal_of).map(p => p.reversal_of));
+  const puedeCorregir = (p) => !p.reversal_of && !reversedIds.has(p.id)
+    && esMismoDia(p) && (isAdmin || (p.created_by && p.created_by === currentUser?.email));
   const activePlayers = players.filter(p => p.status === 'activo');
 
   // Jugadores internos asistentes (para el selector de jugadores en formularios)
@@ -119,6 +130,27 @@ export default function TournamentPayments({ tournament, players, payments: allP
       setEditingPayment(null);
       setFormData(resetForm());
     },
+  });
+
+  const reversarMutation = useMutation({
+    mutationFn: async ({ payment, motivo }) => {
+      const { data, error } = await supabase.rpc('reversar_pago_torneo', { p_id: payment.id, p_motivo: motivo });
+      if (error) throw new Error(error.message);
+      return data;
+    },
+    onSuccess: async (newId, { payment, motivo }) => {
+      const playerName = getPlayerName(payment.player_id, payment.external_name);
+      await logAudit({
+        action: 'REVERSO', module: 'Torneos', entity_type: 'TournamentPayment',
+        entity_id: newId, entity_name: `${playerName} — ${tournament?.name}`,
+        previousValue: payment, monetaryDiff: -(payment.paid_amount ?? payment.amount ?? 0),
+        details: `Reverso (storno) del pago ${payment.id}. Motivo: ${motivo}`,
+      });
+      queryClient.invalidateQueries({ queryKey: ['tournamentPayments'] });
+      toast.success('Reverso registrado — el pago original queda anulado por contra-movimiento');
+      setReversarInfo(null); setMotivoReverso('');
+    },
+    onError: (e) => toast.error(`No se pudo reversar: ${e.message}`),
   });
 
   const deleteMutation = useMutation({
@@ -629,27 +661,32 @@ export default function TournamentPayments({ tournament, players, payments: allP
                     </div>
                   </div>
                   <div className="flex items-center gap-4">
-                    <span className="text-xl font-bold text-green-600">{formatCurrency(effectivePaid(payment))}</span>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="text-blue-600 hover:bg-blue-50"
-                      onClick={() => handleEdit(payment)}
-                    >
-                      <Edit className="w-4 h-4" />
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="text-red-600 hover:bg-red-50"
-                      onClick={() => {
-                        confirmar('¿Eliminar este pago?').then((ok) => { if (!ok) return;
-                          deleteMutation.mutate({ id: payment.id, payment });
-                        });
-                      }}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
+                    <span className={`text-xl font-bold ${effectivePaid(payment) < 0 ? 'text-red-600' : 'text-green-600'}`}>{formatCurrency(effectivePaid(payment))}</span>
+                    {payment.reversal_of && <Badge className="bg-gray-200 text-gray-700">↩ Reverso</Badge>}
+                    {reversedIds.has(payment.id) && <Badge className="bg-red-100 text-red-700">Reversado</Badge>}
+                    {puedeCorregir(payment) ? (
+                      <>
+                        <Button variant="outline" size="sm" className="text-blue-600 hover:bg-blue-50"
+                          title="Ventana de corrección: solo el mismo día" onClick={() => handleEdit(payment)}>
+                          <Edit className="w-4 h-4" />
+                        </Button>
+                        {isAdmin && (
+                          <Button variant="outline" size="sm" className="text-red-600 hover:bg-red-50"
+                            onClick={() => {
+                              confirmar('¿Eliminar este pago?').then((ok) => { if (!ok) return;
+                                deleteMutation.mutate({ id: payment.id, payment });
+                              });
+                            }}>
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        )}
+                      </>
+                    ) : (!payment.reversal_of && !reversedIds.has(payment.id) && isAdmin) ? (
+                      <Button variant="outline" size="sm" className="text-amber-700 hover:bg-amber-50"
+                        title="Storno: contra-movimiento que anula el pago" onClick={() => { setReversarInfo(payment); setMotivoReverso(''); }}>
+                        <Undo2 className="w-4 h-4" />
+                      </Button>
+                    ) : null}
                   </div>
                 </div>
               ))}
@@ -730,6 +767,33 @@ export default function TournamentPayments({ tournament, players, payments: allP
           />
         </TabsContent>
       </Tabs>
+
+      {/* Modal Reversar Pago (storno #80) */}
+      {reversarInfo && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6 space-y-4">
+            <h3 className="text-lg font-bold text-gray-900">Reversar pago (storno)</h3>
+            <p className="text-sm text-gray-600">
+              {getPlayerName(reversarInfo.player_id, reversarInfo.external_name)} — {tournament?.name} — <span className="font-bold text-red-600">{formatCurrency(reversarInfo.paid_amount ?? reversarInfo.amount ?? 0)}</span>
+            </p>
+            <p className="text-xs text-gray-500">Se creará un contra-movimiento negativo ligado al original. El pago original no se modifica ni se borra.</p>
+            <div>
+              <label className="text-sm font-medium text-gray-700">Motivo del reverso (obligatorio)</label>
+              <textarea className="mt-1 w-full border rounded-md p-2 text-sm" rows={3} value={motivoReverso}
+                onChange={(e) => setMotivoReverso(e.target.value)}
+                placeholder="Ej. Se cobró a la persona equivocada" />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => { setReversarInfo(null); setMotivoReverso(''); }}>Cancelar</Button>
+              <Button className="bg-amber-600 hover:bg-amber-700"
+                disabled={motivoReverso.trim().length < 5 || reversarMutation.isPending}
+                onClick={() => reversarMutation.mutate({ payment: reversarInfo, motivo: motivoReverso.trim() })}>
+                Reversar pago
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
