@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { confirmar } from '@/components/ui/confirmar';
 import { usePerms } from '@/lib/usePerms';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { base44 } from '@/api/base44Client';
+import { base44, supabase } from '@/api/base44Client';
 import ERPPageHeader from '../components/layout/ERPPageHeader';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -22,6 +22,10 @@ const UNIFORM_PRICE = 950;
 
 export default function SummerCamp() {
   const { canDelete } = usePerms('summercamp');
+  const { data: currentUser } = useQuery({ queryKey: ['currentUser'], queryFn: () => base44.auth.me() });
+  const isAdmin = currentUser?.role === 'admin';
+  const [reversarInfo, setReversarInfo] = useState(null);
+  const [motivoReverso, setMotivoReverso] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [formType, setFormType] = useState('semana');
   const [editingPayment, setEditingPayment] = useState(null);
@@ -86,6 +90,28 @@ export default function SummerCamp() {
       toast.success('Pago actualizado');
     },
     onError: (err) => toast.error(`No se pudo actualizar el pago: ${err?.message || 'error desconocido'}`),
+  });
+
+  // #80 Storno fase 2: reverso de pago Summer (solo admin)
+  const reversarMutation = useMutation({
+    mutationFn: async ({ payment, motivo }) => {
+      const { data, error } = await supabase.rpc('reversar_pago_summer', { p_id: payment.id, p_motivo: motivo });
+      if (error) throw new Error(error.message);
+      return data;
+    },
+    onSuccess: async (newId, { payment, motivo }) => {
+      await logAudit({
+        action: 'REVERSO', module: 'Summer Camp', entity_type: 'SummerCampPayment',
+        entity_id: newId, entity_name: payment.player_name || 'Pago Summer',
+        previousValue: payment, monetaryDiff: -(payment.amount || 0),
+        details: `Reverso (storno) del pago ${payment.id}. Motivo: ${motivo}`,
+      });
+      queryClient.invalidateQueries({ queryKey: ['summerCampPayments'] });
+      queryClient.invalidateQueries({ queryKey: ['saldosPorCuenta'] });
+      toast.success('Reverso registrado — el pago original queda anulado por contra-movimiento');
+      setReversarInfo(null); setMotivoReverso('');
+    },
+    onError: (e) => toast.error(`No se pudo reversar: ${e.message}`),
   });
 
   const deleteMutation = useMutation({
@@ -300,16 +326,16 @@ export default function SummerCamp() {
           </TabsTrigger>
         </TabsList>
         <TabsContent value="all" className="mt-4">
-          <SummerCampList payments={payments} players={players} isLoading={paymentsLoading || playersLoading} onEdit={handleEdit} onDelete={canDelete ? handleDelete : null} />
+          <SummerCampList payments={payments} players={players} isLoading={paymentsLoading || playersLoading} onEdit={handleEdit} onDelete={canDelete ? handleDelete : null} onReverse={isAdmin ? (p) => { setReversarInfo(p); setMotivoReverso(''); } : null} currentUserEmail={currentUser?.email} isAdmin={isAdmin} />
         </TabsContent>
         <TabsContent value="semana" className="mt-4">
-          <SummerCampList payments={payments} players={players} isLoading={paymentsLoading} onEdit={handleEdit} onDelete={canDelete ? handleDelete : null} filterType="semana" />
+          <SummerCampList payments={payments} players={players} isLoading={paymentsLoading} onEdit={handleEdit} onDelete={canDelete ? handleDelete : null} onReverse={isAdmin ? (p) => { setReversarInfo(p); setMotivoReverso(''); } : null} currentUserEmail={currentUser?.email} isAdmin={isAdmin} filterType="semana" />
         </TabsContent>
         <TabsContent value="uniforme" className="mt-4">
-          <SummerCampList payments={payments} players={players} isLoading={paymentsLoading} onEdit={handleEdit} onDelete={canDelete ? handleDelete : null} filterType="uniforme" />
+          <SummerCampList payments={payments} players={players} isLoading={paymentsLoading} onEdit={handleEdit} onDelete={canDelete ? handleDelete : null} onReverse={isAdmin ? (p) => { setReversarInfo(p); setMotivoReverso(''); } : null} currentUserEmail={currentUser?.email} isAdmin={isAdmin} filterType="uniforme" />
         </TabsContent>
         <TabsContent value="deudores" className="mt-4">
-          <SummerCampDebtors payments={payments} players={players} onEdit={handleEdit} onDelete={canDelete ? handleDelete : null} />
+          <SummerCampDebtors payments={payments} players={players} onEdit={handleEdit} onDelete={canDelete ? handleDelete : null} onReverse={isAdmin ? (p) => { setReversarInfo(p); setMotivoReverso(''); } : null} currentUserEmail={currentUser?.email} isAdmin={isAdmin} />
         </TabsContent>
         <TabsContent value="externos" className="mt-4">
           <ExternalPlayersList
@@ -322,6 +348,33 @@ export default function SummerCamp() {
           />
         </TabsContent>
       </Tabs>
+
+      {/* Modal Reversar Pago (storno #80) */}
+      {reversarInfo && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6 space-y-4">
+            <h3 className="text-lg font-bold text-gray-900">Reversar pago (storno)</h3>
+            <p className="text-sm text-gray-600">
+              {reversarInfo.player_name || 'Pago Summer'} — {reversarInfo.payment_type === 'semana' ? `Semana ${reversarInfo.week_number}` : 'Uniformes'} — <span className="font-bold text-red-600">{formatCurrency(reversarInfo.amount)}</span>
+            </p>
+            <p className="text-xs text-gray-500">Se creará un contra-movimiento negativo ligado al original. El pago original no se modifica ni se borra.</p>
+            <div>
+              <label className="text-sm font-medium text-gray-700">Motivo del reverso (obligatorio)</label>
+              <textarea className="mt-1 w-full border rounded-md p-2 text-sm" rows={3} value={motivoReverso}
+                onChange={(e) => setMotivoReverso(e.target.value)}
+                placeholder="Ej. Método de pago incorrecto: fue parte MP y parte efectivo" />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => { setReversarInfo(null); setMotivoReverso(''); }}>Cancelar</Button>
+              <Button className="bg-amber-600 hover:bg-amber-700"
+                disabled={motivoReverso.trim().length < 5 || reversarMutation.isPending}
+                onClick={() => reversarMutation.mutate({ payment: reversarInfo, motivo: motivoReverso.trim() })}>
+                Reversar pago
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
