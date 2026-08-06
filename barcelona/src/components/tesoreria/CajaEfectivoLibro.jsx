@@ -12,9 +12,10 @@ import { formatCurrency } from '../lib/formatCurrency';
  * módulos de origen (Pagos/Egresos); este libro es de consulta + Corte de Caja.
  */
 export default function CajaEfectivoLibro({ payments, expenses, cortes = [], onCorte }) {
+  // Todo registro del pool es dinero recibido (los summer no cobrados se filtran
+  // antes de llegar aquí, en Tesorería) — misma regla que el RPC saldos_por_cuenta.
   const ingresos = payments.filter(p =>
-    p.payment_method === 'efectivo' && (p.bank_name || '') !== 'Fondos' &&
-    (!p.status || p.status === 'pagado' || p.status === 'abono'));
+    p.payment_method === 'efectivo' && (p.bank_name || '') !== 'Fondos');
   const egresos = expenses.filter(e => e.payment_method === 'efectivo');
 
   const movimientos = [
