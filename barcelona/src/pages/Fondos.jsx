@@ -16,6 +16,11 @@ import { es } from 'date-fns/locale';
 import ExpenseForm from '../components/expenses/ExpenseForm';
 import { formatCurrency } from '../components/lib/formatCurrency';
 import TraspasoModal from '../components/fondos/TraspasoModal';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import CorteCajaModal from '../components/tesoreria/CorteCajaModal';
+import CajaEfectivoLibro from '../components/tesoreria/CajaEfectivoLibro';
+import BancosPanel from '../components/tesoreria/BancosPanel';
+import ExportContador from '../components/tesoreria/ExportContador';
 
 export default function Fondos() {
   const { canDelete } = usePerms('fondos');
@@ -25,6 +30,8 @@ export default function Fondos() {
   const [editingExpense, setEditingExpense] = useState(null);
   const [editingCashRegister, setEditingCashRegister] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [cajaView, setCajaView] = useState('fondos');
+  const [showCorte, setShowCorte] = useState(false);
   const [formData, setFormData] = useState({
     cash_amount: '',
     register_date: new Date().toISOString().split('T')[0],
@@ -49,13 +56,14 @@ export default function Fondos() {
   const { data: allPayments = [] } = useQuery({
     queryKey: ['allPaymentsForFondos'],
     queryFn: async () => {
-      const [p, gp, tp, lp] = await Promise.all([
+      const [p, gp, tp, lp, sc] = await Promise.all([
         base44.entities.Payment.list(null, 10000),
         base44.entities.GeneralPayment.list(null, 10000),
         base44.entities.TournamentPayment.list(null, 10000),
         base44.entities.LeaguePayment.list(null, 10000),
+        base44.entities.SummerCampPayment.list(null, 10000),
       ]);
-      return [...p, ...gp, ...tp, ...lp];
+      return [...p, ...gp, ...tp, ...lp, ...sc];
     },
   });
   const { data: arqueos = [] } = useQuery({
@@ -72,6 +80,25 @@ export default function Fondos() {
     queryFn: () => base44.entities.Expense.list(null, 10000),
   });
   const expenses = allExpenses.filter(e => e.account === 'Fondos');
+
+  // Tesorería: fuente única de saldos + actas de corte
+  const { data: saldosCuentas = [] } = useQuery({
+    queryKey: ['saldosPorCuenta'],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('saldos_por_cuenta');
+      if (error) throw new Error(error.message);
+      return data || [];
+    },
+  });
+  const saldoEfectivo = Number(saldosCuentas.find(s => s.cuenta === 'Efectivo')?.saldo ?? 0);
+  const { data: cortes = [] } = useQuery({
+    queryKey: ['cajaCortes'],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('caja_cortes').select('*').order('created_at', { ascending: false }).limit(5);
+      if (error) throw new Error(error.message);
+      return data || [];
+    },
+  });
 
   const bankBalances = ['BBVA', 'MP', 'NU', 'OpenBank'].reduce((acc, bank) => {
     const inc = allPayments.filter(p => p.payment_method === 'transferencia' && p.bank_name === bank).reduce((s, p) => s + (p.amount || 0), 0);
@@ -356,9 +383,9 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
         <div>
           <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-3">
             <Wallet className="w-8 h-8 text-green-600" />
-            Fondos
+            Tesorería
           </h1>
-          <p className="text-gray-600 mt-1">Efectivo del corte de caja</p>
+          <p className="text-gray-600 mt-1">Cajas, bancos y cortes — el dinero del club en un solo lugar</p>
         </div>
         <div className="flex gap-2 flex-wrap">
           <Button
@@ -410,6 +437,24 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
         />
       )}
 
+      <Tabs defaultValue="cajas">
+        <TabsList>
+          <TabsTrigger value="cajas">Cajas</TabsTrigger>
+          <TabsTrigger value="bancos">Bancos</TabsTrigger>
+          <TabsTrigger value="contador">Para el contador</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="cajas" className="mt-4 space-y-6">
+          <div className="flex gap-2">
+            <Button size="sm" variant={cajaView === 'fondos' ? 'default' : 'outline'} onClick={() => setCajaView('fondos')}>Caja Fondos (CEO)</Button>
+            <Button size="sm" variant={cajaView === 'efectivo' ? 'default' : 'outline'} onClick={() => setCajaView('efectivo')}>Caja Efectivo (operativa)</Button>
+          </div>
+
+          {cajaView === 'efectivo' && (
+            <CajaEfectivoLibro payments={allPayments} expenses={allExpenses} cortes={cortes} onCorte={() => setShowCorte(true)} />
+          )}
+
+          {cajaView === 'fondos' && (<>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card className="border-2 border-green-200 bg-gradient-to-br from-green-50 to-white">
           <CardContent className="pt-6">
@@ -629,7 +674,22 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
           )}
         </CardContent>
       </Card>
-    
+          </>)}
+        </TabsContent>
+
+        <TabsContent value="bancos" className="mt-4">
+          <BancosPanel saldos={saldosCuentas} payments={allPayments} expenses={allExpenses} />
+        </TabsContent>
+
+        <TabsContent value="contador" className="mt-4">
+          <ExportContador payments={allPayments} expenses={allExpenses} />
+        </TabsContent>
+      </Tabs>
+
+      {showCorte && (
+        <CorteCajaModal saldoEfectivo={saldoEfectivo} onClose={() => setShowCorte(false)} />
+      )}
+
       {/* ── Arqueo de Caja ── */}
       {showArqueo && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowArqueo(false)}>
