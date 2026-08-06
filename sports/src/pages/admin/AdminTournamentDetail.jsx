@@ -12,6 +12,14 @@ import AdminFinanzasTab from './AdminFinanzasTab'
 const TAB_LABELS = ['Equipos', 'Partidos', 'Finanzas']
 
 // ─── helpers ────────────────────────────────────────────────────────────────
+const BRACKET_NAME_MAP = {
+  'Ganador Semi A': 'Primer Lugar',
+  'Ganador Semi B': 'Segundo Lugar',
+  'Perdedor Semi A': 'Tercer Lugar',
+  'Perdedor Semi B': 'Cuarto Lugar',
+}
+const fmtBracket = (name) => (name && BRACKET_NAME_MAP[name]) ? BRACKET_NAME_MAP[name] : name
+
 const EMPTY_TEAM = { name: '', captain_name: '', color: '#16a34a', logo_url: '', status: 'active', group_id: '', category_id: '', pays_arbitrage: true, inscription_discount_pct: 0, inscription_amount: 0 }
 const EMPTY_MATCH = {
   matchday: 1, home_team_id: '', away_team_id: '',
@@ -519,13 +527,13 @@ export default function AdminTournamentDetail() {
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2 text-sm">
                                   <span className={`font-medium truncate ${hWin ? 'text-green-700' : 'text-gray-900'}`}>
-                                    {m.home_team_name}
+                                    {fmtBracket(m.home_team_name)}
                                   </span>
                                   <span className="shrink-0 text-xs font-mono bg-gray-100 px-2 py-0.5 rounded">
                                     {isPlayed ? `${m.home_goals} - ${m.away_goals}` : 'vs'}
                                   </span>
                                   <span className={`font-medium truncate ${aWin ? 'text-green-700' : 'text-gray-900'}`}>
-                                    {m.away_team_name}
+                                    {fmtBracket(m.away_team_name)}
                                   </span>
                                 </div>
                                 <p className="text-xs text-gray-400 mt-0.5">
@@ -818,13 +826,13 @@ export default function AdminTournamentDetail() {
               <Field label="Partido *">
                 {matchTeamsFilter && selectedMatch ? (
                   <div className={INPUT + ' bg-gray-50 text-gray-700 cursor-not-allowed'}>
-                    J{selectedMatch.matchday}: {selectedMatch.home_team_name} vs {selectedMatch.away_team_name}
+                    J{selectedMatch.matchday}: {fmtBracket(selectedMatch.home_team_name)} vs {fmtBracket(selectedMatch.away_team_name)}
                   </div>
                 ) : (
                   <select required value={eventForm.match_id} onChange={e => setEventForm(f => ({ ...f, match_id: e.target.value, team_id: '' }))} className={INPUT}>
                     <option value="">Seleccionar...</option>
                     {matches.map(m => (
-                      <option key={m.id} value={m.id}>J{m.matchday}: {m.home_team_name} vs {m.away_team_name}</option>
+                      <option key={m.id} value={m.id}>J{m.matchday}: {fmtBracket(m.home_team_name)} vs {fmtBracket(m.away_team_name)}</option>
                     ))}
                   </select>
                 )}
@@ -878,7 +886,7 @@ export default function AdminTournamentDetail() {
 
       {/* ── DELETE CONFIRMS ───────────────────────────────────────────────── */}
       {deletingTeam && <DeleteConfirm name={deletingTeam.name} onCancel={() => setDeletingTeam(null)} onConfirm={() => deleteTeam.mutate(deletingTeam.id)} pending={deleteTeam.isPending} />}
-      {deletingMatch && <DeleteConfirm name={`J${deletingMatch.matchday}: ${deletingMatch.home_team_name} vs ${deletingMatch.away_team_name}`} onCancel={() => setDeletingMatch(null)} onConfirm={() => deleteMatch.mutate(deletingMatch.id)} pending={deleteMatch.isPending} />}
+      {deletingMatch && <DeleteConfirm name={`J${deletingMatch.matchday}: ${fmtBracket(deletingMatch.home_team_name)} vs ${fmtBracket(deletingMatch.away_team_name)}`} onCancel={() => setDeletingMatch(null)} onConfirm={() => deleteMatch.mutate(deletingMatch.id)} pending={deleteMatch.isPending} />}
       {deletingEvent && <DeleteConfirm name={`Evento de ${deletingEvent.player_name || 'jugador'}`} onCancel={() => setDeletingEvent(null)} onConfirm={() => deleteEvent.mutate(deletingEvent.id)} pending={deleteEvent.isPending} />}
     </div>
   )
