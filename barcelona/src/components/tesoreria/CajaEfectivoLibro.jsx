@@ -13,7 +13,8 @@ import { formatCurrency } from '../lib/formatCurrency';
  */
 export default function CajaEfectivoLibro({ payments, expenses, cortes = [], onCorte }) {
   const ingresos = payments.filter(p =>
-    p.payment_method === 'efectivo' && (p.bank_name || '') !== 'Fondos' && (!p.status || p.status === 'pagado'));
+    p.payment_method === 'efectivo' && (p.bank_name || '') !== 'Fondos' &&
+    (!p.status || p.status === 'pagado' || p.status === 'abono'));
   const egresos = expenses.filter(e => e.payment_method === 'efectivo');
 
   const movimientos = [
