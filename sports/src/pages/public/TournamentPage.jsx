@@ -183,7 +183,7 @@ export default function TournamentPage() {
   )
 }
 
-// ── Standings ──────────────────────────────────────────────────
+// ── Standings ──────────────────────────────────────────────────────────────────
 function StandingsTab({ standings, groups, teams, matches, tournament }) {
   if (groups.length > 1) {
     return (
@@ -253,7 +253,7 @@ function StandingsTable({ rows }) {
   )
 }
 
-// ── Jornadas ───────────────────────────────────────────────────
+// ── Jornadas ───────────────────────────────────────────────────────────────────
 function JornadasTab({ matchdays, matches }) {
   const [openDay, setOpenDay] = useState(matchdays[0] ?? null)
 
@@ -285,12 +285,23 @@ function JornadasTab({ matchdays, matches }) {
   )
 }
 
+function formatPlaceholderName(name) {
+  if (!name) return null
+  const map = {
+    'Ganador Semi A': 'Primer Lugar',
+    'Ganador Semi B': 'Segundo Lugar',
+    'Perdedor Semi A': 'Tercer Lugar',
+    'Perdedor Semi B': 'Cuarto Lugar',
+  }
+  return map[name] ?? name
+}
+
 function MatchRow({ match: m }) {
   const isPlayed = m.status === 'completed' || m.status === 'forfait'
   const homeColor = m.home_team?.color
   const awayColor = m.away_team?.color
-  const homeName = m.home_team_name || m.home_team?.name || '—'
-  const awayName = m.away_team_name || m.away_team?.name || '—'
+  const homeName = formatPlaceholderName(m.home_team_name) || m.home_team?.name || '—'
+  const awayName = formatPlaceholderName(m.away_team_name) || m.away_team?.name || '—'
 
   return (
     <div className="px-5 py-3 flex items-center gap-3 text-sm">
@@ -323,7 +334,7 @@ function MatchRow({ match: m }) {
   )
 }
 
-// ── Goleadores ─────────────────────────────────────────────────
+// ── Goleadores ─────────────────────────────────────────────────────────────────
 function GoleadoresTab({ scorers }) {
   if (scorers.length === 0) return <p className="text-gray-400 text-sm py-4">Sin goles registrados aún.</p>
   return (
@@ -352,7 +363,7 @@ function GoleadoresTab({ scorers }) {
   )
 }
 
-// ── Equipos ────────────────────────────────────────────────────
+// ── Equipos ────────────────────────────────────────────────────────────────────
 function EquiposTab({ teams }) {
   if (teams.length === 0) return <p className="text-gray-400 text-sm py-4">Sin equipos registrados.</p>
   return (
