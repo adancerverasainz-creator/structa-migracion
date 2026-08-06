@@ -58,7 +58,8 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
 
   const abonoMutation = useMutation({
     mutationFn: async (data) => {
-      const payment = await base44.entities.AccountPayablePayment.create(data);
+      const { cash_register, ...paymentData } = data; // solo UI (caja destino) — no existe como columna en BD
+      const payment = await base44.entities.AccountPayablePayment.create(paymentData);
 
       // Recalcular estado del account
       const accountPayments = allPayments.filter(p => p.account_payable_id === data.account_payable_id);
