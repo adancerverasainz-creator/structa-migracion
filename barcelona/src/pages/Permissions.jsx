@@ -102,15 +102,30 @@ export default function PermissionsPage() {
             <SelectTrigger className="max-w-md"><SelectValue placeholder="Elegir usuario..." /></SelectTrigger>
             <SelectContent>
               {profiles.map(p => (
-                <SelectItem key={p.id} value={p.id}>{p.full_name || p.email} — rol: {p.role}</SelectItem>
+                <SelectItem key={p.id} value={p.id}>
+                  {p.full_name ? `${p.full_name} — ${p.email}` : p.email} · rol: {p.role}
+                </SelectItem>
               ))}
             </SelectContent>
           </Select>
           {selectedUser && (
-            <p className="text-xs text-gray-500 mt-2">
-              Sin excepciones, aplica el default del rol <Badge variant="outline">{selectedUser.role}</Badge>.
-              Cada celda que cambies crea una excepción individual (morado) que queda registrada en Auditoría.
-            </p>
+            <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border bg-gray-50 p-3">
+              <div>
+                <p className="font-semibold text-gray-900">{selectedUser.full_name || selectedUser.email}</p>
+                <p className="text-sm text-gray-600">{selectedUser.email}</p>
+              </div>
+              <Badge variant="outline" className="capitalize">rol: {selectedUser.role}</Badge>
+              {(() => {
+                const n = userPerms.filter(up => up.user_id === selectedUser.id).length;
+                return n > 0
+                  ? <Badge className="bg-purple-100 text-purple-700 border border-purple-300">{n} excepción{n === 1 ? '' : 'es'} individual{n === 1 ? '' : 'es'}</Badge>
+                  : <Badge className="bg-green-100 text-green-700 border border-green-300">Sin excepciones — aplica el rol</Badge>;
+              })()}
+              <p className="basis-full text-xs text-gray-500">
+                Cada celda que cambies crea una excepción individual (morado, marcada con •) que gana sobre el
+                default del rol y queda registrada en Auditoría.
+              </p>
+            </div>
           )}
         </CardContent>
       </Card>
