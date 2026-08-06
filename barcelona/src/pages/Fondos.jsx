@@ -63,7 +63,8 @@ export default function Fondos() {
         base44.entities.LeaguePayment.list(null, 10000),
         base44.entities.SummerCampPayment.list(null, 10000),
       ]);
-      return [...p, ...gp, ...tp, ...lp, ...sc];
+      // Summer: 'pendiente/parcial' = deuda esperada, no dinero → solo 'pagado' al pool.
+      return [...p, ...gp, ...tp, ...lp, ...sc.filter(s => s.status === 'pagado')];
     },
   });
   const { data: arqueos = [] } = useQuery({
