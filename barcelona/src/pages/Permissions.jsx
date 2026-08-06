@@ -6,7 +6,6 @@ import { base44 } from '@/api/base44Client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ShieldCheck, ShieldAlert, RotateCcw, Loader2 } from 'lucide-react';
 import ERPPageHeader from '@/components/layout/ERPPageHeader';
 import { logAudit } from '../components/lib/auditLogger';
@@ -95,19 +94,48 @@ export default function PermissionsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Selecciona un usuario</CardTitle>
+          <CardTitle className="text-base">Usuarios del sistema</CardTitle>
         </CardHeader>
         <CardContent>
-          <Select value={selectedUserId} onValueChange={setSelectedUserId}>
-            <SelectTrigger className="max-w-md"><SelectValue placeholder="Elegir usuario..." /></SelectTrigger>
-            <SelectContent>
-              {profiles.map(p => (
-                <SelectItem key={p.id} value={p.id}>
-                  {p.full_name ? `${p.full_name} — ${p.email}` : p.email} · rol: {p.role}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="overflow-x-auto rounded-lg border">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-gray-50 border-b text-left">
+                  <th className="py-2 px-3 font-semibold text-gray-600">Usuario</th>
+                  <th className="py-2 px-3 font-semibold text-gray-600">Email</th>
+                  <th className="py-2 px-3 font-semibold text-gray-600">Rol</th>
+                  <th className="py-2 px-3 font-semibold text-gray-600 text-center">Excepciones</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {profiles.map(p => {
+                  const n = userPerms.filter(up => up.user_id === p.id).length;
+                  const sel = p.id === selectedUserId;
+                  return (
+                    <tr
+                      key={p.id}
+                      onClick={() => setSelectedUserId(p.id)}
+                      className={`cursor-pointer transition-colors ${sel ? 'bg-purple-50' : 'hover:bg-gray-50'}`}
+                    >
+                      <td className={`py-2 px-3 ${sel ? 'font-semibold text-purple-800' : 'text-gray-900'}`}>
+                        {p.full_name || '—'}
+                      </td>
+                      <td className="py-2 px-3 text-gray-600">{p.email}</td>
+                      <td className="py-2 px-3">
+                        <Badge variant="outline" className="capitalize">{p.role}</Badge>
+                      </td>
+                      <td className="py-2 px-3 text-center">
+                        {n > 0
+                          ? <Badge className="bg-purple-100 text-purple-700 border border-purple-300">{n}</Badge>
+                          : <span className="text-gray-300">—</span>}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-xs text-gray-400 mt-2">Haz clic en un usuario para ver y editar su matriz de permisos.</p>
           {selectedUser && (
             <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border bg-gray-50 p-3">
               <div>
