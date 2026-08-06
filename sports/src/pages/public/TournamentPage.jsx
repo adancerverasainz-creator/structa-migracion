@@ -288,10 +288,10 @@ function JornadasTab({ matchdays, matches }) {
 function formatPlaceholderName(name) {
   if (!name) return null
   const map = {
-    'Ganador Semi A': 'Primer Lugar',
-    'Ganador Semi B': 'Segundo Lugar',
-    'Perdedor Semi A': 'Tercer Lugar',
-    'Perdedor Semi B': 'Cuarto Lugar',
+    'Ganador Semi A': '1er Lugar',
+    'Ganador Semi B': '2do Lugar',
+    'Perdedor Semi A': '3er Lugar',
+    'Perdedor Semi B': '4to Lugar',
   }
   return map[name] ?? name
 }
