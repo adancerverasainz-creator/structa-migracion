@@ -296,6 +296,7 @@ export default function AdminTournamentDetail() {
   const [eventModal, setEventModal] = useState(null)
   const [eventForm, setEventForm] = useState(EMPTY_EVENT)
   const [deletingEvent, setDeletingEvent] = useState(null)
+  const [confirmVuelta, setConfirmVuelta] = useState(false)
   const [matchTeamsFilter, setMatchTeamsFilter] = useState(null) // [home_id, away_id] when opened from a match row
   const [expandedMatch, setExpandedMatch] = useState(null) // match id whose events are shown inline
 
@@ -337,7 +338,40 @@ export default function AdminTournamentDetail() {
     onError: () => toast.error('Error al eliminar'),
   })
 
-  // ── Open event modal pre-filled for a specific match ────────────────────
+  // ── Generar jornadas de vuelta ────────────────────────────────────────────
+  const generarVuelta = useMutation({
+    mutationFn: async () => {
+      if (matches.length === 0) throw new Error('No hay partidos de ida')
+      const maxMatchday = Math.max(...matches.map(m => m.matchday))
+      const vueltaMatches = matches.map(m => ({
+        tournament_id: m.tournament_id,
+        category_id: m.category_id ?? null,
+        group_id: m.group_id ?? null,
+        matchday: m.matchday + maxMatchday,
+        home_team_id: m.away_team_id,
+        away_team_id: m.home_team_id,
+        home_team_name: m.away_team_name ?? null,
+        away_team_name: m.home_team_name ?? null,
+        field: m.field ?? null,
+        match_date: null,
+        match_time: null,
+        status: 'scheduled',
+        home_goals: null,
+        away_goals: null,
+        forfait_team_id: null,
+      }))
+      const { error } = await supabase.from('matches').insert(vueltaMatches)
+      if (error) throw error
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin-matches', id] })
+      toast.success('Jornadas de vuelta generadas')
+      setConfirmVuelta(false)
+    },
+    onError: (e) => toast.error('Error al generar vuelta: ' + e.message),
+  })
+
+    // ── Open event modal pre-filled for a specific match ────────────────────
   function openEventForMatch(m) {
     setEventForm({ ...EMPTY_EVENT, match_id: m.id })
     setMatchTeamsFilter([m.home_team_id, m.away_team_id])
@@ -485,12 +519,22 @@ export default function AdminTournamentDetail() {
         <div className="space-y-4">
           <div className="flex justify-between items-center">
             <p className="text-sm text-gray-500">{matches.length} partido{matches.length !== 1 ? 's' : ''}</p>
-            <button
-              onClick={() => { setMatchForm(EMPTY_MATCH); setMatchModal('create') }}
-              className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium px-3 py-1.5 rounded-lg transition-colors"
-            >
-              <Plus className="w-4 h-4" /> Partido
-            </button>
+            <div className="flex items-center gap-2">
+              {matches.length > 0 && (
+                <button
+                  onClick={() => setConfirmVuelta(true)}
+                  className="flex items-center gap-1.5 border border-green-600 text-green-700 hover:bg-green-50 text-sm font-medium px-3 py-1.5 rounded-lg transition-colors"
+                >
+                  <Zap className="w-4 h-4" /> Generar vuelta
+                </button>
+              )}
+              <button
+                onClick={() => { setMatchForm(EMPTY_MATCH); setMatchModal('create') }}
+                className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium px-3 py-1.5 rounded-lg transition-colors"
+              >
+                <Plus className="w-4 h-4" /> Partido
+              </button>
+            </div>
           </div>
 
           {matchesLoading ? (
@@ -888,6 +932,21 @@ export default function AdminTournamentDetail() {
       {deletingTeam && <DeleteConfirm name={deletingTeam.name} onCancel={() => setDeletingTeam(null)} onConfirm={() => deleteTeam.mutate(deletingTeam.id)} pending={deleteTeam.isPending} />}
       {deletingMatch && <DeleteConfirm name={`J${deletingMatch.matchday}: ${fmtBracket(deletingMatch.home_team_name)} vs ${fmtBracket(deletingMatch.away_team_name)}`} onCancel={() => setDeletingMatch(null)} onConfirm={() => deleteMatch.mutate(deletingMatch.id)} pending={deleteMatch.isPending} />}
       {deletingEvent && <DeleteConfirm name={`Evento de ${deletingEvent.player_name || 'jugador'}`} onCancel={() => setDeletingEvent(null)} onConfirm={() => deleteEvent.mutate(deletingEvent.id)} pending={deleteEvent.isPending} />}
+      {confirmVuelta && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6">
+            <h3 className="font-semibold text-gray-900 mb-2">Generar jornadas de vuelta</h3>
+            <p className="text-sm text-gray-600 mb-1">Se crearán <strong>{matches.length} partidos</strong> con los equipos invertidos (local↔visitante).</p>
+            <p className="text-sm text-gray-500 mb-6">Las jornadas de vuelta quedarán sin fecha — puedes editarlas después.</p>
+            <div className="flex gap-3">
+              <button onClick={() => setConfirmVuelta(false)} className="flex-1 border border-gray-300 text-gray-700 font-medium py-2 rounded-lg text-sm hover:bg-gray-50 transition-colors">Cancelar</button>
+              <button onClick={() => generarVuelta.mutate()} disabled={generarVuelta.isPending} className="flex-1 bg-green-600 hover:bg-green-700 disabled:opacity-60 text-white font-medium py-2 rounded-lg text-sm transition-colors">
+                {generarVuelta.isPending ? 'Generando...' : 'Generar vuelta'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
