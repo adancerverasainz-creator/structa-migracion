@@ -23,7 +23,7 @@ export default function CajaEfectivoLibro({ payments, expenses, cortes = [], onC
       id: p.id, type: 'ingreso',
       amount: p.paid_amount ?? p.amount ?? 0,
       date: (p.payment_date || '').slice(0, 10),
-      description: `Cobro en efectivo${p.month ? ` (${p.month})` : p.concept ? ` — ${p.concept}` : ''}`,
+      description: `${(p.paid_amount ?? p.amount ?? 0) < 0 ? '↩ Reverso' : 'Cobro en efectivo'}${p.month ? ` (${p.month})` : p.concept ? ` — ${p.concept}` : ''}`,
       origen: 'Pagos',
     })),
     ...egresos.map(e => ({
@@ -126,7 +126,7 @@ export default function CajaEfectivoLibro({ payments, expenses, cortes = [], onC
                   </div>
                   <div className="text-right flex-shrink-0">
                     <p className={`font-bold ${m.type === 'ingreso' ? 'text-green-600' : m.esCorte ? 'text-blue-700' : 'text-red-600'}`}>
-                      {m.type === 'ingreso' ? '+' : '-'}{formatCurrency(m.amount)}
+                      {m.type === 'ingreso' ? (m.amount < 0 ? '' : '+') : '-'}{formatCurrency(m.amount)}
                     </p>
                     <p className="text-xs text-gray-400">Saldo: {formatCurrency(m.balanceAfter)}</p>
                   </div>
