@@ -412,8 +412,10 @@ deleteMutation.mutate(payment);
 
 // #80 Storno: reverso de pago (solo admin) — el original nunca se modifica
 const reversarMutation = useMutation({
-mutationFn: async ({ payment, motivo }) => {
-const { data, error } = await supabase.rpc('reversar_pago', { p_payment_id: payment.id, p_motivo: motivo });
+mutationFn: async ({ payment, motivo, tipo }) => {
+const fn = tipo === 'general' ? 'reversar_pago_general' : 'reversar_pago';
+const args = tipo === 'general' ? { p_id: payment.id, p_motivo: motivo } : { p_payment_id: payment.id, p_motivo: motivo };
+const { data, error } = await supabase.rpc(fn, args);
 if (error) throw new Error(error.message);
 return data;
 },
@@ -427,6 +429,7 @@ monetaryDiff: -(payment.amount || 0),
 details: `Reverso (storno) del pago ${payment.id}. Motivo: ${motivo}`,
 });
 queryClient.invalidateQueries({ queryKey: ['payments'] });
+queryClient.invalidateQueries({ queryKey: ['generalPayments'] });
 queryClient.invalidateQueries({ queryKey: ['saldosPorCuenta'] });
 toast.success('Reverso registrado — el pago original queda anulado por contra-movimiento');
 setReversarInfo(null);
@@ -652,6 +655,9 @@ payments={generalPayments}
 isLoading={generalPaymentsLoading}
 onEdit={handleGeneralEdit}
 onDelete={canDelete ? handleGeneralDelete : null}
+onReverse={isAdmin ? (p) => { setReversarInfo({ ...p, __tipo: 'general' }); setMotivoReverso(''); } : null}
+currentUserEmail={currentUser?.email}
+isAdmin={isAdmin}
 />
 </TabsContent>
 
@@ -698,7 +704,7 @@ onPagoGeneral={(info) => setPagoGeneralInfo(info)}
 <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6 space-y-4">
 <h3 className="text-lg font-bold text-gray-900">Reversar pago (storno)</h3>
 <p className="text-sm text-gray-600">
-{(players.find(p => p.id === reversarInfo.player_id)?.full_name) || 'Jugador'} — {reversarInfo.month || reversarInfo.payment_type} — <span className="font-bold text-red-600">{formatCurrency(reversarInfo.amount)}</span>
+{reversarInfo.__tipo === 'general' ? reversarInfo.concept : ((players.find(p => p.id === reversarInfo.player_id)?.full_name) || 'Jugador')} — {reversarInfo.__tipo === 'general' ? (reversarInfo.category || 'pago general') : (reversarInfo.month || reversarInfo.payment_type)} — <span className="font-bold text-red-600">{formatCurrency(reversarInfo.amount)}</span>
 </p>
 <p className="text-xs text-gray-500">Se creará un contra-movimiento negativo ligado al original. El pago original no se modifica ni se borra: así el libro siempre cuadra y queda todo en Auditoría.</p>
 <div>
@@ -716,7 +722,7 @@ placeholder="Ej. Monto capturado incorrecto: fueron $600 MP y $600 efectivo"
 <Button
 className="bg-amber-600 hover:bg-amber-700"
 disabled={motivoReverso.trim().length < 5 || reversarMutation.isPending}
-onClick={() => reversarMutation.mutate({ payment: reversarInfo, motivo: motivoReverso.trim() })}
+onClick={() => reversarMutation.mutate({ payment: reversarInfo, motivo: motivoReverso.trim(), tipo: reversarInfo.__tipo })}
 >
 Reversar pago
 </Button>
