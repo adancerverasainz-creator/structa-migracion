@@ -282,9 +282,12 @@ const { data: tournaments = [] } = useQuery({ queryKey: ['tournaments'], queryFn
 const { data: teams = [] } = useQuery({ queryKey: ['teams'], queryFn: () => base44.entities.Team.list(null, 1000) });
 
 const now = selectedDate;
-// FIX: only count payments with status === 'pagado' for monthly cuotas
+// Summer: 'pendiente/parcial' = deuda esperada, NO dinero recibido → solo 'pagado' cuenta.
 const campPagados = summerCampPayments.filter(p => p.status === 'pagado');
-const pagosPagados = payments.filter(p => p.status === 'pagado');
+// Pagos (mensualidades/reinscripción/uniformes): cada registro ES dinero recibido;
+// status 'pendiente' solo marca que la cuota no quedó saldada (abono parcial).
+// Antes se excluían y los abonos no aparecían en el reporte diario (caso Mauro 06/ago/2026).
+const pagosPagados = payments;
 
 // All income sources array (only confirmed paid records)
 const allPayments = [...pagosPagados, ...generalPayments, ...tournamentPayments, ...leaguePayments, ...campPagados];
