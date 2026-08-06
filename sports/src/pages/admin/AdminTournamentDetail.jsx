@@ -343,24 +343,39 @@ export default function AdminTournamentDetail() {
     mutationFn: async () => {
       const idaMatches = matches.filter(m => m.home_team_id !== null && m.away_team_id !== null)
       if (idaMatches.length === 0) throw new Error('No hay partidos de ida')
-      const maxMatchday = Math.max(...idaMatches.map(m => m.matchday))
-      const vueltaMatches = idaMatches.map(m => ({
-        tournament_id: m.tournament_id,
-        category_id: m.category_id ?? null,
-        group_id: m.group_id ?? null,
-        matchday: m.matchday + maxMatchday,
-        home_team_id: m.away_team_id,
-        away_team_id: m.home_team_id,
-        home_team_name: m.away_team_name ?? null,
-        away_team_name: m.home_team_name ?? null,
-        field: m.field ?? null,
-        match_date: null,
-        match_time: null,
-        status: 'scheduled',
-        home_goals: null,
-        away_goals: null,
-        forfait_team_id: null,
-      }))
+
+      // Group by group_id + category_id — each bucket calculates its own maxMatchday
+      const byBucket = idaMatches.reduce((acc, m) => {
+        const key = `${m.group_id ?? 'none'}_${m.category_id ?? 'none'}`
+        if (!acc[key]) acc[key] = []
+        acc[key].push(m)
+        return acc
+      }, {})
+
+      const vueltaMatches = []
+      for (const bucketMatches of Object.values(byBucket)) {
+        const maxMatchday = Math.max(...bucketMatches.map(m => m.matchday))
+        for (const m of bucketMatches) {
+          vueltaMatches.push({
+            tournament_id: m.tournament_id,
+            category_id: m.category_id ?? null,
+            group_id: m.group_id ?? null,
+            matchday: m.matchday + maxMatchday,
+            home_team_id: m.away_team_id,
+            away_team_id: m.home_team_id,
+            home_team_name: m.away_team_name ?? null,
+            away_team_name: m.home_team_name ?? null,
+            field: m.field ?? null,
+            match_date: null,
+            match_time: null,
+            status: 'scheduled',
+            home_goals: null,
+            away_goals: null,
+            forfait_team_id: null,
+          })
+        }
+      }
+
       const { error } = await supabase.from('matches').insert(vueltaMatches)
       if (error) throw error
     },
