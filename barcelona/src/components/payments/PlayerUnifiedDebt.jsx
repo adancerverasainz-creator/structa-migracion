@@ -79,7 +79,11 @@ export default function PlayerUnifiedDebt({
           mensualidadIdx.set(key, (mensualidadIdx.get(key) || 0) + (pay.amount || 0));
         }
       } else if ((pt === 'inscripcion' || pt === 'reinscripcion') && pay.month === currentSeason) {
-        inscIdx.set(pid, (inscIdx.get(pid) || 0) + (pay.amount || 0));
+        const cur = inscIdx.get(pid) || { paid: 0, liquidado: false };
+        cur.paid += (pay.amount || 0);
+        // Solo un pago con status 'pagado' salda la reinscripción; un abono no.
+        if (pay.status === 'pagado') cur.liquidado = true;
+        inscIdx.set(pid, cur);
       } else if (pt === 'uniformes') {
         if (!uniformIdx.has(pid)) uniformIdx.set(pid, []);
         uniformIdx.get(pid).push(pay);
@@ -229,10 +233,13 @@ export default function PlayerUnifiedDebt({
       // ── 2. INSCRIPCIÓN / REINSCRIPCIÓN ──
       // Bajas/inactivos y becas 100% NO generan deuda de reinscripción de la
       // temporada vigente (la deuda congelada de mensualidades sí se conserva).
-      const paidInscripcion = inscIdx.get(p.id) || 0;
+      const insc = inscIdx.get(p.id) || { paid: 0, liquidado: false };
+      const paidInscripcion = insc.paid;
       const esBajaOInactivo = !!p.baja_date || ['baja', 'inactivo'].includes((p.status || '').toLowerCase());
       const exentoInscripcion = esBajaOInactivo || p.scholarship === '100%';
-      const inscPending = (paidInscripcion > 0 || exentoInscripcion) ? 0 : (feesConfig?.inscripcion_default ?? 1800);
+      // Un abono NO liquida: pendiente = cuota − abonado (salvo pago con status 'pagado' o exento)
+      const inscTotal = feesConfig?.inscripcion_default ?? 1800;
+      const inscPending = (exentoInscripcion || insc.liquidado) ? 0 : Math.max(0, inscTotal - paidInscripcion);
 
       if (paidInscripcion > 0 || !exentoInscripcion) sections.push({
         id: 'inscripcion',
@@ -241,11 +248,13 @@ export default function PlayerUnifiedDebt({
         color: 'text-purple-600',
         bgColor: 'bg-purple-50',
         borderColor: 'border-purple-200',
-        badge: inscPending > 0 ? 'Pendiente' : 'Pagado ✓',
-        badgeColor: inscPending > 0 ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700',
+        badge: inscPending > 0 ? (paidInscripcion > 0 ? 'Abonado' : 'Pendiente') : 'Pagado ✓',
+        badgeColor: inscPending > 0 ? (paidInscripcion > 0 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700') : 'bg-green-100 text-green-700',
         items: [{
           label: `Temporada ${currentSeason}`,
-          detail: inscPending > 0 ? 'Reinscripción pendiente' : `Pagado: ${formatCurrency(paidInscripcion)}`,
+          detail: inscPending > 0
+            ? (paidInscripcion > 0 ? `Abonado: ${formatCurrency(paidInscripcion)} — Pendiente: ${formatCurrency(inscPending)}` : 'Reinscripción pendiente')
+            : `Pagado: ${formatCurrency(paidInscripcion)}`,
           paid: paidInscripcion,
           pending: inscPending,
           payment_type: 'reinscripcion',
