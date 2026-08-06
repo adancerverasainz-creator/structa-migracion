@@ -13,10 +13,10 @@ const TAB_LABELS = ['Equipos', 'Partidos', 'Finanzas']
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 const BRACKET_NAME_MAP = {
-  'Ganador Semi A': 'Primer Lugar',
-  'Ganador Semi B': 'Segundo Lugar',
-  'Perdedor Semi A': 'Tercer Lugar',
-  'Perdedor Semi B': 'Cuarto Lugar',
+  'Ganador Semi A': '1er Lugar',
+  'Ganador Semi B': '2do Lugar',
+  'Perdedor Semi A': '3er Lugar',
+  'Perdedor Semi B': '4to Lugar',
 }
 const fmtBracket = (name) => (name && BRACKET_NAME_MAP[name]) ? BRACKET_NAME_MAP[name] : name
 
