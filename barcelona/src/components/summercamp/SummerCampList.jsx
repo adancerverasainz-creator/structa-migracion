@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Pencil, Trash2, Search, Calendar, Shirt } from 'lucide-react';
+import { Pencil, Trash2, Search, Calendar, Shirt, Undo2 } from 'lucide-react';
 import { formatCurrency } from '../lib/formatCurrency';
 import { format } from 'date-fns';
 
@@ -14,8 +14,15 @@ const STATUS_STYLES = {
 
 const METHOD_LABELS = { efectivo: 'Efectivo', tarjeta: 'Tarjeta', transferencia: 'Transferencia' };
 
-export default function SummerCampList({ payments, players, isLoading, onEdit, onDelete, filterType }) {
+export default function SummerCampList({ payments, players, isLoading, onEdit, onDelete, onReverse, currentUserEmail, isAdmin, filterType }) {
   const [search, setSearch] = useState('');
+
+  // #80 Storno fase 2: ventana de corrección (mismo día) + reverso admin
+  const hoyStr = new Date().toDateString();
+  const esMismoDia = (p) => p.created_date && new Date(p.created_date).toDateString() === hoyStr;
+  const reversedIds = new Set(payments.filter(p => p.reversal_of).map(p => p.reversal_of));
+  const puedeCorregir = (p) => !p.reversal_of && !reversedIds.has(p.id)
+    && esMismoDia(p) && (isAdmin || (p.created_by && p.created_by === currentUserEmail));
 
   const getPlayerName = (p) => {
     if (p.player_name) return p.player_name;
@@ -102,15 +109,25 @@ export default function SummerCampList({ payments, players, isLoading, onEdit, o
                     </Badge>
                   </td>
                   <td className="px-4 py-3">
-                    <div className="flex gap-1">
-                      <Button size="icon" variant="ghost" className="h-7 w-7 text-gray-400 hover:text-blue-600" onClick={() => onEdit(p)}>
-                        <Pencil className="w-3.5 h-3.5" />
-                      </Button>
-                      {onDelete && (
-<Button size="icon" variant="ghost" className="h-7 w-7 text-gray-400 hover:text-red-600" onClick={() => onDelete(p)}>
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </Button>
-)}
+                    <div className="flex items-center gap-1">
+                      {p.reversal_of && <Badge className="bg-gray-200 text-gray-700 text-xs">↩ Reverso</Badge>}
+                      {reversedIds.has(p.id) && <Badge className="bg-red-100 text-red-700 text-xs">Reversado</Badge>}
+                      {puedeCorregir(p) ? (
+                        <>
+                          <Button size="icon" variant="ghost" className="h-7 w-7 text-gray-400 hover:text-blue-600" title="Ventana de corrección: solo el mismo día" onClick={() => onEdit(p)}>
+                            <Pencil className="w-3.5 h-3.5" />
+                          </Button>
+                          {onDelete && isAdmin && (
+                            <Button size="icon" variant="ghost" className="h-7 w-7 text-gray-400 hover:text-red-600" onClick={() => onDelete(p)}>
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </Button>
+                          )}
+                        </>
+                      ) : (!p.reversal_of && !reversedIds.has(p.id) && onReverse) ? (
+                        <Button size="icon" variant="ghost" className="h-7 w-7 text-amber-600 hover:text-amber-700" title="Storno: contra-movimiento que anula el pago" onClick={() => onReverse(p)}>
+                          <Undo2 className="w-3.5 h-3.5" />
+                        </Button>
+                      ) : null}
                     </div>
                   </td>
                 </tr>
