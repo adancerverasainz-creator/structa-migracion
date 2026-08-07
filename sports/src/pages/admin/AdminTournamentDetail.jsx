@@ -870,6 +870,7 @@ export default function AdminTournamentDetail() {
           tournament={tournament}
           teams={teams}
           tournamentId={id}
+          matches={matches}
         />
       )}
 
