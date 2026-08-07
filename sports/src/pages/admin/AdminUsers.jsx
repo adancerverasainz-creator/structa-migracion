@@ -402,7 +402,7 @@ export default function AdminUsers() {
                     {isPending && u.last_invited_at && (
                       <p className="text-xs text-amber-600 mt-0.5 flex items-center gap-1">
                         <Clock className="w-3 h-3" />
-                        Invitación enviada {timeAgo(u.last_invited_at)} · revisa spam
+                        Invitación enviada {timeAgo(u.last_invited_at)} · desde noreply@structa.mx
                       </p>
                     )}
 
@@ -483,13 +483,13 @@ export default function AdminUsers() {
                 </div>
               </div>
 
-              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800 flex gap-2">
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800 flex gap-2">
                 <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
                 <div>
                   <p className="font-medium">¿No llegó el correo?</p>
                   <p className="text-xs mt-0.5">
-                    El remitente es <code className="bg-amber-100 px-1 rounded">noreply@mail.app.supabase.io</code>.
-                    Pide al usuario que revise su carpeta de spam o correo no deseado.
+                    El remitente es <code className="bg-blue-100 px-1 rounded">noreply@structa.mx</code>.
+                    Si no aparece en bandeja de entrada, pide al usuario que revise spam.
                     El enlace expira en 24 horas.
                   </p>
                 </div>
