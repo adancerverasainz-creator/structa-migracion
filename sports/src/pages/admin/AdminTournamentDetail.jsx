@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../../lib/supabase'
 import { formatDate } from '../../lib/utils'
 import {
-  ArrowLeft, Plus, Pencil, Trash2, X, Users, Calendar, Zap, Link2
+  ArrowLeft, Plus, Pencil, Trash2, X, Users, Calendar, Zap, Link2, Trophy
 } from 'lucide-react'
 import { toast } from 'sonner'
 import AdminFinanzasTab from './AdminFinanzasTab'
@@ -326,6 +326,7 @@ export default function AdminTournamentDetail() {
   const [eventForm, setEventForm] = useState(EMPTY_EVENT)
   const [deletingEvent, setDeletingEvent] = useState(null)
   const [confirmVuelta, setConfirmVuelta] = useState(false)
+  const [confirmBracket, setConfirmBracket] = useState(false)
   const [matchTeamsFilter, setMatchTeamsFilter] = useState(null) // [home_id, away_id] when opened from a match row
   const [expandedMatch, setExpandedMatch] = useState(null) // match id whose events are shown inline
 
@@ -455,6 +456,71 @@ export default function AdminTournamentDetail() {
     onError: (e) => toast.error('Error al generar vuelta: ' + e.message),
   })
 
+  // ── Motor de Bracket: generar eliminatoria según playoff_format ──────────
+  const generarBracket = useMutation({
+    mutationFn: async () => {
+      const format = tournament?.playoff_format
+      if (!format || format === 'none') throw new Error('Este torneo no tiene formato de playoff configurado.')
+
+      // Idempotencia: bloquear si ya existen partidos de bracket
+      const existingBrackets = matches.filter(m => m.home_team_id === null && m.away_team_id === null)
+      if (existingBrackets.length > 0) {
+        throw new Error('Ya existen partidos de bracket. Elimínalos antes de regenerarlos.')
+      }
+
+      if (matches.length === 0) throw new Error('No hay partidos registrados.')
+
+      const firstDay = maxRealMatchday + 1
+
+      // Plantilla vacía para un partido de bracket
+      const bp = (matchday, home, away) => ({
+        tournament_id: id,
+        matchday,
+        home_team_id: null,
+        away_team_id: null,
+        home_team_name: home,
+        away_team_name: away,
+        match_date: null,
+        match_time: null,
+        status: 'scheduled',
+        home_goals: null,
+        away_goals: null,
+        forfait_team_id: null,
+        group_id: null,
+        category_id: null,
+        field: null,
+      })
+
+      let bracketMatches = []
+
+      if (format === 'final') {
+        // Top 2 → gran final directa
+        bracketMatches = [bp(firstDay, '1er Lugar', '2do Lugar')]
+      } else if (format === 'semifinal') {
+        // Top 4 → 2 semis + final + 3er lugar
+        bracketMatches = [
+          bp(firstDay,     '1er Lugar',     '4to Lugar'),
+          bp(firstDay,     '2do Lugar',     '3er Lugar'),
+          bp(firstDay + 1, 'Ganador Semi A', 'Ganador Semi B'),
+          bp(firstDay + 1, 'Perdedor Semi A','Perdedor Semi B'),
+        ]
+      }
+
+      const { error } = await supabase.from('matches').insert(bracketMatches)
+      if (error) throw error
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin-matches', id] })
+      const format = tournament?.playoff_format
+      const msg = format === 'final'
+        ? 'Final directa generada (J' + (maxRealMatchday + 1) + ')'
+        : 'Semifinales y final generadas (J' + (maxRealMatchday + 1) + '–J' + (maxRealMatchday + 2) + ')'
+      toast.success(msg)
+      setConfirmBracket(false)
+    },
+    onError: (e) => toast.error('Error al generar bracket: ' + e.message),
+  })
+
   // ── Open event modal pre-filled for a specific match ────────────────────
   function openEventForMatch(m) {
     setEventForm({ ...EMPTY_EVENT, match_id: m.id })
@@ -475,6 +541,8 @@ export default function AdminTournamentDetail() {
       v.matchday > m.matchday
     )
   )
+  // Motor de Bracket: ya existen partidos de eliminatoria
+  const hasBracket = matches.some(m => m.home_team_id === null && m.away_team_id === null)
 
   // ── Grouped matches by matchday ───────────────────────────────────────────
   const matchesByDay = matches.reduce((acc, m) => {
@@ -625,6 +693,15 @@ export default function AdminTournamentDetail() {
                   className="flex items-center gap-1.5 border border-green-600 text-green-700 hover:bg-green-50 text-sm font-medium px-3 py-1.5 rounded-lg transition-colors"
                 >
                   <Zap className="w-4 h-4" /> Generar vuelta
+                </button>
+              )}
+              {/* Motor de Bracket: solo si el torneo tiene playoff_format y aún no hay brackets */}
+              {tournament?.playoff_format && tournament.playoff_format !== 'none' && !hasBracket && matches.length > 0 && (
+                <button
+                  onClick={() => setConfirmBracket(true)}
+                  className="flex items-center gap-1.5 border border-purple-600 text-purple-700 hover:bg-purple-50 text-sm font-medium px-3 py-1.5 rounded-lg transition-colors"
+                >
+                  <Trophy className="w-4 h-4" /> Generar bracket
                 </button>
               )}
               <button
@@ -1133,6 +1210,29 @@ export default function AdminTournamentDetail() {
               <button onClick={() => setConfirmVuelta(false)} className="flex-1 border border-gray-300 text-gray-700 font-medium py-2 rounded-lg text-sm hover:bg-gray-50 transition-colors">Cancelar</button>
               <button onClick={() => generarVuelta.mutate()} disabled={generarVuelta.isPending} className="flex-1 bg-green-600 hover:bg-green-700 disabled:opacity-60 text-white font-medium py-2 rounded-lg text-sm transition-colors">
                 {generarVuelta.isPending ? 'Generando...' : 'Generar vuelta'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {confirmBracket && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6">
+            <h3 className="font-semibold text-gray-900 mb-2">Generar bracket de eliminatoria</h3>
+            <p className="text-sm text-gray-600 mb-1">
+              Formato: <strong>{tournament?.playoff_format === 'final' ? 'Final directa (Top 2)' : 'Semifinales + Final (Top 4)'}</strong>
+            </p>
+            <p className="text-sm text-gray-600 mb-1">
+              Se crearán{' '}
+              <strong>{tournament?.playoff_format === 'final' ? '1 partido' : '4 partidos'}</strong>
+              {' '}en{' '}
+              <strong>{tournament?.playoff_format === 'final' ? '1 jornada (J' + (maxRealMatchday + 1) + ')' : '2 jornadas (J' + (maxRealMatchday + 1) + ' y J' + (maxRealMatchday + 2) + ')'}</strong>.
+            </p>
+            <p className="text-sm text-gray-500 mb-6">Los partidos quedarán sin fecha — puedes editarlos después.</p>
+            <div className="flex gap-3">
+              <button onClick={() => setConfirmBracket(false)} className="flex-1 border border-gray-300 text-gray-700 font-medium py-2 rounded-lg text-sm hover:bg-gray-50 transition-colors">Cancelar</button>
+              <button onClick={() => generarBracket.mutate()} disabled={generarBracket.isPending} className="flex-1 bg-purple-600 hover:bg-purple-700 disabled:opacity-60 text-white font-medium py-2 rounded-lg text-sm transition-colors">
+                {generarBracket.isPending ? 'Generando...' : 'Generar bracket'}
               </button>
             </div>
           </div>
