@@ -3,7 +3,7 @@ import { confirmar } from '@/components/ui/confirmar';
 import { usePerms } from '@/lib/usePerms';
 import { toast } from 'sonner';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { base44 } from '@/api/base44Client';
+import { base44, supabase } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -57,42 +57,28 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
 });
 
   const abonoMutation = useMutation({
+    // RPC atómico: abono + recálculo de estatus + egreso en UNA transacción.
+    // Antes eran 3 escrituras desde el navegador y con rol de captura las últimas
+    // dos fallaban por permisos (abono fantasma sin egreso — caso 07/ago/2026).
     mutationFn: async (data) => {
-      const { cash_register, ...paymentData } = data; // solo UI (caja destino) — no existe como columna en BD
-      const payment = await base44.entities.AccountPayablePayment.create(paymentData);
-
-      // Recalcular estado del account
-      const accountPayments = allPayments.filter(p => p.account_payable_id === data.account_payable_id);
-      const totalPaid = accountPayments.reduce((sum, p) => sum + (p.amount || 0), 0) + data.amount;
-      const account = accounts.find(a => a.id === data.account_payable_id);
-      const total = account?.total_amount || 0;
-      let status = 'pendiente';
-      if (totalPaid >= total) status = 'pagado';
-      else if (totalPaid > 0) status = 'parcial';
-      await base44.entities.AccountPayable.update(data.account_payable_id, { status });
-
-      // Registrar egreso automático para descontar del saldo correspondiente
-      const expenseData = {
-        concept: `Abono CxP: ${account?.concept || ''}${account?.supplier ? ' - ' + account.supplier : ''}`,
-        amount: data.amount,
-        expense_date: data.payment_date,
-        category: account?.category || 'otros',
-        payment_method: data.payment_method,
-        account: data.payment_method === 'transferencia' ? data.bank_name : undefined,
-        notes: `Abono automático desde módulo CxP${data.reference_number ? ' | Ref: ' + data.reference_number : ''}${data.notes ? ' | ' + data.notes : ''}`,
-      };
-      // Fusión Fase 1: pagos desde Fondos también van a expenses, con cuenta Fondos
-      if (data.payment_method === 'efectivo' && data.cash_register === 'caja_principal') {
-        await base44.entities.Expense.create({ ...expenseData, payment_method: 'transferencia', account: 'Fondos', source_module: 'cxp', is_transfer: false });
-      } else {
-        await base44.entities.Expense.create({ ...expenseData, source_module: 'cxp', is_transfer: false });
-      }
-
-      return payment;
+      const { data: paymentId, error } = await supabase.rpc('abonar_cxp', {
+        p_account_id: data.account_payable_id,
+        p_monto: data.amount,
+        p_metodo: data.payment_method,
+        p_banco: data.bank_name || null,
+        p_referencia: data.reference_number || null,
+        p_fecha: data.payment_date || null,
+        p_notas: data.notes || null,
+        p_caja: data.cash_register || null,
+      });
+      if (error) throw new Error(error.message);
+      return paymentId;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['accountPayablePayments'] });
       queryClient.invalidateQueries({ queryKey: ['accountsPayable'] });
+      queryClient.invalidateQueries({ queryKey: ['expenses'] });
+      queryClient.invalidateQueries({ queryKey: ['saldosPorCuenta'] });
       setAbonoAccount(null);
     },
 onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desconocido'}`),
