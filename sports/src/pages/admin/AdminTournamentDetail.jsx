@@ -468,9 +468,11 @@ export default function AdminTournamentDetail() {
         throw new Error('Ya existen partidos de bracket. Elimínalos antes de regenerarlos.')
       }
 
-      if (matches.length === 0) throw new Error('No hay partidos registrados.')
+      // Verificar que hay partidos reales (no brackets) para calcular la jornada de inicio
+      const realMatchesForBracket = matches.filter(m => m.home_team_id !== null && m.away_team_id !== null)
+      if (realMatchesForBracket.length === 0) throw new Error('No hay partidos de fase regular. Crea los partidos regulares antes de generar el bracket.')
 
-      const firstDay = maxRealMatchday + 1
+      const firstDay = Math.max(...realMatchesForBracket.map(m => m.matchday)) + 1
 
       // Plantilla vacía para un partido de bracket
       const bp = (matchday, home, away) => ({
@@ -504,6 +506,9 @@ export default function AdminTournamentDetail() {
           bp(firstDay + 1, 'Ganador Semi A', 'Ganador Semi B'),
           bp(firstDay + 1, 'Perdedor Semi A','Perdedor Semi B'),
         ]
+      } else {
+        // Formato desconocido — nunca debería ocurrir gracias al CHECK constraint de la DB
+        throw new Error(`Formato de playoff desconocido: "${format}". Edita el torneo y selecciona un formato válido.`)
       }
 
       const { error } = await supabase.from('matches').insert(bracketMatches)
@@ -512,9 +517,10 @@ export default function AdminTournamentDetail() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['admin-matches', id] })
       const format = tournament?.playoff_format
+      const j = maxRealMatchday + 1
       const msg = format === 'final'
-        ? 'Final directa generada (J' + (maxRealMatchday + 1) + ')'
-        : 'Semifinales y final generadas (J' + (maxRealMatchday + 1) + '–J' + (maxRealMatchday + 2) + ')'
+        ? `Final directa generada (J${j})`
+        : `Semifinales y final generadas (J${j} y J${j + 1})`
       toast.success(msg)
       setConfirmBracket(false)
     },
@@ -696,7 +702,7 @@ export default function AdminTournamentDetail() {
                 </button>
               )}
               {/* Motor de Bracket: solo si el torneo tiene playoff_format y aún no hay brackets */}
-              {tournament?.playoff_format && tournament.playoff_format !== 'none' && !hasBracket && matches.length > 0 && (
+              {tournament?.playoff_format && tournament.playoff_format !== 'none' && !hasBracket && realMatches.length > 0 && (
                 <button
                   onClick={() => setConfirmBracket(true)}
                   className="flex items-center gap-1.5 border border-purple-600 text-purple-700 hover:bg-purple-50 text-sm font-medium px-3 py-1.5 rounded-lg transition-colors"
