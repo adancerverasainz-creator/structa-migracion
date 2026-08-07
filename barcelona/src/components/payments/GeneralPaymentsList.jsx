@@ -17,8 +17,9 @@ export default function GeneralPaymentsList({ payments, isLoading, onEdit, onDel
     && esMismoDia(p) && (isAdmin || (p.created_by && p.created_by === currentUserEmail));
   const [searchTerm, setSearchTerm] = useState('');
 
+  // El shim guarda '' como null: un pago sin concepto NO debe desaparecer de la lista.
   const filteredPayments = payments.filter(payment =>
-    payment.concept?.toLowerCase().includes(searchTerm.toLowerCase())
+    (payment.concept || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const categoryLabels = {
