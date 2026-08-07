@@ -23,10 +23,18 @@ const fmtBracket = (name) => (name && BRACKET_NAME_MAP[name]) ? BRACKET_NAME_MAP
 const EMPTY_TEAM = { name: '', captain_name: '', color: '#16a34a', logo_url: '', status: 'active', group_id: '', category_id: '', pays_arbitrage: true, inscription_discount_pct: 0, inscription_amount: 0 }
 const EMPTY_MATCH = {
   matchday: 1, home_team_id: '', away_team_id: '',
+  home_team_name: '', away_team_name: '',   // usados solo en modo bracket
   field: '', match_date: '', match_time: '',
   status: 'scheduled', home_goals: '', away_goals: '',
   forfait_team_id: '', group_id: '', category_id: '',
 }
+
+// Nombres predefinidos para partidos de bracket / eliminatoria
+const BRACKET_PRESETS = [
+  '1er lugar', '2do lugar', '3er lugar', '4to lugar',
+  'Ganador Semi A', 'Ganador Semi B', 'Perdedor Semi A', 'Perdedor Semi B',
+  'Ganador Cuarto A', 'Ganador Cuarto B', 'Ganador Cuarto C', 'Ganador Cuarto D',
+]
 const EMPTY_EVENT = { match_id: '', team_id: '', player_name: '', minute: '', event_type: 'goal' }
 
 
@@ -191,15 +199,35 @@ export default function AdminTournamentDetail() {
   // ─── Match mutations ─────────────────────────────────────────────────────
   const [matchModal, setMatchModal] = useState(null)
   const [matchForm, setMatchForm] = useState(EMPTY_MATCH)
+  const [isBracketForm, setIsBracketForm] = useState(false)   // Motor: modo bracket
   const [deletingMatch, setDeletingMatch] = useState(null)
 
   const saveMatch = useMutation({
     mutationFn: async (values) => {
+      const isBracket = isBracketForm
       const homeTeam = teams.find(t => t.id === values.home_team_id)
       const awayTeam = teams.find(t => t.id === values.away_team_id)
+
+      // Motor de Integridad de Brackets: bloquear si la jornada es ≤ fase regular
+      if (isBracket && maxRealMatchday > 0 && Number(values.matchday) <= maxRealMatchday) {
+        throw new Error(
+          `Un partido de bracket debe ir en jornada > ${maxRealMatchday} ` +
+          `(último partido regular: J${maxRealMatchday}). ` +
+          `Usa J${maxRealMatchday + 1} o posterior.`
+        )
+      }
+      // Motor de Integridad de Brackets: validar que tenga nombres definidos
+      if (isBracket && (!values.home_team_name?.trim() || !values.away_team_name?.trim())) {
+        throw new Error('Los partidos de bracket requieren nombre de local y visitante.')
+      }
+
       const payload = {
-        ...values,
         tournament_id: id,
+        matchday: Number(values.matchday),
+        home_team_id: isBracket ? null : (values.home_team_id || null),
+        away_team_id: isBracket ? null : (values.away_team_id || null),
+        home_team_name: isBracket ? values.home_team_name.trim() : (homeTeam?.name || ''),
+        away_team_name: isBracket ? values.away_team_name.trim() : (awayTeam?.name || ''),
         home_goals: values.home_goals === '' ? null : Number(values.home_goals),
         away_goals: values.away_goals === '' ? null : Number(values.away_goals),
         forfait_team_id: values.forfait_team_id || null,
@@ -208,8 +236,7 @@ export default function AdminTournamentDetail() {
         field: values.field || null,
         match_date: values.match_date || null,
         match_time: values.match_time || null,
-        home_team_name: homeTeam?.name || '',
-        away_team_name: awayTeam?.name || '',
+        status: values.status,
       }
 
       if (matchModal === 'create') {
@@ -275,6 +302,7 @@ export default function AdminTournamentDetail() {
       qc.invalidateQueries({ queryKey: ['charges', id] })
       toast.success(matchModal === 'create' ? 'Partido creado' : 'Partido actualizado')
       setMatchModal(null)
+      setIsBracketForm(false)
     },
     onError: (e) => toast.error('Error: ' + e.message),
   })
@@ -288,6 +316,7 @@ export default function AdminTournamentDetail() {
       qc.invalidateQueries({ queryKey: ['admin-matches', id] })
       toast.success('Partido eliminado')
       setDeletingMatch(null)
+      setIsBracketForm(false)
     },
     onError: () => toast.error('Error al eliminar'),
   })
@@ -344,6 +373,22 @@ export default function AdminTournamentDetail() {
       const idaMatches = matches.filter(m => m.home_team_id !== null && m.away_team_id !== null)
       if (idaMatches.length === 0) throw new Error('No hay partidos de ida')
 
+      // ── Motor de Idempotencia: detectar si ya existe vuelta ──────────────
+      // Hay vuelta si existe algún par (A vs B) con su inverso (B vs A) con matchday mayor
+      const vueltaExists = idaMatches.some(m =>
+        idaMatches.some(v =>
+          v.home_team_id === m.away_team_id &&
+          v.away_team_id === m.home_team_id &&
+          v.matchday > m.matchday
+        )
+      )
+      if (vueltaExists) {
+        throw new Error(
+          'Ya existen partidos de vuelta para este torneo. ' +
+          'Elimina los partidos de vuelta antes de regenerarlos.'
+        )
+      }
+
       // Group by group_id + category_id — each bucket calculates its own maxMatchday
       const byBucket = idaMatches.reduce((acc, m) => {
         const key = `${m.group_id ?? 'none'}_${m.category_id ?? 'none'}`
@@ -393,6 +438,20 @@ export default function AdminTournamentDetail() {
     setMatchTeamsFilter([m.home_team_id, m.away_team_id])
     setEventModal('create')
   }
+
+  // ── Motor de Integridad: valores derivados ────────────────────────────────
+  const realMatches = matches.filter(m => m.home_team_id !== null && m.away_team_id !== null)
+  const maxRealMatchday = realMatches.length > 0
+    ? Math.max(...realMatches.map(m => m.matchday))
+    : 0
+  // Motor de Idempotencia: vuelta existe si hay algún par inverso con matchday mayor
+  const hasVuelta = realMatches.some(m =>
+    realMatches.some(v =>
+      v.home_team_id === m.away_team_id &&
+      v.away_team_id === m.home_team_id &&
+      v.matchday > m.matchday
+    )
+  )
 
   // ── Grouped matches by matchday ───────────────────────────────────────────
   const matchesByDay = matches.reduce((acc, m) => {
@@ -536,7 +595,8 @@ export default function AdminTournamentDetail() {
           <div className="flex justify-between items-center">
             <p className="text-sm text-gray-500">{matches.length} partido{matches.length !== 1 ? 's' : ''}</p>
             <div className="flex items-center gap-2">
-              {matches.length > 0 && (
+              {/* Motor de Idempotencia: solo mostrar si no existe vuelta */}
+              {realMatches.length > 0 && !hasVuelta && (
                 <button
                   onClick={() => setConfirmVuelta(true)}
                   className="flex items-center gap-1.5 border border-green-600 text-green-700 hover:bg-green-50 text-sm font-medium px-3 py-1.5 rounded-lg transition-colors"
@@ -545,7 +605,12 @@ export default function AdminTournamentDetail() {
                 </button>
               )}
               <button
-                onClick={() => { setMatchForm(EMPTY_MATCH); setMatchModal('create') }}
+                onClick={() => {
+                  // Motor de Jornada Automática: siguiente jornada tras el máximo real
+                  setIsBracketForm(false)
+                  setMatchForm({ ...EMPTY_MATCH, matchday: maxRealMatchday + 1 })
+                  setMatchModal('create')
+                }}
                 className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium px-3 py-1.5 rounded-lg transition-colors"
               >
                 <Plus className="w-4 h-4" /> Partido
@@ -797,11 +862,51 @@ export default function AdminTournamentDetail() {
 
       {/* ── MATCH MODAL ──────────────────────────────────────────────────── */}
       {matchModal !== null && (
-        <Modal title={matchModal === 'create' ? 'Nuevo partido' : 'Editar partido'} onClose={() => setMatchModal(null)}>
+        <Modal title={matchModal === 'create' ? 'Nuevo partido' : 'Editar partido'} onClose={() => { setMatchModal(null); setIsBracketForm(false) }}>
           <form onSubmit={e => { e.preventDefault(); saveMatch.mutate(matchForm) }} className="space-y-4">
+
+            {/* Motor de Integridad: toggle bracket solo al crear */}
+            {matchModal === 'create' && (
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={isBracketForm}
+                  onChange={e => {
+                    const bracket = e.target.checked
+                    setIsBracketForm(bracket)
+                    setMatchForm(f => ({
+                      ...f,
+                      // Auto-jornada: siguiente a los reales si es bracket
+                      matchday: bracket ? maxRealMatchday + 1 : f.matchday,
+                      home_team_id: '',
+                      away_team_id: '',
+                      home_team_name: '',
+                      away_team_name: '',
+                    }))
+                  }}
+                  className="w-4 h-4 rounded border-gray-300 text-green-600"
+                />
+                <span className="text-sm font-medium text-gray-700">Partido de bracket / eliminatoria</span>
+                <span className="text-xs text-gray-400">(sin equipos reales)</span>
+              </label>
+            )}
+
             <div className="grid grid-cols-2 gap-3">
               <Field label="Jornada *">
-                <input required type="number" min="1" value={matchForm.matchday} onChange={e => setMatchForm(f => ({ ...f, matchday: Number(e.target.value) }))} className={INPUT} />
+                <input
+                  required
+                  type="number"
+                  min="1"
+                  value={matchForm.matchday}
+                  onChange={e => setMatchForm(f => ({ ...f, matchday: Number(e.target.value) }))}
+                  className={INPUT}
+                />
+                {/* Motor: advertencia si bracket va antes que la fase regular */}
+                {isBracketForm && maxRealMatchday > 0 && Number(matchForm.matchday) <= maxRealMatchday && (
+                  <p className="text-xs text-red-600 mt-1">
+                    ⚠ Debe ser mayor a J{maxRealMatchday} (último partido regular)
+                  </p>
+                )}
               </Field>
               <Field label="Estado">
                 <select value={matchForm.status} onChange={e => setMatchForm(f => ({ ...f, status: e.target.value }))} className={INPUT}>
@@ -813,18 +918,65 @@ export default function AdminTournamentDetail() {
                 </select>
               </Field>
             </div>
-            <Field label="Equipo local *">
-              <select required value={matchForm.home_team_id} onChange={e => setMatchForm(f => ({ ...f, home_team_id: e.target.value }))} className={INPUT}>
-                <option value="">Seleccionar...</option>
-                {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-              </select>
-            </Field>
-            <Field label="Equipo visitante *">
-              <select required value={matchForm.away_team_id} onChange={e => setMatchForm(f => ({ ...f, away_team_id: e.target.value }))} className={INPUT}>
-                <option value="">Seleccionar...</option>
-                {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-              </select>
-            </Field>
+
+            {/* Motor de Integridad: campos distintos según modo */}
+            {isBracketForm ? (
+              <>
+                <Field label="Nombre local *">
+                  <select
+                    value={matchForm.home_team_name}
+                    onChange={e => setMatchForm(f => ({ ...f, home_team_name: e.target.value }))}
+                    className={INPUT}
+                  >
+                    <option value="">Seleccionar o escribir...</option>
+                    {BRACKET_PRESETS.map(n => <option key={n} value={n}>{n}</option>)}
+                  </select>
+                  {!BRACKET_PRESETS.includes(matchForm.home_team_name) && (
+                    <input
+                      type="text"
+                      placeholder="Otro nombre..."
+                      value={matchForm.home_team_name}
+                      onChange={e => setMatchForm(f => ({ ...f, home_team_name: e.target.value }))}
+                      className={`${INPUT} mt-1`}
+                    />
+                  )}
+                </Field>
+                <Field label="Nombre visitante *">
+                  <select
+                    value={matchForm.away_team_name}
+                    onChange={e => setMatchForm(f => ({ ...f, away_team_name: e.target.value }))}
+                    className={INPUT}
+                  >
+                    <option value="">Seleccionar o escribir...</option>
+                    {BRACKET_PRESETS.map(n => <option key={n} value={n}>{n}</option>)}
+                  </select>
+                  {!BRACKET_PRESETS.includes(matchForm.away_team_name) && (
+                    <input
+                      type="text"
+                      placeholder="Otro nombre..."
+                      value={matchForm.away_team_name}
+                      onChange={e => setMatchForm(f => ({ ...f, away_team_name: e.target.value }))}
+                      className={`${INPUT} mt-1`}
+                    />
+                  )}
+                </Field>
+              </>
+            ) : (
+              <>
+                <Field label="Equipo local *">
+                  <select required value={matchForm.home_team_id} onChange={e => setMatchForm(f => ({ ...f, home_team_id: e.target.value }))} className={INPUT}>
+                    <option value="">Seleccionar...</option>
+                    {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                  </select>
+                </Field>
+                <Field label="Equipo visitante *">
+                  <select required value={matchForm.away_team_id} onChange={e => setMatchForm(f => ({ ...f, away_team_id: e.target.value }))} className={INPUT}>
+                    <option value="">Seleccionar...</option>
+                    {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                  </select>
+                </Field>
+              </>
+            )}
             {(matchForm.status === 'completed' || matchForm.status === 'forfait') && (
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Goles local">
