@@ -24,6 +24,13 @@ const EMPTY_FORM = {
   points_draw: 1,
   points_loss: 0,
   yellows_for_suspension: 3,
+  playoff_format: 'none',
+}
+
+const PLAYOFF_FORMAT_LABEL = {
+  none: 'Sin playoff',
+  final: 'Final directa (Top 2)',
+  semifinal: 'Semifinales + Final (Top 4)',
 }
 
 export default function AdminTournaments() {
@@ -92,6 +99,7 @@ export default function AdminTournaments() {
       points_draw: t.points_draw ?? 1,
       points_loss: t.points_loss ?? 0,
       yellows_for_suspension: t.yellows_for_suspension ?? 3,
+      playoff_format: t.playoff_format || 'none',
     })
     setModal(t)
   }
@@ -144,6 +152,11 @@ export default function AdminTournaments() {
                     <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${STATUS_COLOR[t.status] || STATUS_COLOR.draft}`}>
                       {STATUS_LABEL[t.status] || t.status}
                     </span>
+                    {t.playoff_format && t.playoff_format !== 'none' && (
+                      <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">
+                        {PLAYOFF_FORMAT_LABEL[t.playoff_format] || t.playoff_format}
+                      </span>
+                    )}
                   </div>
                   <div className="flex items-center gap-4 mt-1 text-xs text-gray-400">
                     {t.season && <span>{t.season}</span>}
@@ -266,6 +279,27 @@ export default function AdminTournaments() {
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 resize-none"
                   placeholder="Descripción del torneo..."
                 />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Formato de playoff</label>
+                <select
+                  value={form.playoff_format}
+                  onChange={e => setForm(f => ({ ...f, playoff_format: e.target.value }))}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                >
+                  <option value="none">Sin playoff (solo fase regular)</option>
+                  <option value="final">Final directa — Top 2 van directo a la gran final</option>
+                  <option value="semifinal">Semifinales + Final — Top 4 (2 semis, final y 3er lugar)</option>
+                </select>
+                {form.playoff_format !== 'none' && (
+                  <p className="text-xs text-purple-600 mt-1">
+                    {form.playoff_format === 'final'
+                      ? '1 jornada extra: 1 partido de final'
+                      : '2 jornadas extra: 2 semis + final + 3er lugar'}
+                    {' — se generan automáticamente con el botón "Generar bracket"'}
+                  </p>
+                )}
               </div>
 
               <div className="grid grid-cols-3 gap-3">
