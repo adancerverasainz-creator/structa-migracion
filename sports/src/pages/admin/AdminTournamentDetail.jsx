@@ -421,12 +421,35 @@ export default function AdminTournamentDetail() {
         }
       }
 
+      // ── Motor de Desplazamiento: reubicar brackets que colisionan ───────────
+      // Si hay partidos de bracket (home_team_id IS NULL) en jornadas que la vuelta
+      // va a ocupar, los empujamos automáticamente después de la última jornada de vuelta.
+      const vueltaMatchdays = new Set(vueltaMatches.map(m => m.matchday))
+      const maxVueltaMatchday = Math.max(...vueltaMatches.map(m => m.matchday))
+      const bracketMatches = matches.filter(m => m.home_team_id === null && m.away_team_id === null)
+      const conflictingBrackets = bracketMatches.filter(m => vueltaMatchdays.has(m.matchday))
+
+      if (conflictingBrackets.length > 0) {
+        // Agrupar brackets conflictivos por su jornada original y reasignar en orden
+        const conflictDays = [...new Set(conflictingBrackets.map(m => m.matchday))].sort((a, b) => a - b)
+        const dayRemap = {}
+        conflictDays.forEach((day, i) => { dayRemap[day] = maxVueltaMatchday + 1 + i })
+
+        for (const bracket of conflictingBrackets) {
+          const { error: mvErr } = await supabase
+            .from('matches')
+            .update({ matchday: dayRemap[bracket.matchday] })
+            .eq('id', bracket.id)
+          if (mvErr) throw mvErr
+        }
+      }
+
       const { error } = await supabase.from('matches').insert(vueltaMatches)
       if (error) throw error
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['admin-matches', id] })
-      toast.success('Jornadas de vuelta generadas')
+      toast.success('Jornadas de vuelta generadas. Los brackets fueron reubicados automáticamente si había conflicto.')
       setConfirmVuelta(false)
     },
     onError: (e) => toast.error('Error al generar vuelta: ' + e.message),
