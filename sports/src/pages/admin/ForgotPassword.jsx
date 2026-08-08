@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { supabase } from '../../lib/supabase'
 import { Trophy, Mail, ArrowLeft, CheckCircle } from 'lucide-react'
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
@@ -25,12 +24,12 @@ export default function ForgotPassword() {
 
       const data = await res.json()
 
-      if (!data.success && data.code !== 'GHOST') {
-        // Solo mostramos error técnico real, nunca si el email no existe
+      if (!data.success) {
+        // Solo mostramos error cuando es falla técnica real (no revelar si el email existe)
         if (data.code === 'EMAIL_ERROR' || data.code === 'LINK_ERROR') {
           setError('Ocurrió un problema técnico. Intenta de nuevo en unos minutos.')
         } else {
-          // Para cualquier otro caso (rate limit, ghost, etc.) mostramos éxito genérico
+          // Rate limit, email inexistente, etc. → éxito genérico siempre
           setSent(true)
         }
       } else {
