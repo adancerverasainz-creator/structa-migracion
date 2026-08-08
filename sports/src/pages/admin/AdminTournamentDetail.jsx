@@ -216,6 +216,7 @@ export default function AdminTournamentDetail() {
       qc.invalidateQueries({ queryKey: ['charges', id] })
       qc.invalidateQueries({ queryKey: ['admin-matches', id] })
       qc.invalidateQueries({ queryKey: ['admin-events', id] })
+      qc.invalidateQueries({ queryKey: ['reconciliation', id] })
       toast.success('Equipo eliminado')
       setDeletingTeam(null)
     },
