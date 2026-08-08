@@ -224,11 +224,13 @@ export default function AdminFinanzasTab({ tournament, teams, tournamentId, matc
     mutationFn: async ({ chargeId, amount, notes, op_key }) => {
       // op_key (client UUID, generado al abrir el modal) garantiza que un
       // doble-envío no registre dos pagos — el segundo choca en UNIQUE y se descarta.
+      const { data: { user } } = await supabase.auth.getUser()
       const { error } = await supabase.from('payments').upsert({
-        charge_id: chargeId,
-        amount:    Number(amount),
-        notes:     notes || null,
-        op_key:    op_key ?? null,
+        charge_id:   chargeId,
+        amount:      Number(amount),
+        notes:       notes || null,
+        received_by: user?.id ?? null,
+        op_key:      op_key ?? null,
       }, { onConflict: 'op_key', ignoreDuplicates: true })
       if (error) throw error
     },
