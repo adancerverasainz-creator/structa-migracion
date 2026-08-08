@@ -320,7 +320,14 @@ function MatchRow({ match: m }) {
             )}
           </span>
         ) : (
-          <span className="text-gray-300 text-xs">{m.match_date ? formatDate(m.match_date) : 'vs'}</span>
+          <span className="text-gray-400 text-xs text-center leading-tight">
+            {m.match_date ? (
+              <>
+                <span className="block">{formatDate(m.match_date)}</span>
+                {m.match_time && <span className="block font-medium text-gray-500">{m.match_time.slice(0, 5)}</span>}
+              </>
+            ) : 'vs'}
+          </span>
         )}
       </div>
 
