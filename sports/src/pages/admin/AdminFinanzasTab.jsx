@@ -4,7 +4,7 @@ import { supabase } from '../../lib/supabase'
 import { toast } from 'sonner'
 import {
   CreditCard, ArrowDownToLine, Check, X, ChevronDown, ChevronUp,
-  RefreshCw, Plus, AlertCircle, Users,
+  RefreshCw, Plus, AlertCircle, Users, Scale,
 } from 'lucide-react'
 
 const INPUT = 'w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500'
@@ -73,6 +73,7 @@ export default function AdminFinanzasTab({ tournament, teams, tournamentId, matc
   const [inscModal,       setInscModal]       = useState(null)   // team object
   const [inscAmount,      setInscAmount]      = useState('')
   const [expandedTeam,    setExpandedTeam]    = useState(null)
+  const [showRecon,       setShowRecon]       = useState(false)
 
   // ── Charges ─────────────────────────────────────────────────────────────────
   const { data: rawCharges = [], isLoading: chargesLoading } = useQuery({
@@ -108,6 +109,36 @@ export default function AdminFinanzasTab({ tournament, teams, tournamentId, matc
       return data
     },
   })
+
+  // ── Vista de conciliación legacy vs nuevo ────────────────────────────────────
+  const { data: reconRaw = [] } = useQuery({
+    queryKey: ['reconciliation', tournamentId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('v_financial_reconciliation')
+        .select('source, charge_type, charge_amount, paid_amount, balance')
+        .eq('tournament_id', tournamentId)
+      if (error) throw error
+      return data
+    },
+    enabled: showRecon,
+  })
+
+  // Agrupar por source
+  const reconBySource = reconRaw.reduce((acc, row) => {
+    if (!acc[row.source]) acc[row.source] = { charged: 0, paid: 0, balance: 0, count: 0 }
+    acc[row.source].charged += Number(row.charge_amount)
+    acc[row.source].paid    += Number(row.paid_amount)
+    acc[row.source].balance += Number(row.balance)
+    acc[row.source].count++
+    return acc
+  }, {})
+
+  const SOURCE_LABEL = {
+    new:                'Sistema nuevo (charges + payments)',
+    legacy_inscription: 'Legacy — Inscripciones (registration_payments)',
+    legacy_arbitrage:   'Legacy — Arbitrajes (arbitrage_payments)',
+  }
 
   // ── Totales globales ─────────────────────────────────────────────────────────
   const totalCharged   = charges.reduce((s, c) => s + Number(c.amount), 0)
@@ -524,6 +555,69 @@ export default function AdminFinanzasTab({ tournament, teams, tournamentId, matc
               </li>
             ))}
           </ul>
+        )}
+      </div>
+
+      {/* ── Conciliación legacy vs nuevo ────────────────────────────────────── */}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+        <button
+          onClick={() => setShowRecon(v => !v)}
+          className="w-full flex items-center justify-between px-5 py-3 hover:bg-gray-50 text-left"
+        >
+          <div className="flex items-center gap-2">
+            <Scale className="w-4 h-4 text-gray-400" />
+            <span className="font-semibold text-sm text-gray-900">Conciliación sistema nuevo vs legacy</span>
+          </div>
+          {showRecon ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
+        </button>
+
+        {showRecon && (
+          <div className="border-t border-gray-100">
+            {reconRaw.length === 0 ? (
+              <p className="text-sm text-gray-400 text-center py-6">Sin datos de conciliación para este torneo</p>
+            ) : (
+              <div className="divide-y divide-gray-100">
+                {Object.entries(reconBySource).map(([source, totals]) => (
+                  <div key={source} className="px-5 py-3">
+                    <p className="text-xs font-semibold text-gray-500 mb-2">{SOURCE_LABEL[source] ?? source}</p>
+                    <div className="grid grid-cols-3 gap-3">
+                      <div>
+                        <p className="text-xs text-gray-400">Cargado ({totals.count})</p>
+                        <p className="text-sm font-semibold text-gray-900">{fmt(totals.charged)}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-400">Pagado</p>
+                        <p className="text-sm font-semibold text-green-700">{fmt(totals.paid)}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-400">Saldo</p>
+                        <p className={`text-sm font-semibold ${totals.balance > 0 ? 'text-red-600' : 'text-gray-400'}`}>
+                          {fmt(totals.balance)}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                <div className="px-5 py-3 bg-gray-50">
+                  <p className="text-xs font-semibold text-gray-700 mb-1">Total consolidado</p>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <p className="text-xs text-gray-400">Cargado</p>
+                      <p className="text-sm font-bold text-gray-900">{fmt(Object.values(reconBySource).reduce((s, r) => s + r.charged, 0))}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-400">Pagado</p>
+                      <p className="text-sm font-bold text-green-700">{fmt(Object.values(reconBySource).reduce((s, r) => s + r.paid, 0))}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-400">Saldo total</p>
+                      <p className="text-sm font-bold text-red-600">{fmt(Object.values(reconBySource).reduce((s, r) => s + r.balance, 0))}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         )}
       </div>
 
