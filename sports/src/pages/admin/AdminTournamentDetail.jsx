@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../../lib/supabase'
 import { formatDate } from '../../lib/utils'
 import {
-  ArrowLeft, Plus, Pencil, Trash2, X, Users, Calendar, Zap, Link2, Trophy
+  ArrowLeft, Plus, Pencil, Trash2, X, Users, Calendar, Zap, Link2, Trophy, RefreshCw, AlertTriangle
 } from 'lucide-react'
 import { toast } from 'sonner'
 import AdminFinanzasTab from './AdminFinanzasTab'
@@ -197,6 +197,22 @@ export default function AdminTournamentDetail() {
       setDeletingTeam(null)
     },
     onError: () => toast.error('Error al eliminar'),
+  })
+
+  const renewToken = useMutation({
+    mutationFn: async (teamId) => {
+      const { data, error } = await supabase.rpc('renew_captain_token', { p_team_id: teamId })
+      if (error) throw error
+      return data
+    },
+    onSuccess: (data, teamId) => {
+      qc.invalidateQueries({ queryKey: ['admin-teams', id] })
+      // Copiar nuevo enlace al portapapeles
+      const url = `${window.location.origin}/capitan/${data.token}`
+      navigator.clipboard.writeText(url).catch(() => {})
+      toast.success('Token renovado 90 días · Enlace copiado')
+    },
+    onError: (e) => toast.error('Error al renovar token: ' + e.message),
   })
 
   // ─── Match mutations ─────────────────────────────────────────────────────
@@ -654,19 +670,48 @@ export default function AdminTournamentDetail() {
                       {t.inscription_discount_pct > 0 && (
                         <span className="text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full">{t.inscription_discount_pct}% dto.</span>
                       )}
-                      {t.captain_token && (
-                        <button
-                          onClick={() => {
-                            const url = `${window.location.origin}/capitan/${t.captain_token}`
-                            navigator.clipboard.writeText(url)
-                            toast.success('Enlace del capitán copiado')
-                          }}
-                          title="Copiar enlace del capitán"
-                          className="p-1.5 text-gray-400 hover:text-blue-600 rounded-lg transition-colors"
-                        >
-                          <Link2 className="w-4 h-4" />
-                        </button>
-                      )}
+                      {t.captain_token && (() => {
+                        const now = new Date()
+                        const expires = t.captain_token_expires_at ? new Date(t.captain_token_expires_at) : null
+                        const isExpired = expires && expires < now
+                        const soonMs = 14 * 24 * 60 * 60 * 1000
+                        const expiresSoon = expires && !isExpired && (expires - now) < soonMs
+                        return (
+                          <>
+                            {isExpired && (
+                              <span className="flex items-center gap-1 text-xs bg-red-50 text-red-600 px-2 py-0.5 rounded-full shrink-0">
+                                <AlertTriangle className="w-3 h-3" /> Token expirado
+                              </span>
+                            )}
+                            {expiresSoon && !isExpired && (
+                              <span className="text-xs bg-orange-50 text-orange-600 px-2 py-0.5 rounded-full shrink-0">
+                                Expira pronto
+                              </span>
+                            )}
+                            {!isExpired && (
+                              <button
+                                onClick={() => {
+                                  const url = `${window.location.origin}/capitan/${t.captain_token}`
+                                  navigator.clipboard.writeText(url)
+                                  toast.success('Enlace del capitán copiado')
+                                }}
+                                title="Copiar enlace del capitán"
+                                className="p-1.5 text-gray-400 hover:text-blue-600 rounded-lg transition-colors"
+                              >
+                                <Link2 className="w-4 h-4" />
+                              </button>
+                            )}
+                            <button
+                              onClick={() => renewToken.mutate(t.id)}
+                              disabled={renewToken.isPending}
+                              title={isExpired ? 'Renovar token (expirado)' : 'Renovar token (+90 días)'}
+                              className={`p-1.5 rounded-lg transition-colors ${isExpired ? 'text-red-400 hover:text-red-600' : 'text-gray-400 hover:text-orange-500'}`}
+                            >
+                              <RefreshCw className={`w-4 h-4 ${renewToken.isPending ? 'animate-spin' : ''}`} />
+                            </button>
+                          </>
+                        )
+                      })()}
                       <button onClick={() => { setTeamForm({ name: t.name, captain_name: t.captain_name || '', color: t.color || '#16a34a', logo_url: t.logo_url || '', status: t.status || 'active', group_id: t.group_id || '', category_id: t.category_id || '', pays_arbitrage: t.pays_arbitrage ?? true, inscription_discount_pct: t.inscription_discount_pct ?? 0, inscription_amount: 0 }); setTeamModal(t) }} className="p-1.5 text-gray-400 hover:text-green-600 rounded-lg transition-colors">
                         <Pencil className="w-4 h-4" />
                       </button>
