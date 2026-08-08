@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { Trophy, LogIn } from 'lucide-react'
 
@@ -74,6 +74,15 @@ export default function LoginPage() {
             <LogIn className="w-4 h-4" />
             {loading ? 'Ingresando...' : 'Ingresar'}
           </button>
+
+          <div className="text-center">
+            <Link
+              to="/admin/forgot-password"
+              className="text-xs text-gray-400 hover:text-green-600 transition-colors"
+            >
+              ¿Olvidaste tu contraseña?
+            </Link>
+          </div>
         </form>
 
         <p className="text-center text-xs text-gray-400 mt-6">
