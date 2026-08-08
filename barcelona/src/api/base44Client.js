@@ -65,6 +65,21 @@ const toDb = (data) => {
   return out;
 };
 
+// ── Motor de Idempotencia (capa cliente) ─────────────────────────────────────
+// 1) Toda inserción en tablas de movimientos lleva op_key (índice único en BD).
+// 2) Guarda anti doble-submit: una inserción idéntica lanzada mientras otra
+//    igual está en vuelo (doble clic, doble invocación) reutiliza la misma
+//    promesa en vez de duplicar el movimiento. La garantía final es la BD.
+const MOVEMENT_TABLES = new Set([
+  'payments', 'general_payments', 'tournament_payments', 'league_payments',
+  'summer_camp_payments', 'expenses', 'account_payable_payments', 'cash_registers',
+]);
+const _inflight = new Map();
+const _opHash = (table, payload) => {
+  const { op_key, ...rest } = payload;
+  return table + '|' + JSON.stringify(rest, Object.keys(rest).sort());
+};
+
 const parseSort = (sort) => {
   if (!sort) return null;
   const desc = sort.startsWith('-');
@@ -114,6 +129,24 @@ function makeEntity(name) {
       }
       const { data: me } = await supabase.auth.getUser();
       if (me?.user?.email) payload.created_by = me.user.email;
+      if (MOVEMENT_TABLES.has(table)) {
+        const h = _opHash(table, payload);
+        const prev = _inflight.get(h);
+        if (prev && Date.now() - prev.t < 8000) return prev.promise; // doble submit → misma operación
+        if (!payload.op_key && globalThis.crypto?.randomUUID) payload.op_key = crypto.randomUUID();
+        const p = (async () => {
+          const { data: row, error } = await supabase.from(table).insert(payload).select().single();
+          if (error) throw new Error(`${name}.create: ${error.message}`);
+          return fromDb(row);
+        })();
+        _inflight.set(h, { promise: p, t: Date.now() });
+        p.catch(() => _inflight.delete(h)); // un fallo libera la guarda para reintentar
+        p.finally(() => setTimeout(() => {
+          const e = _inflight.get(h);
+          if (e && e.promise === p) _inflight.delete(h);
+        }, 8000));
+        return p;
+      }
       const { data: row, error } = await supabase.from(table).insert(payload).select().single();
       if (error) throw new Error(`${name}.create: ${error.message}`);
       return fromDb(row);
