@@ -138,19 +138,22 @@ export default function AdminTournamentDetail() {
       const inscDesc = `Inscripción${values.inscription_discount_pct > 0 ? ` (${values.inscription_discount_pct}% dto.)` : ''}`
 
       if (teamModal === 'create') {
-        const { data: newTeam, error } = await supabase
-          .from('teams').insert(payload).select('id').single()
+        // RPC atómica: crea equipo + cargo de inscripción en una sola transacción
+        const { error } = await supabase.rpc('create_team_with_inscription', {
+          p_tournament_id:            id,
+          p_name:                     values.name,
+          p_captain_name:             values.captain_name || null,
+          p_color:                    values.color || '#16a34a',
+          p_logo_url:                 values.logo_url || null,
+          p_status:                   values.status || 'active',
+          p_group_id:                 values.group_id || null,
+          p_category_id:              values.category_id || null,
+          p_pays_arbitrage:           values.pays_arbitrage ?? true,
+          p_inscription_discount_pct: Number(values.inscription_discount_pct),
+          p_inscription_amount:       inscAmount,
+          p_inscription_desc:         inscDesc,
+        })
         if (error) throw error
-        // Auto-crear cargo de inscripción si se especificó un monto
-        if (inscAmount > 0) {
-          await supabase.from('charges').insert({
-            tournament_id: id,
-            team_id: newTeam.id,
-            type: 'inscription',
-            amount: inscAmount,
-            description: inscDesc,
-          })
-        }
       } else {
         const { error } = await supabase.from('teams').update(payload).eq('id', teamModal.id)
         if (error) throw error
@@ -240,35 +243,28 @@ export default function AdminTournamentDetail() {
       }
 
       if (matchModal === 'create') {
-        const { data: newMatch, error } = await supabase
-          .from('matches').insert(payload).select('id').single()
+        // RPC atómica: crea partido + cargos de arbitraje en una sola transacción
+        const { error } = await supabase.rpc('create_match_with_arbitrage', {
+          p_tournament_id:       id,
+          p_matchday:            Number(values.matchday),
+          p_home_team_id:        isBracket ? null : (values.home_team_id || null),
+          p_away_team_id:        isBracket ? null : (values.away_team_id || null),
+          p_home_team_name:      isBracket ? values.home_team_name.trim() : (homeTeam?.name || ''),
+          p_away_team_name:      isBracket ? values.away_team_name.trim() : (awayTeam?.name || ''),
+          p_home_goals:          values.home_goals === '' ? null : Number(values.home_goals),
+          p_away_goals:          values.away_goals === '' ? null : Number(values.away_goals),
+          p_forfait_team_id:     values.forfait_team_id || null,
+          p_group_id:            values.group_id || null,
+          p_category_id:         values.category_id || null,
+          p_field:               values.field || null,
+          p_match_date:          values.match_date || null,
+          p_match_time:          values.match_time || null,
+          p_status:              values.status,
+          p_arbitrage_fee:       Number(tournament?.arbitrage_fee ?? 350),
+          p_home_pays_arbitrage: homeTeam?.pays_arbitrage ?? true,
+          p_away_pays_arbitrage: awayTeam?.pays_arbitrage ?? true,
+        })
         if (error) throw error
-        // Auto-generar cargos de arbitraje para los equipos que pagan
-        const fee = Number(tournament?.arbitrage_fee ?? 350)
-        const chargesToInsert = []
-        if (homeTeam && homeTeam.pays_arbitrage !== false) {
-          chargesToInsert.push({
-            tournament_id: id,
-            team_id: homeTeam.id,
-            match_id: newMatch.id,
-            type: 'arbitrage',
-            amount: fee,
-            description: `Arbitraje J${values.matchday} vs ${awayTeam?.name || ''}`,
-          })
-        }
-        if (awayTeam && awayTeam.pays_arbitrage !== false) {
-          chargesToInsert.push({
-            tournament_id: id,
-            team_id: awayTeam.id,
-            match_id: newMatch.id,
-            type: 'arbitrage',
-            amount: fee,
-            description: `Arbitraje J${values.matchday} vs ${homeTeam?.name || ''}`,
-          })
-        }
-        if (chargesToInsert.length > 0) {
-          await supabase.from('charges').insert(chargesToInsert)
-        }
       } else {
         // Solo verificar arbitraje cuando el status CAMBIA de no-activo a activo
         const ACTIVE = ['in_progress', 'completed', 'forfait']
