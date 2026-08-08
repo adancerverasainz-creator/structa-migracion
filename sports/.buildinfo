@@ -1,0 +1,3 @@
+# Build trigger
+# Todas las paginas del password reset flow están en el HEAD.
+# ForgotPassword, ResetPassword, LoginPage, App.jsx, Edge Function v2
