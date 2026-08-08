@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { Trophy, Lock, CheckCircle, Eye, EyeOff, AlertCircle } from 'lucide-react'
@@ -20,32 +20,28 @@ export default function ResetPassword() {
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
   const [formError, setFormError] = useState(null)
+  const redirectTimer = useRef(null)
 
   useEffect(() => {
     // Supabase pone los tokens en el hash: #access_token=...&type=recovery
     // onAuthStateChange captura el evento PASSWORD_RECOVERY automáticamente
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
       if (event === 'PASSWORD_RECOVERY') {
         // Token válido — Supabase ya estableció la sesión temporal
         setState(STATE.READY)
-      } else if (event === 'SIGNED_IN' && session) {
-        // Por si el token ya fue procesado antes de montar el componente
-        // solo activar si venimos del hash de recovery
-        const hash = window.location.hash
-        if (hash.includes('type=recovery')) {
-          setState(STATE.READY)
-        }
       }
     })
 
-    // Timeout: si en 4 s no llega el evento, el token es inválido/expirado
+    // Timeout: si en 8 s no llega el evento, el token es inválido/expirado.
+    // 8 s tolera conexiones lentas (3G) donde el cliente Supabase tarda más en parsear el hash.
     const timeout = setTimeout(() => {
       setState(prev => prev === STATE.LOADING ? STATE.ERROR : prev)
-    }, 4000)
+    }, 8000)
 
     return () => {
       subscription.unsubscribe()
       clearTimeout(timeout)
+      if (redirectTimer.current) clearTimeout(redirectTimer.current)
     }
   }, [])
 
@@ -67,12 +63,22 @@ export default function ResetPassword() {
     const { error } = await supabase.auth.updateUser({ password })
 
     if (error) {
-      setFormError(error.message || 'Error al actualizar la contraseña. Intenta de nuevo.')
+      // Mapear mensajes de Supabase (inglés) a español
+      const msg = error.message ?? ''
+      let friendly = 'Error al actualizar la contraseña. Intenta de nuevo.'
+      if (msg.includes('expired') || msg.includes('invalid')) {
+        friendly = 'Tu sesión de recuperación expiró. Solicita un nuevo enlace.'
+      } else if (msg.includes('Password should be')) {
+        friendly = 'La contraseña no cumple los requisitos mínimos de seguridad.'
+      } else if (msg.includes('same password')) {
+        friendly = 'La nueva contraseña debe ser diferente a la actual.'
+      }
+      setFormError(friendly)
       setState(STATE.READY)
     } else {
       setState(STATE.SUCCESS)
-      // Redirigir al dashboard tras 2.5 s
-      setTimeout(() => navigate('/admin/torneos', { replace: true }), 2500)
+      // Redirigir al dashboard tras 2.5 s (timer guardado en ref para cancelarlo si desmonta)
+      redirectTimer.current = setTimeout(() => navigate('/admin/torneos', { replace: true }), 2500)
     }
   }
 
