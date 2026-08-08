@@ -90,6 +90,14 @@ export default function AdminFinanzasTab({ tournament, teams, tournamentId, matc
     },
   })
 
+  // ── Motor de Idempotencia: detectar cargos de arbitraje huérfanos ──────────
+  // Equipos exentos (pays_arbitrage = false) que tienen cargos type='arbitrage'
+  const noArbTeamIds     = new Set(teams.filter(t => t.pays_arbitrage === false).map(t => t.id))
+  const orphanArbCharges = charges.filter(c => c.type === 'arbitrage' && noArbTeamIds.has(c.team_id))
+  const orphanArbIds     = new Set(orphanArbCharges.map(c => c.id))
+  // validCharges excluye los huérfanos — se usa en todos los cálculos financieros
+  const validCharges     = charges.filter(c => !orphanArbIds.has(c.id))
+
   // ── Remesas ─────────────────────────────────────────────────────────────────
   const { data: remittances = [] } = useQuery({
     queryKey: ['remittances', tournamentId],
@@ -134,16 +142,16 @@ export default function AdminFinanzasTab({ tournament, teams, tournamentId, matc
     legacy_arbitrage:   'Legacy — Arbitrajes (arbitrage_payments)',
   }
 
-  // ── Totales globales ─────────────────────────────────────────────────────────
-  const totalCharged   = charges.reduce((s, c) => s + Number(c.amount), 0)
-  const totalPaid      = charges.reduce((s, c) => s + c.paid, 0)
+  // ── Totales globales (sobre validCharges, excluyendo huérfanos) ──────────────
+  const totalCharged   = validCharges.reduce((s, c) => s + Number(c.amount), 0)
+  const totalPaid      = validCharges.reduce((s, c) => s + c.paid, 0)
   const totalPending   = totalCharged - totalPaid
   const totalRemitted  = remittances.reduce((s, r) => s + Number(r.amount), 0)
   const pendingDeliver = Math.max(0, totalPaid - totalRemitted)
 
   // ── Totales por tipo ─────────────────────────────────────────────────────────
-  const inscCharges = charges.filter(c => c.type === 'inscription')
-  const arbCharges  = charges.filter(c => c.type === 'arbitrage')
+  const inscCharges = validCharges.filter(c => c.type === 'inscription')
+  const arbCharges  = validCharges.filter(c => c.type === 'arbitrage')
   const inscTotal   = inscCharges.reduce((s, c) => s + Number(c.amount), 0)
   const inscPaid    = inscCharges.reduce((s, c) => s + c.paid, 0)
   const arbTotal    = arbCharges.reduce((s, c) => s + Number(c.amount), 0)
@@ -160,24 +168,38 @@ export default function AdminFinanzasTab({ tournament, teams, tournamentId, matc
     for (const m of matches.filter(m => m.home_team_id && m.away_team_id)) {
       const homeTeam = teams.find(t => t.id === m.home_team_id)
       const awayTeam = teams.find(t => t.id === m.away_team_id)
-      if (homeTeam?.pays_arbitrage !== false && !charges.some(c => c.match_id === m.id && c.team_id === m.home_team_id)) count++
-      if (awayTeam?.pays_arbitrage !== false && !charges.some(c => c.match_id === m.id && c.team_id === m.away_team_id)) count++
+      if (homeTeam?.pays_arbitrage !== false && !validCharges.some(c => c.match_id === m.id && c.team_id === m.home_team_id)) count++
+      if (awayTeam?.pays_arbitrage !== false && !validCharges.some(c => c.match_id === m.id && c.team_id === m.away_team_id)) count++
     }
     return count
   })()
 
   // ── Mutations ────────────────────────────────────────────────────────────────
 
-  // Sync retroactivo de arbitraje
+  // Sync retroactivo de arbitraje — con motor de idempotencia que purga huérfanos
   const syncArbitraje = useMutation({
     mutationFn: async () => {
+      // ── Motor de Idempotencia: purgar cargos de arbitraje inválidos primero ──
+      let purged = 0
+      if (orphanArbCharges.length > 0) {
+        const orphanIds = orphanArbCharges.map(c => c.id)
+        // Eliminar pagos ligados a cargos huérfanos (FK)
+        const { error: pyErr } = await supabase.from('payments').delete().in('charge_id', orphanIds)
+        if (pyErr) throw pyErr
+        // Eliminar los cargos huérfanos
+        const { error: chErr } = await supabase.from('charges').delete().in('id', orphanIds)
+        if (chErr) throw chErr
+        purged = orphanIds.length
+      }
+
+      // ── Generar cargos faltantes ─────────────────────────────────────────────
       const fee = Number(tournament?.arbitrage_fee ?? 350)
       const realMatches = (matches || []).filter(m => m.home_team_id && m.away_team_id)
       const toInsert = []
       for (const m of realMatches) {
         const homeTeam = teams.find(t => t.id === m.home_team_id)
         const awayTeam = teams.find(t => t.id === m.away_team_id)
-        if (homeTeam?.pays_arbitrage !== false && !charges.some(c => c.match_id === m.id && c.team_id === m.home_team_id)) {
+        if (homeTeam?.pays_arbitrage !== false && !validCharges.some(c => c.match_id === m.id && c.team_id === m.home_team_id)) {
           toInsert.push({
             tournament_id: tournamentId,
             team_id:       homeTeam.id,
@@ -187,7 +209,7 @@ export default function AdminFinanzasTab({ tournament, teams, tournamentId, matc
             description:   `Arbitraje J${m.matchday} vs ${awayTeam?.name || ''}`,
           })
         }
-        if (awayTeam?.pays_arbitrage !== false && !charges.some(c => c.match_id === m.id && c.team_id === m.away_team_id)) {
+        if (awayTeam?.pays_arbitrage !== false && !validCharges.some(c => c.match_id === m.id && c.team_id === m.away_team_id)) {
           toInsert.push({
             tournament_id: tournamentId,
             team_id:       awayTeam.id,
@@ -198,17 +220,22 @@ export default function AdminFinanzasTab({ tournament, teams, tournamentId, matc
           })
         }
       }
-      if (toInsert.length === 0) throw new Error('Todos los cargos de arbitraje ya están al corriente.')
-      // upsert con ignoreDuplicates para idempotencia a nivel DB (índice único parcial)
-      const { error } = await supabase
-        .from('charges')
-        .upsert(toInsert, { onConflict: 'match_id,team_id,type', ignoreDuplicates: true })
-      if (error) throw error
-      return toInsert.length
+      if (toInsert.length === 0 && purged === 0) throw new Error('Todos los cargos de arbitraje ya están al corriente.')
+      if (toInsert.length > 0) {
+        // upsert con ignoreDuplicates para idempotencia a nivel DB (índice único parcial)
+        const { error } = await supabase
+          .from('charges')
+          .upsert(toInsert, { onConflict: 'match_id,team_id,type', ignoreDuplicates: true })
+        if (error) throw error
+      }
+      return { count: toInsert.length, purged }
     },
-    onSuccess: (count) => {
+    onSuccess: ({ count, purged }) => {
       qc.invalidateQueries({ queryKey: ['charges', tournamentId] })
-      toast.success(`${count} cargo${count !== 1 ? 's' : ''} de arbitraje generado${count !== 1 ? 's' : ''}`)
+      const parts = []
+      if (count > 0) parts.push(`${count} cargo${count !== 1 ? 's' : ''} de arbitraje generado${count !== 1 ? 's' : ''}`)
+      if (purged > 0) parts.push(`${purged} cargo${purged !== 1 ? 's' : ''} inválido${purged !== 1 ? 's' : ''} eliminado${purged !== 1 ? 's' : ''}`)
+      toast.success(parts.join(' · '))
     },
     onError: (e) => toast.error(e.message),
   })
@@ -264,6 +291,13 @@ export default function AdminFinanzasTab({ tournament, teams, tournamentId, matc
     mutationFn: async (form) => {
       if (!form.team_id) throw new Error('Selecciona un equipo')
       if (!form.amount || Number(form.amount) <= 0) throw new Error('El monto debe ser mayor a 0')
+      // Motor de Integridad: bloquear arbitraje en equipos exentos antes de llegar a DB
+      if (form.type === 'arbitrage') {
+        const selectedTeam = teams.find(t => t.id === form.team_id)
+        if (selectedTeam?.pays_arbitrage === false) {
+          throw new Error(`Motor de Integridad: ${selectedTeam.name} no paga arbitraje — cambia el tipo de cargo.`)
+        }
+      }
       const { error } = await supabase.from('charges').insert({
         tournament_id: tournamentId,
         team_id:       form.team_id,
@@ -350,8 +384,27 @@ export default function AdminFinanzasTab({ tournament, teams, tournamentId, matc
       </div>
 
       {/* ── Alertas de acción ───────────────────────────────────────────────── */}
-      {(arbitrageMissing > 0 || teamsMissingInscription.length > 0) && (
+      {(arbitrageMissing > 0 || teamsMissingInscription.length > 0 || orphanArbCharges.length > 0) && (
         <div className="space-y-2">
+          {/* Motor de Idempotencia: alerta de cargos huérfanos */}
+          {orphanArbCharges.length > 0 && (
+            <div className="flex items-center justify-between gap-4 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+              <div className="flex items-center gap-2 text-sm text-red-800">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>
+                  <strong>{orphanArbCharges.length}</strong> cargo{orphanArbCharges.length !== 1 ? 's' : ''} de arbitraje inválido{orphanArbCharges.length !== 1 ? 's' : ''} — equipo{orphanArbCharges.length !== 1 ? 's exentos' : ' exento'} de arbitraje con cargos heredados
+                </span>
+              </div>
+              <button
+                onClick={() => syncArbitraje.mutate()}
+                disabled={syncArbitraje.isPending}
+                className="flex items-center gap-1.5 bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white text-xs font-medium px-3 py-1.5 rounded-lg transition-colors shrink-0"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${syncArbitraje.isPending ? 'animate-spin' : ''}`} />
+                {syncArbitraje.isPending ? 'Procesando...' : 'Purgar ahora'}
+              </button>
+            </div>
+          )}
           {arbitrageMissing > 0 && (
             <div className="flex items-center justify-between gap-4 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
               <div className="flex items-center gap-2 text-sm text-amber-800">
@@ -460,11 +513,13 @@ export default function AdminFinanzasTab({ tournament, teams, tournamentId, matc
         ) : (
           <ul className="divide-y divide-gray-100">
             {teams.map(team => {
-              const teamCharges = charges.filter(c => c.team_id === team.id)
-              if (teamCharges.length === 0) return null
-              const teamPaid    = teamCharges.reduce((s, c) => s + c.paid, 0)
-              const teamCharged = teamCharges.reduce((s, c) => s + Number(c.amount), 0)
-              const teamBalance = teamCharges.reduce((s, c) => s + c.balance, 0)
+              const allTeamCharges   = charges.filter(c => c.team_id === team.id)
+              const validTeamCharges = allTeamCharges.filter(c => !orphanArbIds.has(c.id))
+              if (allTeamCharges.length === 0) return null
+              const teamPaid    = validTeamCharges.reduce((s, c) => s + c.paid, 0)
+              const teamCharged = validTeamCharges.reduce((s, c) => s + Number(c.amount), 0)
+              const teamBalance = validTeamCharges.reduce((s, c) => s + c.balance, 0)
+              const hasOrphans  = allTeamCharges.some(c => orphanArbIds.has(c.id))
               const isExpanded  = expandedTeam === team.id
 
               return (
@@ -475,6 +530,9 @@ export default function AdminFinanzasTab({ tournament, teams, tournamentId, matc
                   >
                     <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: team.color || '#16a34a' }} />
                     <span className="flex-1 text-sm font-medium text-gray-900">{team.name}</span>
+                    {hasOrphans && (
+                      <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full shrink-0">Cargos inválidos</span>
+                    )}
                     <span className="text-xs text-gray-500 shrink-0">{fmt(teamPaid)} / {fmt(teamCharged)}</span>
                     {teamBalance > 0
                       ? <span className="text-xs bg-red-50 text-red-600 px-2 py-0.5 rounded-full shrink-0">{fmt(teamBalance)} pendiente</span>
@@ -488,34 +546,39 @@ export default function AdminFinanzasTab({ tournament, teams, tournamentId, matc
 
                   {isExpanded && (
                     <ul className="border-t border-gray-100 divide-y divide-gray-50">
-                      {teamCharges.map(c => (
-                        <li key={c.id} className="flex items-center gap-3 px-8 py-2.5">
-                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium shrink-0 ${CHARGE_TYPE_COLOR[c.type] ?? CHARGE_TYPE_COLOR.other}`}>
-                            {CHARGE_TYPE_LABEL[c.type] ?? c.type}
-                          </span>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs font-medium text-gray-700 truncate">
-                              {c.description || CHARGE_TYPE_LABEL[c.type]}
-                            </p>
-                            <p className="text-xs text-gray-400">
-                              {fmt(c.paid)} cobrado de {fmt(c.amount)}
-                              {c.paid > 0 && c.balance > 0 && ` · Falta ${fmt(c.balance)}`}
-                            </p>
-                          </div>
-                          {c.is_paid ? (
-                            <span className="text-xs bg-green-50 text-green-700 px-2 py-0.5 rounded-full flex items-center gap-1 shrink-0">
-                              <Check className="w-3 h-3" /> Pagado
+                      {allTeamCharges.map(c => {
+                        const isOrphan = orphanArbIds.has(c.id)
+                        return (
+                          <li key={c.id} className={`flex items-center gap-3 px-8 py-2.5 ${isOrphan ? 'bg-red-50' : ''}`}>
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium shrink-0 ${isOrphan ? 'bg-red-100 text-red-700 line-through' : CHARGE_TYPE_COLOR[c.type] ?? CHARGE_TYPE_COLOR.other}`}>
+                              {CHARGE_TYPE_LABEL[c.type] ?? c.type}
                             </span>
-                          ) : (
-                            <button
-                              onClick={() => openPayment(c)}
-                              className="text-xs bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded-lg transition-colors shrink-0"
-                            >
-                              + Pago
-                            </button>
-                          )}
-                        </li>
-                      ))}
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-medium text-gray-700 truncate">
+                                {c.description || CHARGE_TYPE_LABEL[c.type]}
+                              </p>
+                              <p className="text-xs text-gray-400">
+                                {fmt(c.paid)} cobrado de {fmt(c.amount)}
+                                {c.paid > 0 && c.balance > 0 && ` · Falta ${fmt(c.balance)}`}
+                              </p>
+                            </div>
+                            {isOrphan ? (
+                              <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full shrink-0">Inválido</span>
+                            ) : c.is_paid ? (
+                              <span className="text-xs bg-green-50 text-green-700 px-2 py-0.5 rounded-full flex items-center gap-1 shrink-0">
+                                <Check className="w-3 h-3" /> Pagado
+                              </span>
+                            ) : (
+                              <button
+                                onClick={() => openPayment(c)}
+                                className="text-xs bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded-lg transition-colors shrink-0"
+                              >
+                                + Pago
+                              </button>
+                            )}
+                          </li>
+                        )
+                      })}
                     </ul>
                   )}
                 </li>
@@ -734,6 +797,16 @@ export default function AdminFinanzasTab({ tournament, teams, tournamentId, matc
                 <option value="fine">Multa</option>
                 <option value="other">Otro</option>
               </select>
+              {/* Motor de Integridad: advertencia en tiempo real */}
+              {chargeForm.type === 'arbitrage' && chargeForm.team_id && (() => {
+                const sel = teams.find(t => t.id === chargeForm.team_id)
+                return sel?.pays_arbitrage === false ? (
+                  <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                    Este equipo no paga arbitraje — el cargo será rechazado.
+                  </p>
+                ) : null
+              })()}
             </Field>
             <Field label="Descripción">
               <input
