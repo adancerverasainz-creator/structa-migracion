@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Trophy, Mail, ArrowLeft, CheckCircle } from 'lucide-react'
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://wzzdwsggsefxeoniafhb.supabase.co'
 
 export default function ForgotPassword() {
   const [email, setEmail] = useState('')
