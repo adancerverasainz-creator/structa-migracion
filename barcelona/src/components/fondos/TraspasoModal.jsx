@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { base44 } from '@/api/base44Client';
+import React, { useState, useRef } from 'react';
+import { supabase } from '@/api/base44Client';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -31,50 +31,32 @@ export default function TraspasoModal({ onClose, bankBalances }) {
   const selectedBalance = form.bank ? (bankBalances[form.bank] ?? 0) : null;
   const amount = parseFloat(form.amount) || 0;
 
+  // Clave de idempotencia estable por apertura del modal: N clics = 1 traspaso
+  const opKeyRef = useRef(globalThis.crypto?.randomUUID ? crypto.randomUUID() : null);
+
   const mutation = useMutation({
+    // RPC atómico: egreso + ingreso + bitácora en UNA transacción en la BD,
+    // con validación de saldo. Antes eran 3 escrituras desde el navegador y
+    // una falla a la mitad dejaba dinero "desaparecido" entre cuentas.
     mutationFn: async () => {
-      const user = await base44.auth.me();
-
-      // 1) Registrar egreso del banco (sale del banco)
-      const expenseRecord = await base44.entities.Expense.create({
-        concept: `Traspaso a Caja Fondos desde ${form.bank}`,
-        amount: amount,
-        expense_date: form.date,
-        category: 'otros',
-        payment_method: 'transferencia',
-        account: form.bank,
-        is_transfer: true,
-        transfer_to: 'Fondos',
-        source_module: 'fondos',
-        notes: form.notes || `Referencia: ${form.reference || 'N/A'}`,
+      const { data, error } = await supabase.rpc('traspasar_a_fondos', {
+        p_banco: form.bank,
+        p_monto: amount,
+        p_fecha: form.date || null,
+        p_referencia: form.reference || null,
+        p_notas: form.notes || null,
+        p_op_key: opKeyRef.current,
       });
-
-      // 2) Registrar ingreso en Caja Fondos (entra como efectivo)
-      const cashRecord = await base44.entities.CashRegister.create({
-        cash_amount: amount,
-        register_date: form.date,
-        source: `Traspaso desde ${form.bank}`,
-        notes: form.notes || `Referencia: ${form.reference || 'N/A'}`,
-      });
-
-      // 3) Auditoría
-      await base44.entities.AuditLog.create({
-        action: 'CREACIÓN',
-        module: 'Fondos',
-        entity_type: 'Traspaso',
-        entity_id: cashRecord.id,
-        entity_name: `Traspaso ${form.bank} → Efectivo: ${formatCurrency(amount)}`,
-        user_email: user.email,
-        details: `Banco origen: ${form.bank} | Monto: ${formatCurrency(amount)} | Fecha: ${form.date}${form.reference ? ' | Ref: ' + form.reference : ''}`,
-        monetary_diff: 0,
-      });
-
-      return { expenseRecord, cashRecord };
+      if (error) throw new Error(error.message);
+      return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['cashRegisters'] });
       queryClient.invalidateQueries({ queryKey: ['cajaPrincipalExpenses'] });
       queryClient.invalidateQueries({ queryKey: ['expenses'] });
+      queryClient.invalidateQueries({ queryKey: ['allExpensesForFondos'] });
+      queryClient.invalidateQueries({ queryKey: ['allPaymentsForFondos'] });
+      queryClient.invalidateQueries({ queryKey: ['saldosPorCuenta'] });
       onClose();
     },
     onError: (err) => {
