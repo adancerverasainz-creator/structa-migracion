@@ -96,7 +96,7 @@ export default function AdminTournamentDetail() {
         .from('players')
         .select('id, team_id, jersey_number, name, position')
         .in('team_id', teams.map(t => t.id))
-        .order('jersey_number')
+        .order('jersey_number', { nullsFirst: false })
       if (error) throw error
       return data
     },
@@ -137,6 +137,7 @@ export default function AdminTournamentDetail() {
   const [teamForm, setTeamForm] = useState(EMPTY_TEAM)
   const [deletingTeam, setDeletingTeam] = useState(null)
   const [renewingTeamId, setRenewingTeamId] = useState(null)
+  const [validatingTeamId, setValidatingTeamId] = useState(null)
 
   const saveTeam = useMutation({
     mutationFn: async (values) => {
@@ -198,6 +199,7 @@ export default function AdminTournamentDetail() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['admin-teams', id] })
       qc.invalidateQueries({ queryKey: ['charges', id] })
+      qc.invalidateQueries({ queryKey: ['admin-players', id] })
       toast.success(teamModal === 'create' ? 'Equipo creado' : 'Equipo actualizado')
       setTeamModal(null)
     },
@@ -206,11 +208,13 @@ export default function AdminTournamentDetail() {
 
   const deleteTeam = useMutation({
     mutationFn: async (tid) => {
-      const { error } = await supabase.from('teams').delete().eq('id', tid)
+      const { error } = await supabase.rpc('delete_team_cascade', { p_team_id: tid })
       if (error) throw error
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['admin-teams', id] })
+      qc.invalidateQueries({ queryKey: ['admin-players', id] })
+      qc.invalidateQueries({ queryKey: ['charges', id] })
       toast.success('Equipo eliminado')
       setDeletingTeam(null)
     },
@@ -562,6 +566,7 @@ export default function AdminTournamentDetail() {
   // ── Validate roster (Plantillas tab) ─────────────────────────────────────
   const validateRoster = useMutation({
     mutationFn: async (teamId) => {
+      setValidatingTeamId(teamId)
       const { error } = await supabase.rpc('validate_team_roster', { p_team_id: teamId })
       if (error) throw error
     },
@@ -570,6 +575,7 @@ export default function AdminTournamentDetail() {
       toast.success('Estado de plantilla actualizado')
     },
     onError: (e) => toast.error('Error: ' + e.message),
+    onSettled: () => setValidatingTeamId(null),
   })
 
   // ── Open event modal pre-filled for a specific match ────────────────────
@@ -1006,7 +1012,7 @@ export default function AdminTournamentDetail() {
                       )}
                       <button
                         onClick={() => validateRoster.mutate(team.id)}
-                        disabled={validateRoster.isPending}
+                        disabled={validatingTeamId === team.id}
                         title={isValidated ? 'Desvalidar plantilla' : 'Validar plantilla'}
                         className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border transition-all ${
                           isValidated
