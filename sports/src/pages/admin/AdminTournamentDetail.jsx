@@ -4,12 +4,12 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../../lib/supabase'
 import { formatDate } from '../../lib/utils'
 import {
-  ArrowLeft, Plus, Pencil, Trash2, X, Users, Calendar, Zap, Link2, Trophy, RefreshCw, AlertTriangle
+  ArrowLeft, Plus, Pencil, Trash2, X, Users, Calendar, Zap, Link2, Trophy, RefreshCw, AlertTriangle, CheckCircle2, XCircle, ShieldCheck
 } from 'lucide-react'
 import { toast } from 'sonner'
 import AdminFinanzasTab from './AdminFinanzasTab'
 
-const TAB_LABELS = ['Equipos', 'Partidos', 'Finanzas']
+const TAB_LABELS = ['Equipos', 'Partidos', 'Finanzas', 'Plantillas']
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 const BRACKET_NAME_MAP = {
@@ -85,6 +85,22 @@ export default function AdminTournamentDetail() {
       if (error) throw error
       return data
     },
+  })
+
+  // ── Players (for Plantillas tab) ─────────────────────────────────────────
+  const { data: players = [] } = useQuery({
+    queryKey: ['admin-players', id],
+    queryFn: async () => {
+      if (teams.length === 0) return []
+      const { data, error } = await supabase
+        .from('players')
+        .select('id, team_id, jersey_number, name, position')
+        .in('team_id', teams.map(t => t.id))
+        .order('jersey_number')
+      if (error) throw error
+      return data
+    },
+    enabled: teams.length > 0,
   })
 
   // ── Matches ──────────────────────────────────────────────────────────────
@@ -543,6 +559,19 @@ export default function AdminTournamentDetail() {
     onError: (e) => toast.error('Error al generar bracket: ' + e.message),
   })
 
+  // ── Validate roster (Plantillas tab) ─────────────────────────────────────
+  const validateRoster = useMutation({
+    mutationFn: async (teamId) => {
+      const { error } = await supabase.rpc('validate_team_roster', { p_team_id: teamId })
+      if (error) throw error
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin-teams', id] })
+      toast.success('Estado de plantilla actualizado')
+    },
+    onError: (e) => toast.error('Error: ' + e.message),
+  })
+
   // ── Open event modal pre-filled for a specific match ────────────────────
   function openEventForMatch(m) {
     setEventForm({ ...EMPTY_EVENT, match_id: m.id })
@@ -573,6 +602,9 @@ export default function AdminTournamentDetail() {
     acc[day].push(m)
     return acc
   }, {})
+
+  // ── Plantillas: derived values ────────────────────────────────────────────
+  const validatedCount = teams.filter(t => t.roster_validated_at).length
 
   if (!tournament) {
     return (
@@ -613,13 +645,22 @@ export default function AdminTournamentDetail() {
           <button
             key={i}
             onClick={() => setTab(i)}
-            className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${
+            className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${
               tab === i
                 ? 'border-green-600 text-green-700'
                 : 'border-transparent text-gray-500 hover:text-gray-700'
             }`}
           >
             {label}
+            {i === 3 && teams.length > 0 && (
+              <span className={`text-xs px-1.5 py-0.5 rounded-full font-semibold ${
+                validatedCount === teams.length
+                  ? 'bg-green-100 text-green-700'
+                  : 'bg-gray-100 text-gray-500'
+              }`}>
+                {validatedCount}/{teams.length}
+              </span>
+            )}
           </button>
         ))}
       </div>
@@ -917,6 +958,100 @@ export default function AdminTournamentDetail() {
           tournamentId={id}
           matches={matches}
         />
+      )}
+
+      {/* ── TAB 3: PLANTILLAS ────────────────────────────────────────────── */}
+      {tab === 3 && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-gray-500">
+              {validatedCount} de {teams.length} plantilla{teams.length !== 1 ? 's' : ''} validada{validatedCount !== 1 ? 's' : ''}
+            </p>
+            {validatedCount === teams.length && teams.length > 0 && (
+              <span className="flex items-center gap-1.5 text-xs font-medium text-green-700 bg-green-50 px-3 py-1.5 rounded-full">
+                <ShieldCheck className="w-3.5 h-3.5" /> Todas validadas
+              </span>
+            )}
+          </div>
+
+          {teams.length === 0 ? (
+            <div className="text-center py-12 text-gray-400">
+              <Users className="w-10 h-10 mx-auto mb-2 opacity-30" />
+              <p className="text-sm">No hay equipos en este torneo</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {teams.map(team => {
+                const roster = players.filter(p => p.team_id === team.id)
+                const isValidated = !!team.roster_validated_at
+                return (
+                  <div key={team.id} className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                    {/* Team header */}
+                    <div className="flex items-center gap-3 px-5 py-3 border-b border-gray-100">
+                      <div
+                        className="w-3.5 h-3.5 rounded-full shrink-0 border border-white shadow-sm"
+                        style={{ backgroundColor: team.color || '#16a34a' }}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-gray-900">{team.name}</p>
+                        <p className="text-xs text-gray-400">
+                          {roster.length} jugador{roster.length !== 1 ? 'es' : ''}
+                          {team.captain_name ? ` · Cap: ${team.captain_name}` : ''}
+                        </p>
+                      </div>
+                      {isValidated && (
+                        <span className="text-xs text-gray-400 shrink-0">
+                          {new Date(team.roster_validated_at).toLocaleDateString('es-MX', { day: '2-digit', month: 'short' })}
+                        </span>
+                      )}
+                      <button
+                        onClick={() => validateRoster.mutate(team.id)}
+                        disabled={validateRoster.isPending}
+                        title={isValidated ? 'Desvalidar plantilla' : 'Validar plantilla'}
+                        className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border transition-all ${
+                          isValidated
+                            ? 'border-green-500 bg-green-50 text-green-700 hover:bg-red-50 hover:border-red-400 hover:text-red-600'
+                            : 'border-gray-300 bg-white text-gray-600 hover:border-green-500 hover:bg-green-50 hover:text-green-700'
+                        }`}
+                      >
+                        {isValidated
+                          ? <><CheckCircle2 className="w-3.5 h-3.5" /> Validada</>
+                          : <><XCircle className="w-3.5 h-3.5" /> Sin validar</>
+                        }
+                      </button>
+                    </div>
+
+                    {/* Roster table */}
+                    {roster.length === 0 ? (
+                      <div className="px-5 py-4 text-xs text-gray-400 italic">
+                        El capitán aún no ha subido la plantilla
+                      </div>
+                    ) : (
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="text-xs text-gray-400 uppercase tracking-wide">
+                            <th className="px-5 py-2 text-left font-medium w-12">#</th>
+                            <th className="px-5 py-2 text-left font-medium">Nombre</th>
+                            <th className="px-5 py-2 text-left font-medium hidden sm:table-cell">Posición</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-50">
+                          {roster.map(p => (
+                            <tr key={p.id} className="hover:bg-gray-50">
+                              <td className="px-5 py-2 text-gray-500 font-mono text-xs">{p.jersey_number ?? '—'}</td>
+                              <td className="px-5 py-2 text-gray-900">{p.name}</td>
+                              <td className="px-5 py-2 text-gray-500 hidden sm:table-cell">{p.position || '—'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
       )}
 
       {/* ── TEAM MODAL ───────────────────────────────────────────────────── */}
