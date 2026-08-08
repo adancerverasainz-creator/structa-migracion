@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/api/base44Client';
 import { toast } from 'sonner';
@@ -18,6 +18,8 @@ export default function CorteCajaModal({ saldoEfectivo, onClose }) {
   const [monto, setMonto] = useState('');
   const [recibe, setRecibe] = useState('Adan Cervera (CEO)');
   const [notas, setNotas] = useState('');
+  // Idempotencia: N clics en "Registrar corte" = 1 corte
+  const opKeyRef = useRef(globalThis.crypto?.randomUUID ? crypto.randomUUID() : null);
 
   const contadoNum = parseFloat(contado) || 0;
   const montoNum = parseFloat(monto) || 0;
@@ -31,6 +33,7 @@ export default function CorteCajaModal({ saldoEfectivo, onClose }) {
         p_monto: montoNum,
         p_recibe: recibe.trim(),
         p_notas: notas.trim() || null,
+        p_op_key: opKeyRef.current,
       });
       if (error) throw new Error(error.message);
       return data;
