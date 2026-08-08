@@ -120,6 +120,7 @@ export default function AdminTournamentDetail() {
   const [teamModal, setTeamModal] = useState(null)
   const [teamForm, setTeamForm] = useState(EMPTY_TEAM)
   const [deletingTeam, setDeletingTeam] = useState(null)
+  const [renewingTeamId, setRenewingTeamId] = useState(null)
 
   const saveTeam = useMutation({
     mutationFn: async (values) => {
@@ -166,13 +167,14 @@ export default function AdminTournamentDetail() {
             .eq('type', 'inscription')
             .maybeSingle()
           if (!existing) {
-            await supabase.from('charges').insert({
+            const { error: chargeErr } = await supabase.from('charges').insert({
               tournament_id: id,
               team_id: teamModal.id,
               type: 'inscription',
               amount: inscAmount,
               description: inscDesc,
             })
+            if (chargeErr) throw chargeErr
           }
         }
       }
@@ -201,11 +203,12 @@ export default function AdminTournamentDetail() {
 
   const renewToken = useMutation({
     mutationFn: async (teamId) => {
+      setRenewingTeamId(teamId)
       const { data, error } = await supabase.rpc('renew_captain_token', { p_team_id: teamId })
       if (error) throw error
       return data
     },
-    onSuccess: (data, teamId) => {
+    onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ['admin-teams', id] })
       // Copiar nuevo enlace al portapapeles
       const url = `${window.location.origin}/capitan/${data.token}`
@@ -213,6 +216,7 @@ export default function AdminTournamentDetail() {
       toast.success('Token renovado 90 días · Enlace copiado')
     },
     onError: (e) => toast.error('Error al renovar token: ' + e.message),
+    onSettled: () => setRenewingTeamId(null),
   })
 
   // ─── Match mutations ─────────────────────────────────────────────────────
@@ -703,11 +707,11 @@ export default function AdminTournamentDetail() {
                             )}
                             <button
                               onClick={() => renewToken.mutate(t.id)}
-                              disabled={renewToken.isPending}
+                              disabled={renewingTeamId === t.id}
                               title={isExpired ? 'Renovar token (expirado)' : 'Renovar token (+90 días)'}
                               className={`p-1.5 rounded-lg transition-colors ${isExpired ? 'text-red-400 hover:text-red-600' : 'text-gray-400 hover:text-orange-500'}`}
                             >
-                              <RefreshCw className={`w-4 h-4 ${renewToken.isPending ? 'animate-spin' : ''}`} />
+                              <RefreshCw className={`w-4 h-4 ${renewingTeamId === t.id ? 'animate-spin' : ''}`} />
                             </button>
                           </>
                         )
