@@ -310,7 +310,7 @@ function MatchRow({ match: m }) {
         <span className={`font-medium ${isPlayed && m.home_goals > m.away_goals ? 'text-green-700' : 'text-gray-800'}`}>{homeName}</span>
       </div>
 
-      <div className="flex items-center gap-1.5 min-w-[72px] justify-center">
+      <div className="flex items-center gap-1.5 min-w-[72px] min-h-[40px] justify-center">
         {isPlayed ? (
           <span className="font-bold text-base tabular-nums">
             {m.status === 'forfait' ? (
