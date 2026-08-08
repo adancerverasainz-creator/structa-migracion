@@ -11,6 +11,8 @@ import CaptainPortal from './pages/public/CaptainPortal'
 
 // Admin pages
 import LoginPage from './pages/admin/LoginPage'
+import ForgotPassword from './pages/admin/ForgotPassword'
+import ResetPassword from './pages/admin/ResetPassword'
 import AdminLayout from './pages/admin/AdminLayout'
 import AdminTournaments from './pages/admin/AdminTournaments'
 import AdminTournamentDetail from './pages/admin/AdminTournamentDetail'
@@ -102,6 +104,8 @@ export default function App() {
 
       {/* Login admin */}
       <Route path="/admin/login" element={<LoginPage />} />
+      <Route path="/admin/forgot-password" element={<ForgotPassword />} />
+      <Route path="/admin/reset-password" element={<ResetPassword />} />
 
       {/* Rutas admin protegidas */}
       <Route path="/admin" element={<RequireAuth><AdminLayout /></RequireAuth>}>
