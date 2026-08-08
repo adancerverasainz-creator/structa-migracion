@@ -221,12 +221,15 @@ export default function AdminFinanzasTab({ tournament, teams, tournamentId, matc
 
   // Pago de un cargo
   const registerPayment = useMutation({
-    mutationFn: async ({ chargeId, amount, notes }) => {
-      const { error } = await supabase.from('payments').insert({
+    mutationFn: async ({ chargeId, amount, notes, op_key }) => {
+      // op_key (client UUID, generado al abrir el modal) garantiza que un
+      // doble-envío no registre dos pagos — el segundo choca en UNIQUE y se descarta.
+      const { error } = await supabase.from('payments').upsert({
         charge_id: chargeId,
         amount:    Number(amount),
         notes:     notes || null,
-      })
+        op_key:    op_key ?? null,
+      }, { onConflict: 'op_key', ignoreDuplicates: true })
       if (error) throw error
     },
     onSuccess: () => {
@@ -239,14 +242,17 @@ export default function AdminFinanzasTab({ tournament, teams, tournamentId, matc
 
   // Entrega a Adan
   const registerRemittance = useMutation({
-    mutationFn: async ({ amount, notes }) => {
+    mutationFn: async ({ amount, notes, op_key }) => {
+      // op_key (client UUID, generado al abrir el modal) garantiza que una
+      // doble-entrega no se duplique — el segundo intento se descarta en UNIQUE.
       const { data: { user } } = await supabase.auth.getUser()
-      const { error } = await supabase.from('remittances').insert({
+      const { error } = await supabase.from('remittances').upsert({
         tournament_id: tournamentId,
         from_user_id:  user?.id ?? null,
         amount:        Number(amount),
         notes:         notes || null,
-      })
+        op_key:        op_key ?? null,
+      }, { onConflict: 'op_key', ignoreDuplicates: true })
       if (error) throw error
     },
     onSuccess: () => {
@@ -303,7 +309,8 @@ export default function AdminFinanzasTab({ tournament, teams, tournamentId, matc
   })
 
   function openPayment(charge) {
-    setPaymentForm({ amount: charge.balance.toFixed(2), notes: '' })
+    // Genera un UUID fresco por cada apertura de modal — protege contra doble-submit
+    setPaymentForm({ amount: charge.balance.toFixed(2), notes: '', op_key: crypto.randomUUID() })
     setPaymentModal(charge)
   }
 
@@ -531,7 +538,7 @@ export default function AdminFinanzasTab({ tournament, teams, tournamentId, matc
           </div>
           {pendingDeliver > 0 && (
             <button
-              onClick={() => { setRemittanceForm({ amount: pendingDeliver.toFixed(2), notes: '' }); setRemittanceModal(true) }}
+              onClick={() => { setRemittanceForm({ amount: pendingDeliver.toFixed(2), notes: '', op_key: crypto.randomUUID() }); setRemittanceModal(true) }}
               className="flex items-center gap-1.5 text-xs bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-lg transition-colors"
             >
               <ArrowDownToLine className="w-3.5 h-3.5" /> Registrar entrega
