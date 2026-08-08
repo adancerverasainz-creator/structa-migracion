@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { confirmar } from '@/components/ui/confirmar';
 import { usePerms } from '@/lib/usePerms';
 import { toast } from 'sonner';
@@ -20,6 +20,8 @@ export default function CuentasPorPagar() {
   const [showForm, setShowForm] = useState(false);
   const [editingAccount, setEditingAccount] = useState(null);
   const [abonoAccount, setAbonoAccount] = useState(null);
+  // Idempotencia: clave estable por apertura del modal de abono (N clics = 1 abono)
+  const abonoOpKeyRef = useRef(null);
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [currentUser, setCurrentUser] = useState(null);
@@ -70,6 +72,7 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
         p_fecha: data.payment_date || null,
         p_notas: data.notes || null,
         p_caja: data.cash_register || null,
+        p_op_key: abonoOpKeyRef.current,
       });
       if (error) throw new Error(error.message);
       return paymentId;
@@ -99,6 +102,7 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
   };
 
   const handleAbono = (account) => {
+    abonoOpKeyRef.current = globalThis.crypto?.randomUUID ? crypto.randomUUID() : null;
     setAbonoAccount(account);
     setEditingAccount(null);
     setShowForm(false);
