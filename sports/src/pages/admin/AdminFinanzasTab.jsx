@@ -174,7 +174,10 @@ export default function AdminFinanzasTab({ tournament, teams, tournamentId, matc
         }
       }
       if (toInsert.length === 0) throw new Error('Todos los cargos de arbitraje ya están al corriente.')
-      const { error } = await supabase.from('charges').insert(toInsert)
+      // upsert con ignoreDuplicates para idempotencia a nivel DB (índice único parcial)
+      const { error } = await supabase
+        .from('charges')
+        .upsert(toInsert, { onConflict: 'match_id,team_id,type', ignoreDuplicates: true })
       if (error) throw error
       return toInsert.length
     },
