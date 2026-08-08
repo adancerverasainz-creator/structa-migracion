@@ -75,25 +75,19 @@ export default function AdminFinanzasTab({ tournament, teams, tournamentId, matc
   const [expandedTeam,    setExpandedTeam]    = useState(null)
   const [showRecon,       setShowRecon]       = useState(false)
 
-  // ── Charges ─────────────────────────────────────────────────────────────────
-  const { data: rawCharges = [], isLoading: chargesLoading } = useQuery({
+  // ── Charges — via charge_balances view (paid/balance/is_paid computed in DB) ─
+  const { data: charges = [], isLoading: chargesLoading } = useQuery({
     queryKey: ['charges', tournamentId],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from('charges')
-        .select('*, payments(id, amount, paid_at, notes)')
+        .from('charge_balances')
+        .select('*')
         .eq('tournament_id', tournamentId)
         .order('created_at')
       if (error) throw error
-      return data
+      // 'charged' is the view column; alias to 'amount' for component compatibility
+      return data.map(c => ({ ...c, amount: c.charged }))
     },
-  })
-
-  // Calcular saldos en cliente
-  const charges = rawCharges.map(c => {
-    const paid    = (c.payments ?? []).reduce((s, p) => s + Number(p.amount), 0)
-    const balance = Number(c.amount) - paid
-    return { ...c, paid, balance, is_paid: balance <= 0 }
   })
 
   // ── Remesas ─────────────────────────────────────────────────────────────────
