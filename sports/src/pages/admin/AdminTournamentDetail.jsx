@@ -199,7 +199,6 @@ export default function AdminTournamentDetail() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['admin-teams', id] })
       qc.invalidateQueries({ queryKey: ['charges', id] })
-      qc.invalidateQueries({ queryKey: ['admin-players', id] })
       toast.success(teamModal === 'create' ? 'Equipo creado' : 'Equipo actualizado')
       setTeamModal(null)
     },
@@ -215,6 +214,8 @@ export default function AdminTournamentDetail() {
       qc.invalidateQueries({ queryKey: ['admin-teams', id] })
       qc.invalidateQueries({ queryKey: ['admin-players', id] })
       qc.invalidateQueries({ queryKey: ['charges', id] })
+      qc.invalidateQueries({ queryKey: ['admin-matches', id] })
+      qc.invalidateQueries({ queryKey: ['admin-events', id] })
       toast.success('Equipo eliminado')
       setDeletingTeam(null)
     },
