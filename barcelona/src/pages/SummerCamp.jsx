@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { confirmar } from '@/components/ui/confirmar';
 import { usePerms } from '@/lib/usePerms';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -126,23 +126,40 @@ export default function SummerCamp() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['summerCampPayments'] }),
   });
 
+  // ── Lote atómico (motor de integridad): el formulario entrega N registros
+  // (multi-semana); se acumulan y se envían en UNA transacción al RPC
+  // registrar_pagos_summer. Todo o nada — ya no pueden quedar semanas a medias.
+  const batchRef = useRef([]);
+  const batchMutation = useMutation({
+    mutationFn: async (rows) => {
+      const { data: ids, error } = await supabase.rpc('registrar_pagos_summer', {
+        p_pagos: rows,
+        p_op_key: globalThis.crypto?.randomUUID ? crypto.randomUUID() : null,
+      });
+      if (error) throw new Error(error.message);
+      return ids;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['summerCampPayments'] }),
+    onError: (err) => toast.error(`No se pudo registrar el pago: ${err?.message || 'error desconocido'}`),
+  });
+
   const handleSubmit = async (data, isLast = true) => {
     if (editingPayment?.id) {
       updateMutation.mutate({ id: editingPayment.id, data, prev: editingPayment });
       return;
     }
-    // Para multi-semana se llama N veces; solo cerrar modal tras el último éxito.
-    // mutateAsync garantiza estado isPending (botón "Guardando...") y errores visibles.
+    batchRef.current.push(data);
+    if (!isLast) return;
+    const rows = batchRef.current;
+    batchRef.current = [];
     try {
-      await createMutation.mutateAsync(data);
-      if (isLast) {
-        setShowForm(false);
-        setEditingPayment(null);
-        setPayingExternalPlayer(null);
-        toast.success('Pago registrado');
-      }
+      await batchMutation.mutateAsync(rows);
+      setShowForm(false);
+      setEditingPayment(null);
+      setPayingExternalPlayer(null);
+      toast.success(rows.length > 1 ? `${rows.length} pagos registrados` : 'Pago registrado');
     } catch {
-      // onError de la mutación ya mostró el toast; el modal queda abierto para reintentar
+      // onError ya mostró el toast; el modal queda abierto para reintentar
     }
   };
 
@@ -212,7 +229,7 @@ export default function SummerCamp() {
           type={formType}
           onSubmit={handleSubmit}
           onCancel={() => { setShowForm(false); setEditingPayment(null); setPayingExternalPlayer(null); }}
-          isLoading={createMutation.isPending || updateMutation.isPending}
+          isLoading={batchMutation.isPending || updateMutation.isPending}
         />
       )}
       {/* Modal externo */}
