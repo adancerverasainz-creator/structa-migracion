@@ -183,7 +183,18 @@ export default function AdminFinanzasTab({ tournament, teams, tournamentId, matc
       let purged = 0
       if (orphanArbCharges.length > 0) {
         const orphanIds = orphanArbCharges.map(c => c.id)
-        // Eliminar pagos ligados a cargos huérfanos (FK)
+
+        // Guard financiero: abortar si algún cargo huérfano tiene pagos registrados.
+        // No borrar movimientos financieros sin confirmación explícita del usuario.
+        const orphansWithPayments = orphanArbCharges.filter(c => c.paid > 0)
+        if (orphansWithPayments.length > 0) {
+          const names = orphansWithPayments.map(c => c.description || c.id).join(', ')
+          throw new Error(
+            `Motor de Integridad: ${orphansWithPayments.length} cargo${orphansWithPayments.length !== 1 ? 's' : ''} inválido${orphansWithPayments.length !== 1 ? 's' : ''} tiene${orphansWithPayments.length !== 1 ? 'n' : ''} pagos registrados (${names}). Resuelve manualmente en la base de datos antes de purgar.`
+          )
+        }
+
+        // Eliminar pagos ligados a cargos huérfanos (FK) — sólo llega aquí si paid=0
         const { error: pyErr } = await supabase.from('payments').delete().in('charge_id', orphanIds)
         if (pyErr) throw pyErr
         // Eliminar los cargos huérfanos
@@ -412,6 +423,7 @@ export default function AdminFinanzasTab({ tournament, teams, tournamentId, matc
                 <span>
                   <strong>{arbitrageMissing}</strong> cargo{arbitrageMissing !== 1 ? 's' : ''} de arbitraje
                   {' '}sin registrar — partidos existentes sin cargo
+                  {orphanArbCharges.length > 0 && ' · también purgará cargos inválidos'}
                 </span>
               </div>
               <button
@@ -420,7 +432,10 @@ export default function AdminFinanzasTab({ tournament, teams, tournamentId, matc
                 className="flex items-center gap-1.5 bg-amber-600 hover:bg-amber-700 disabled:opacity-60 text-white text-xs font-medium px-3 py-1.5 rounded-lg transition-colors shrink-0"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${syncArbitraje.isPending ? 'animate-spin' : ''}`} />
-                {syncArbitraje.isPending ? 'Generando...' : 'Generar ahora'}
+                {syncArbitraje.isPending
+                  ? 'Procesando...'
+                  : orphanArbCharges.length > 0 ? 'Sincronizar' : 'Generar ahora'
+                }
               </button>
             </div>
           )}
@@ -505,7 +520,7 @@ export default function AdminFinanzasTab({ tournament, teams, tournamentId, matc
           </button>
         </div>
 
-        {charges.length === 0 ? (
+        {validCharges.length === 0 && orphanArbCharges.length === 0 ? (
           <div className="text-center py-10 text-gray-400 text-sm">
             <CreditCard className="w-8 h-8 mx-auto mb-2 opacity-30" />
             Sin cargos — genera los arbitrajes y agrega inscripciones con los botones de arriba.
@@ -533,10 +548,15 @@ export default function AdminFinanzasTab({ tournament, teams, tournamentId, matc
                     {hasOrphans && (
                       <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full shrink-0">Cargos inválidos</span>
                     )}
-                    <span className="text-xs text-gray-500 shrink-0">{fmt(teamPaid)} / {fmt(teamCharged)}</span>
+                    {/* Ocultar $0/$0 cuando todos los cargos son huérfanos — no hay balance válido que mostrar */}
+                    {validTeamCharges.length > 0 && (
+                      <span className="text-xs text-gray-500 shrink-0">{fmt(teamPaid)} / {fmt(teamCharged)}</span>
+                    )}
                     {teamBalance > 0
                       ? <span className="text-xs bg-red-50 text-red-600 px-2 py-0.5 rounded-full shrink-0">{fmt(teamBalance)} pendiente</span>
-                      : <span className="text-xs bg-green-50 text-green-700 px-2 py-0.5 rounded-full flex items-center gap-1 shrink-0"><Check className="w-3 h-3" />Al corriente</span>
+                      : !hasOrphans
+                        ? <span className="text-xs bg-green-50 text-green-700 px-2 py-0.5 rounded-full flex items-center gap-1 shrink-0"><Check className="w-3 h-3" />Al corriente</span>
+                        : null
                     }
                     {isExpanded
                       ? <ChevronUp   className="w-4 h-4 text-gray-400 shrink-0" />
