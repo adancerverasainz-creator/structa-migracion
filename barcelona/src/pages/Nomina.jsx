@@ -27,14 +27,59 @@ const ESQUEMAS = [
   { value: 'por_sesion', label: 'Por sesión' },
   { value: 'mixto', label: 'Mixto (fijo + sesiones)' },
 ];
-const FUENTES_PAGO = [
+// Fuentes de efectivo fijas; los bancos se cargan del catálogo de Tesorería
+// (bank_accounts) — un banco nuevo aparece aquí automáticamente.
+const FUENTES_EFECTIVO = [
   { value: 'fondos', label: 'Efectivo — Caja Fondos' },
   { value: 'efectivo', label: 'Efectivo — Caja del día' },
-  { value: 'BBVA', label: 'Transferencia BBVA' },
-  { value: 'MP', label: 'Transferencia Mercado Pago' },
-  { value: 'NU', label: 'Transferencia Nu' },
-  { value: 'OpenBank', label: 'Transferencia OpenBank' },
 ];
+const construirFuentes = (bancos) => [
+  ...FUENTES_EFECTIVO,
+  ...(bancos || []).map(b => ({ value: b.name, label: `Transferencia ${b.name}` })),
+];
+
+// ─── Calendario de nómina (los usuarios NO teclean fechas) ──────────────────
+const _iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const _finDeMes = (y, m) => new Date(y, m + 1, 0);
+function opcionesPeriodo(tipo) {
+  const hoy = new Date();
+  const y = hoy.getFullYear(), m = hoy.getMonth(), d = hoy.getDate();
+  const out = [];
+  const push = (ini, fin, etiqueta) => out.push({ period_start: _iso(ini), period_end: _iso(fin), etiqueta });
+  if (tipo === 'semanal') {
+    const lunes = new Date(hoy); lunes.setDate(d - ((hoy.getDay() + 6) % 7));
+    for (const off of [-7, 0, 7]) {
+      const ini = new Date(lunes); ini.setDate(lunes.getDate() + off);
+      const fin = new Date(ini); fin.setDate(ini.getDate() + 6);
+      push(ini, fin, `Semana del ${fmtFecha(_iso(ini))} al ${fmtFecha(_iso(fin))}${off === 0 ? ' (actual)' : off < 0 ? ' (anterior)' : ' (siguiente)'}`);
+    }
+  } else if (tipo === 'mensual') {
+    for (const off of [-1, 0, 1]) {
+      const ini = new Date(y, m + off, 1);
+      push(ini, _finDeMes(ini.getFullYear(), ini.getMonth()),
+        `${ini.toLocaleDateString('es-MX', { month: 'long', year: 'numeric' })}${off === 0 ? ' (actual)' : off < 0 ? ' (anterior)' : ' (siguiente)'}`);
+    }
+  } else { // quincenal y mixta usan el calendario quincenal: 1–15 y 16–fin de mes
+    const qs = [];
+    for (const off of [-1, 0, 1]) {
+      const base = new Date(y, m + off, 1);
+      const by = base.getFullYear(), bm = base.getMonth();
+      qs.push([new Date(by, bm, 1), new Date(by, bm, 15)]);
+      qs.push([new Date(by, bm, 16), _finDeMes(by, bm)]);
+    }
+    const actualIdx = qs.findIndex(([i, f]) => hoy >= i && hoy <= new Date(f.getFullYear(), f.getMonth(), f.getDate(), 23, 59));
+    qs.forEach(([ini, fin], i) => {
+      const q = ini.getDate() === 1 ? '1ª quincena' : '2ª quincena';
+      const mes = ini.toLocaleDateString('es-MX', { month: 'long', year: 'numeric' });
+      push(ini, fin, `${q} de ${mes}${i === actualIdx ? ' (actual)' : ''}`);
+    });
+  }
+  return out;
+}
+const indicePeriodoActual = (ops) => {
+  const i = ops.findIndex(o => o.etiqueta.includes('(actual)'));
+  return i >= 0 ? i : 0;
+};
 const STATUS_STYLE = {
   borrador: 'bg-gray-100 text-gray-700 border-gray-300',
   aprobada: 'bg-blue-50 text-blue-700 border-blue-300',
@@ -42,7 +87,8 @@ const STATUS_STYLE = {
   cancelada: 'bg-red-50 text-red-500 border-red-200',
 };
 const fmtFecha = (d) => d ? new Date(d + 'T12:00:00').toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' }) : '';
-const labelFuente = (v) => FUENTES_PAGO.find(f => f.value === v)?.label || v;
+let FUENTES_CACHE = FUENTES_EFECTIVO; // la página principal lo refresca con los bancos del catálogo
+const labelFuente = (v) => FUENTES_CACHE.find(f => f.value === v)?.label || (v ? `Transferencia ${v}` : v);
 
 // ─── Recibo imprimible ───────────────────────────────────────────────────────
 function imprimirRecibo(period, items, colabById) {
@@ -109,7 +155,7 @@ function imprimirRecibo(period, items, colabById) {
 }
 
 // ─── Formulario de colaborador ───────────────────────────────────────────────
-function ColaboradorForm({ colaborador, onClose, onSaved }) {
+function ColaboradorForm({ colaborador, fuentes, onClose, onSaved }) {
   const [f, setF] = useState(colaborador ? { ...colaborador } : {
     name: '', role_title: '', phone: '', email: '',
     pay_frequency: 'quincenal', pay_scheme: 'fijo',
@@ -175,7 +221,7 @@ function ColaboradorForm({ colaborador, onClose, onSaved }) {
               <div className="space-y-1"><Label>Fuente de pago habitual</Label>
                 <Select value={f.pay_source} onValueChange={v => set('pay_source', v)}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>{FUENTES_PAGO.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}</SelectContent>
+                  <SelectContent>{fuentes.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}</SelectContent>
                 </Select></div>
               <div className="space-y-1"><Label>CLABE / cuenta (referencia)</Label>
                 <Input value={f.bank_reference || ''} onChange={e => set('bank_reference', e.target.value)} /></div>
@@ -201,7 +247,7 @@ function ColaboradorForm({ colaborador, onClose, onSaved }) {
 }
 
 // ─── Editor de recibo (fila de nómina) ───────────────────────────────────────
-function ReciboEditor({ item, colaborador, editable, onSave, onDelete }) {
+function ReciboEditor({ item, colaborador, fuentes, editable, onSave, onDelete }) {
   const [open, setOpen] = useState(false);
   const [f, setF] = useState({
     base_amount: item.base_amount ?? 0, sessions_count: item.sessions_count ?? 0,
@@ -255,7 +301,7 @@ function ReciboEditor({ item, colaborador, editable, onSave, onDelete }) {
             <div className="space-y-1"><Label className="text-xs">Fuente de pago</Label>
               <Select value={f.pay_source} onValueChange={v => set('pay_source', v)} disabled={!editable}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>{FUENTES_PAGO.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}</SelectContent>
+                <SelectContent>{fuentes.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}</SelectContent>
               </Select></div>
           </div>
           {[['extras', 'Adicionales (torneos, copas, bonos)', 'text-green-700'], ['deductions', 'Deducciones (préstamos, faltas)', 'text-red-600']].map(([key, titulo, color]) => (
@@ -285,7 +331,7 @@ function ReciboEditor({ item, colaborador, editable, onSave, onDelete }) {
 }
 
 // ─── Detalle de un período ───────────────────────────────────────────────────
-function PeriodoDetail({ period, colaboradores, colabById, isAdmin, canUpdate, onClose }) {
+function PeriodoDetail({ period, colaboradores, colabById, fuentes, isAdmin, canUpdate, onClose }) {
   const queryClient = useQueryClient();
   const [addingId, setAddingId] = useState('');
   const pagarOpKeyRef = useRef(null);
@@ -406,7 +452,7 @@ function PeriodoDetail({ period, colaboradores, colabById, isAdmin, canUpdate, o
             ) : (
               <div className="space-y-2">
                 {items.map(it => (
-                  <ReciboEditor key={it.id + (it.updated_at || '')} item={it} colaborador={colabById[it.collaborator_id]}
+                  <ReciboEditor key={it.id + (it.updated_at || '')} item={it} colaborador={colabById[it.collaborator_id]} fuentes={fuentes}
                     editable={editable} onSave={guardarItem} onDelete={editable ? quitarItem : null} />))}
               </div>)}
           <div className="flex items-center justify-between bg-[#004d98]/5 border border-[#004d98]/20 rounded-lg px-4 py-3">
@@ -439,9 +485,24 @@ export default function Nomina() {
   const [editingColab, setEditingColab] = useState(null);
   const [detallePeriodo, setDetallePeriodo] = useState(null);
   const [showNuevoPeriodo, setShowNuevoPeriodo] = useState(false);
-  const [nuevoPeriodo, setNuevoPeriodo] = useState({ period_start: '', period_end: '', frequency: 'quincenal' });
+  // Calendario de nómina: el usuario elige tipo y período; las fechas las calcula el sistema
+  const [tipoPeriodo, setTipoPeriodo] = useState('quincenal');
+  const [opcionIdx, setOpcionIdx] = useState(null);
 
   const acceso = isAdmin || canCreate || canUpdate;
+
+  // Bancos desde el catálogo de Tesorería — la lista de fuentes de pago se arma sola
+  const { data: bancos = [] } = useQuery({
+    enabled: acceso,
+    queryKey: ['bankAccountsNomina'],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('bank_accounts').select('name, active, sort_order').eq('active', true).order('sort_order');
+      if (error) throw new Error(error.message);
+      return data;
+    },
+  });
+  const fuentes = useMemo(() => construirFuentes(bancos), [bancos]);
+  FUENTES_CACHE = fuentes;
 
   const { data: colaboradores = [] } = useQuery({
     enabled: acceso,
@@ -473,15 +534,24 @@ export default function Nomina() {
       </div>);
   }
 
+  const opciones = useMemo(() => opcionesPeriodo(tipoPeriodo), [tipoPeriodo]);
+  const idxSel = opcionIdx ?? indicePeriodoActual(opciones);
+  const periodoElegido = opciones[idxSel];
+
   const crearPeriodo = async (e) => {
     e.preventDefault();
-    if (!nuevoPeriodo.period_start || !nuevoPeriodo.period_end) return toast.error('Indica el rango del período');
-    if (nuevoPeriodo.period_end < nuevoPeriodo.period_start) return toast.error('La fecha final debe ser posterior a la inicial');
-    const { data, error } = await supabase.from('payroll_periods').insert(nuevoPeriodo).select().single();
-    if (error) return toast.error(error.message);
+    if (!periodoElegido) return;
+    const { data, error } = await supabase.from('payroll_periods').insert({
+      period_start: periodoElegido.period_start,
+      period_end: periodoElegido.period_end,
+      frequency: tipoPeriodo,
+    }).select().single();
+    if (error) return toast.error(/duplicate|ux_payroll_periods/i.test(error.message)
+      ? 'Ese período ya tiene una nómina creada — ábrela desde la lista.'
+      : error.message);
     toast.success('Nómina creada en borrador');
     setShowNuevoPeriodo(false);
-    setNuevoPeriodo({ period_start: '', period_end: '', frequency: 'quincenal' });
+    setOpcionIdx(null);
     queryClient.invalidateQueries({ queryKey: ['payrollPeriods'] });
     setDetallePeriodo(data);
   };
@@ -594,7 +664,7 @@ export default function Nomina() {
 
       {/* Modales */}
       {showColabForm && (
-        <ColaboradorForm colaborador={editingColab} onClose={() => setShowColabForm(false)}
+        <ColaboradorForm colaborador={editingColab} fuentes={fuentes} onClose={() => setShowColabForm(false)}
           onSaved={() => { setShowColabForm(false); queryClient.invalidateQueries({ queryKey: ['collaborators'] }); }} />)}
 
       {showNuevoPeriodo && (
@@ -606,18 +676,21 @@ export default function Nomina() {
             </div>
             <form onSubmit={crearPeriodo}>
               <CardContent className="pt-5 space-y-4">
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1"><Label>Del *</Label>
-                    <Input type="date" value={nuevoPeriodo.period_start} onChange={e => setNuevoPeriodo(p => ({ ...p, period_start: e.target.value }))} required /></div>
-                  <div className="space-y-1"><Label>Al *</Label>
-                    <Input type="date" value={nuevoPeriodo.period_end} onChange={e => setNuevoPeriodo(p => ({ ...p, period_end: e.target.value }))} required /></div>
-                </div>
-                <div className="space-y-1"><Label>Tipo de período</Label>
-                  <Select value={nuevoPeriodo.frequency} onValueChange={v => setNuevoPeriodo(p => ({ ...p, frequency: v }))}>
+                <div className="space-y-1"><Label>Tipo de período *</Label>
+                  <Select value={tipoPeriodo} onValueChange={v => { setTipoPeriodo(v); setOpcionIdx(null); }}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>{[...FRECUENCIAS, { value: 'mixta', label: 'Mixta (varias periodicidades)' }].map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}</SelectContent>
+                    <SelectContent>{[...FRECUENCIAS, { value: 'mixta', label: 'Mixta (calendario quincenal)' }].map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}</SelectContent>
                   </Select></div>
-                <p className="text-xs text-gray-500">La nómina nace en <b>borrador</b>: agrega colaboradores, captura sesiones y adicionales, apruébala y páguala. Al pagar se generan los egresos automáticamente.</p>
+                <div className="space-y-1"><Label>Período *</Label>
+                  <Select value={String(idxSel)} onValueChange={v => setOpcionIdx(parseInt(v, 10))}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>{opciones.map((o, i) => <SelectItem key={o.period_start} value={String(i)}>{o.etiqueta}</SelectItem>)}</SelectContent>
+                  </Select></div>
+                {periodoElegido && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 text-sm text-blue-800">
+                    Del <b>{fmtFecha(periodoElegido.period_start)}</b> al <b>{fmtFecha(periodoElegido.period_end)}</b> — fechas calculadas por el sistema.
+                  </div>)}
+                <p className="text-xs text-gray-500">La nómina nace en <b>borrador</b>: agrega colaboradores, captura sesiones y adicionales, apruébala y páguala. Al pagar se generan los egresos automáticamente. No se permiten dos nóminas del mismo período.</p>
               </CardContent>
               <div className="px-6 pb-5 flex justify-end gap-3">
                 <Button type="button" variant="outline" onClick={() => setShowNuevoPeriodo(false)}>Cancelar</Button>
@@ -630,7 +703,7 @@ export default function Nomina() {
       {detallePeriodo && (
         <PeriodoDetail
           period={periodos.find(p => p.id === detallePeriodo.id) || detallePeriodo}
-          colaboradores={colaboradores} colabById={colabById}
+          colaboradores={colaboradores} colabById={colabById} fuentes={fuentes}
           isAdmin={isAdmin} canUpdate={canUpdate}
           onClose={() => setDetallePeriodo(null)} />)}
     </div>
