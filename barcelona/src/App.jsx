@@ -9,6 +9,7 @@ import { BrowserRouter, HashRouter, Route, Routes } from 'react-router-dom';
 const Router = import.meta.env.VITE_HASH_ROUTER === '1' ? HashRouter : BrowserRouter;
 import PageNotFound from './lib/PageNotFound';
 import CuentasPorPagar from './pages/CuentasPorPagar';
+import Nomina from './pages/Nomina';
 import SummerCamp from './pages/SummerCamp';
 import Diagnostico from './pages/Diagnostico';
 import Permissions from './pages/Permissions';
@@ -81,6 +82,7 @@ const AuthenticatedApp = () => {
         />
       ))}
       <Route path="/CuentasPorPagar" element={<LayoutWrapper currentPageName="CuentasPorPagar"><CuentasPorPagar /></LayoutWrapper>} />
+      <Route path="/Nomina" element={<LayoutWrapper currentPageName="Nomina"><Nomina /></LayoutWrapper>} />
       <Route path="/SummerCamp" element={<LayoutWrapper currentPageName="SummerCamp"><SummerCamp /></LayoutWrapper>} />
       <Route path="/Diagnostico" element={<LayoutWrapper currentPageName="Diagnostico"><Diagnostico /></LayoutWrapper>} />
       <Route path="/Permissions" element={<LayoutWrapper currentPageName="Permissions"><Permissions /></LayoutWrapper>} />
