@@ -28,6 +28,7 @@ export default function Layout({ children, currentPageName }) {
     { name: 'Egresos', page: 'Expenses', icon: CreditCard },
     { name: 'CxP', page: 'CuentasPorPagar', icon: CreditCard },
     { name: 'Tesorería', page: 'Fondos', icon: CreditCard },
+    { name: 'Nómina', page: 'Nomina', icon: CreditCard, roles: ['admin'] },
     { name: 'Torneos', page: 'Tournaments', icon: Trophy },
     // Liga oculto del menú (módulo sin uso — decisión arquitectural 2026-07-13). La ruta /Liga sigue activa por si se necesita.
     { name: 'Summer', page: 'SummerCamp', icon: Trophy },
