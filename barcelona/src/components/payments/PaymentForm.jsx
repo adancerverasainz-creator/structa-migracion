@@ -11,7 +11,7 @@ import { es } from 'date-fns/locale';
 import { formatCurrency } from '../lib/formatCurrency';
 import TicketUniforme from './TicketUniforme';
 
-export default function PaymentForm({ payment, players, onSubmit, onCancel, isLoading }) {
+export default function PaymentForm({ payment, players, onSubmit, onCancel, isLoading, feesConfig = null }) {
   const [formData, setFormData] = useState(() => {
     if (payment) {
       return {
@@ -41,9 +41,9 @@ export default function PaymentForm({ payment, players, onSubmit, onCancel, isLo
   });
 
   const amountsByType = {
-    mensualidad: [2000, 1700, 1300, 1200, 1100, 1080, 960, 900, 800, 600, 400, 300, 0],
-    inscripcion: [2100, 1890, 1300, 650],
-    reinscripcion: [1800, 1620],
+    mensualidad: feesConfig?.mensualidad_montos?.length ? feesConfig.mensualidad_montos : [2000, 1700, 1450, 1320, 1300, 1200, 1190, 1160, 1100, 1080, 1060, 960, 900, 800, 600, 400, 300, 0],
+    inscripcion: feesConfig?.inscripcion_montos?.length ? feesConfig.inscripcion_montos : [2100, 1890, 1300, 650],
+    reinscripcion: feesConfig?.reinscripcion_montos?.length ? feesConfig.reinscripcion_montos : [1800, 1620],
   };
 
   const uniformItems = [
