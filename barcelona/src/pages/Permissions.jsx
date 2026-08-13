@@ -21,6 +21,7 @@ const RESOURCES = [
   { key: 'prospectos', label: 'Prospectos (pre-registros)' },
   { key: 'programs', label: 'Programas' },
   { key: 'summercamp', label: 'Summer Camp (externos)' },
+  { key: 'nomina', label: 'Nómina (confidencial — solo admin por defecto)' },
   { key: 'condonaciones', label: 'Condonaciones de deuda', actions: ['create'] },
 ];
 const ACTIONS = [
