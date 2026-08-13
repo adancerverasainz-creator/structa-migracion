@@ -38,6 +38,12 @@ const EMPTY_PROGRAM = { name: '', description: '', link: '', status: 'activo', s
 
 const APP_ID = '69829604916b5b78a01842a3';
 const generateFormLink = (programId) => `${window.location.origin}/registro?programa=${programId}`;
+// WhatsApp directo al tutor: normaliza el número y antepone lada de México (52) si son 10 dígitos
+const waLink = (phone) => {
+  let d = String(phone || '').replace(/\D/g, '');
+  if (d.length === 10) d = '52' + d;
+  return `https://wa.me/${d}`;
+};
 
 
 
@@ -267,7 +273,7 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
                         </div>
                         <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-500">
                           {p.parent_name && <span>👤 {p.parent_name}</span>}
-                          {p.parent_phone && <span>📱 {p.parent_phone}</span>}
+                          {p.parent_phone && <a href={waLink(p.parent_phone)} target="_blank" rel="noopener noreferrer" className="text-green-600 hover:text-green-700 hover:underline font-medium" title="Abrir chat de WhatsApp">📱 {p.parent_phone}</a>}
                           {p.parent_email && <span>✉️ {p.parent_email}</span>}
                           {p.birth_date && <span>🎂 {p.birth_date}</span>}
                           {p.monthly_fee && <span>💰 ${p.monthly_fee}/mes</span>}
