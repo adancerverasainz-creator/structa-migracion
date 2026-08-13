@@ -10,6 +10,7 @@ const Router = import.meta.env.VITE_HASH_ROUTER === '1' ? HashRouter : BrowserRo
 import PageNotFound from './lib/PageNotFound';
 import CuentasPorPagar from './pages/CuentasPorPagar';
 import Nomina from './pages/Nomina';
+import Registro from './pages/Registro';
 import SummerCamp from './pages/SummerCamp';
 import Diagnostico from './pages/Diagnostico';
 import Permissions from './pages/Permissions';
@@ -41,6 +42,11 @@ const AuthenticatedApp = () => {
   }
 
   // Página de login (accesible sin sesión; compatible con hash router del staging)
+  // Formulario público de pre-registro (sin sesión) — reemplaza forms.structa.mx
+  const isRegistroRoute = window.location.pathname.toLowerCase() === '/registro';
+  if (isRegistroRoute) {
+    return <Registro />;
+  }
   const isResetRoute = window.location.pathname.toLowerCase() === '/reset-password';
   if (isResetRoute) {
     return <ResetPassword />;
