@@ -27,7 +27,7 @@ import { calculateIVA, calculateSuggestedSurcharge } from '../../lib/financeEngi
 const SURCHARGE_OPTIONS = [0, 50, 100, 200];
 // FALLBACKS si la configuración del club aún no carga (fuente de verdad: BD)
 const DEFAULT_AMOUNTS = {
-  mensualidad: [2000, 1700, 1300, 1200, 1100, 1080, 960, 900, 800, 600, 400, 300, 0],
+  mensualidad: [2000, 1700, 1450, 1320, 1300, 1200, 1190, 1160, 1100, 1080, 1060, 960, 900, 800, 600, 400, 300, 0],
   inscripcion: [2100, 1890, 1300, 650],
   reinscripcion: [1800, 1620],
 };
@@ -51,7 +51,7 @@ const DEFAULT_BANKS = ['BBVA', 'MP', 'NU', 'OpenBank', 'MercadoPagoBIA'];
 export default function UnifiedPaymentGateway({ config, onSubmit, onCancel, isLoading, feesConfig = null, uniformCatalog = null, bankAccounts = null, lateFeeSettings = null }) {
   // Configuración del club desde BD (catálogos/cuentas/precios editables sin deploy)
   const amountsByType = {
-    mensualidad: DEFAULT_AMOUNTS.mensualidad,
+    mensualidad: feesConfig?.mensualidad_montos?.length ? feesConfig.mensualidad_montos : DEFAULT_AMOUNTS.mensualidad,
     inscripcion: feesConfig?.inscripcion_montos?.length ? feesConfig.inscripcion_montos : DEFAULT_AMOUNTS.inscripcion,
     reinscripcion: feesConfig?.reinscripcion_montos?.length ? feesConfig.reinscripcion_montos : DEFAULT_AMOUNTS.reinscripcion,
   };
