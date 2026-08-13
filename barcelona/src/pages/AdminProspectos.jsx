@@ -37,7 +37,7 @@ const PROGRAM_STATUS_ICONS = { activo: CheckCircle, pausado: Clock, cerrado: XCi
 const EMPTY_PROGRAM = { name: '', description: '', link: '', status: 'activo', start_date: '', end_date: '' };
 
 const APP_ID = '69829604916b5b78a01842a3';
-const generateFormLink = (programId) => `https://forms.structa.mx/registro?app=${APP_ID}&token=${programId}`;
+const generateFormLink = (programId) => `${window.location.origin}/registro?programa=${programId}`;
 
 
 
@@ -442,7 +442,7 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
               <div className="flex items-start gap-2 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2.5">
                 <Zap className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" />
                 <p className="text-xs text-blue-700">
-                  El link al formulario de <strong>forms.structa.mx</strong> se generará automáticamente al guardar el programa.
+                  El link al formulario público de <strong>bia.structa.mx/registro</strong> se generará automáticamente al guardar el programa.
                 </p>
               </div>
             )}
