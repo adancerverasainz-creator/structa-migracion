@@ -4,9 +4,12 @@ import { createPageUrl } from './utils';
 import { Home, Users, CreditCard, Trophy, Shield, LayoutGrid, Menu, X, LogOut, FileText, BarChart2, ChevronRight, Stethoscope, LifeBuoy } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { base44 } from '@/api/base44Client';
+import { usePerms } from '@/lib/usePerms';
 
 export default function Layout({ children, currentPageName }) {
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
+  // Nómina es confidencial (solo admin), pero una excepción otorgada en Permisos también muestra el menú
+  const { canCreate: nominaCreate, canUpdate: nominaUpdate } = usePerms('nomina');
 
   const handleLogout = async () => {
     await base44.auth.logout();
@@ -28,7 +31,7 @@ export default function Layout({ children, currentPageName }) {
     { name: 'Egresos', page: 'Expenses', icon: CreditCard },
     { name: 'CxP', page: 'CuentasPorPagar', icon: CreditCard },
     { name: 'Tesorería', page: 'Fondos', icon: CreditCard },
-    { name: 'Nómina', page: 'Nomina', icon: CreditCard, roles: ['admin'] },
+    { name: 'Nómina', page: 'Nomina', icon: CreditCard, roles: ['admin'], allowByPerm: nominaCreate || nominaUpdate },
     { name: 'Torneos', page: 'Tournaments', icon: Trophy },
     // Liga oculto del menú (módulo sin uso — decisión arquitectural 2026-07-13). La ruta /Liga sigue activa por si se necesita.
     { name: 'Summer', page: 'SummerCamp', icon: Trophy },
@@ -40,7 +43,7 @@ export default function Layout({ children, currentPageName }) {
     { name: 'Ayuda', page: 'Ayuda', icon: LifeBuoy },
   ];
 
-  const navItems = allNavItems.filter(item => !item.roles || item.roles.includes(currentUser?.role));
+  const navItems = allNavItems.filter(item => !item.roles || item.roles.includes(currentUser?.role) || item.allowByPerm);
 
   return (
     <div className="min-h-screen bg-gray-50">
