@@ -466,7 +466,7 @@ function PeriodoDetail({ period, colaboradores, colabById, fuentes, isAdmin, can
           {period.status === 'borrador' && (canUpdate || isAdmin) && (
             <Button type="button" size="sm" onClick={aprobar} className="bg-blue-600 hover:bg-blue-700">
               <CheckCircle2 className="w-4 h-4 mr-1" />Aprobar</Button>)}
-          {period.status === 'aprobada' && isAdmin && (<>
+          {period.status === 'aprobada' && (canUpdate || isAdmin) && (<>
             <Button type="button" size="sm" variant="outline" onClick={reabrir}><Undo2 className="w-4 h-4 mr-1" />Reabrir</Button>
             <Button type="button" size="sm" onClick={pagar} className="bg-green-600 hover:bg-green-700">
               <Banknote className="w-4 h-4 mr-1" />Pagar nómina</Button></>)}
