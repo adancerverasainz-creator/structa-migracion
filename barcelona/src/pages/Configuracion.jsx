@@ -198,6 +198,10 @@ export default function Configuracion() {
                   <Input type="number" min="1" max="12" value={f.season_start_month ?? 8} onChange={e => setFeesDraft({ ...f, season_start_month: Math.min(12, Math.max(1, parseInt(e.target.value) || 8)) })} />
                 </label>
                 <label className="text-sm space-y-1 block">
+                  <span className="text-gray-600">Montos rápidos — Mensualidad (separados por coma)</span>
+                  <Input value={(f.mensualidad_montos || []).join(', ')} onChange={e => setFeesDraft({ ...f, mensualidad_montos: e.target.value.split(',').map(x => parseFloat(x.trim())).filter(x => !isNaN(x)) })} />
+                </label>
+                <label className="text-sm space-y-1 block">
                   <span className="text-gray-600">Montos rápidos — Inscripción (separados por coma)</span>
                   <Input value={(f.inscripcion_montos || []).join(', ')} onChange={e => setFeesDraft({ ...f, inscripcion_montos: e.target.value.split(',').map(x => parseFloat(x.trim())).filter(x => !isNaN(x)) })} />
                 </label>
