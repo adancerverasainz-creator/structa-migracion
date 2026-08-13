@@ -557,6 +557,7 @@ actions={
 <PaymentForm
 payment={editingPayment}
 players={players}
+feesConfig={feesConfig}
 onSubmit={handleSubmit}
 onCancel={() => {
 setShowForm(false);
