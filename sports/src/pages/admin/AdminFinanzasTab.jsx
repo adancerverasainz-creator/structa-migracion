@@ -486,7 +486,7 @@ export default function AdminFinanzasTab({ tournament, teams, tournamentId, matc
                       {/* Mostrar monto esperado vs cobrado cuando hay descuento */}
                       {(() => {
                         const expected = expectedInscFee(team)
-                        return expected && Math.abs(expected - Number(inscCharge.amount)) > 0.01 ? (
+                        return expected !== null && Math.abs(expected - Number(inscCharge.amount)) > 0.01 ? (
                           <span className="text-xs text-amber-600 shrink-0" title={`Tarifa base: ${fmt(expected)}`}>
                             {fmt(inscCharge.paid)} / {fmt(inscCharge.amount)} ⚠
                           </span>
@@ -512,8 +512,10 @@ export default function AdminFinanzasTab({ tournament, teams, tournamentId, matc
                       {/* Mostrar cuánto debe pagar antes de agregar el cargo */}
                       {(() => {
                         const expected = expectedInscFee(team)
-                        return expected ? (
-                          <span className="text-xs font-medium text-blue-700 shrink-0">{fmt(expected)}</span>
+                        return expected !== null ? (
+                          <span className="text-xs font-medium text-blue-700 shrink-0">
+                            {expected === 0 ? 'Exento ($0)' : fmt(expected)}
+                          </span>
                         ) : null
                       })()}
                       <button
