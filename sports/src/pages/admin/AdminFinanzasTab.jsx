@@ -69,9 +69,10 @@ export default function AdminFinanzasTab({ tournament, teams, tournamentId, matc
   const [remittanceModal, setRemittanceModal] = useState(false)
   const [remittanceForm,  setRemittanceForm]  = useState({ amount: '', notes: '' })
   const [chargeModal,     setChargeModal]     = useState(false)
-  const [chargeForm,      setChargeForm]      = useState({ team_id: '', type: 'other', description: '', amount: '' })
+  const [chargeForm,      setChargeForm]      = useState({ team_id: '', type: 'other', description: '', amount: '', op_key: '' })
   const [inscModal,       setInscModal]       = useState(null)   // team object
   const [inscAmount,      setInscAmount]      = useState('')
+  const [inscOpKey,       setInscOpKey]       = useState('')     // UUID generado al abrir modal de inscripción
   const [expandedTeam,    setExpandedTeam]    = useState(null)
   const [showRecon,       setShowRecon]       = useState(false)
 
@@ -179,13 +180,9 @@ export default function AdminFinanzasTab({ tournament, teams, tournamentId, matc
   // Sync retroactivo de arbitraje — con motor de idempotencia que purga huérfanos
   const syncArbitraje = useMutation({
     mutationFn: async () => {
-      // ── Motor de Idempotencia: purgar cargos de arbitraje inválidos primero ──
-      let purged = 0
+      // ── Guard financiero (client-side): abortar si algún cargo huérfano tiene pagos.
+      // No borrar movimientos financieros sin confirmación explícita del usuario.
       if (orphanArbCharges.length > 0) {
-        const orphanIds = orphanArbCharges.map(c => c.id)
-
-        // Guard financiero: abortar si algún cargo huérfano tiene pagos registrados.
-        // No borrar movimientos financieros sin confirmación explícita del usuario.
         const orphansWithPayments = orphanArbCharges.filter(c => c.paid > 0)
         if (orphansWithPayments.length > 0) {
           const names = orphansWithPayments.map(c => c.description || c.id).join(', ')
@@ -193,17 +190,9 @@ export default function AdminFinanzasTab({ tournament, teams, tournamentId, matc
             `Motor de Integridad: ${orphansWithPayments.length} cargo${orphansWithPayments.length !== 1 ? 's' : ''} inválido${orphansWithPayments.length !== 1 ? 's' : ''} tiene${orphansWithPayments.length !== 1 ? 'n' : ''} pagos registrados (${names}). Resuelve manualmente en la base de datos antes de purgar.`
           )
         }
-
-        // Eliminar pagos ligados a cargos huérfanos (FK) — sólo llega aquí si paid=0
-        const { error: pyErr } = await supabase.from('payments').delete().in('charge_id', orphanIds)
-        if (pyErr) throw pyErr
-        // Eliminar los cargos huérfanos
-        const { error: chErr } = await supabase.from('charges').delete().in('id', orphanIds)
-        if (chErr) throw chErr
-        purged = orphanIds.length
       }
 
-      // ── Generar cargos faltantes ─────────────────────────────────────────────
+      // ── Calcular cargos faltantes ────────────────────────────────────────────
       const fee = Number(tournament?.arbitrage_fee ?? 350)
       const realMatches = (matches || []).filter(m => m.home_team_id && m.away_team_id)
       const toInsert = []
@@ -231,15 +220,21 @@ export default function AdminFinanzasTab({ tournament, teams, tournamentId, matc
           })
         }
       }
-      if (toInsert.length === 0 && purged === 0) throw new Error('Todos los cargos de arbitraje ya están al corriente.')
-      if (toInsert.length > 0) {
-        // upsert con ignoreDuplicates para idempotencia a nivel DB (índice único parcial)
-        const { error } = await supabase
-          .from('charges')
-          .upsert(toInsert, { onConflict: 'match_id,team_id,type', ignoreDuplicates: true })
-        if (error) throw error
+
+      if (toInsert.length === 0 && orphanArbCharges.length === 0) {
+        throw new Error('Todos los cargos de arbitraje ya están al corriente.')
       }
-      return { count: toInsert.length, purged }
+
+      // ── RPC atómico: purga + upsert en una sola transacción Postgres ─────────
+      // Reemplaza las 3 operaciones secuenciales anteriores (vulnerable a falla parcial).
+      const orphanIds = orphanArbCharges.map(c => c.id)
+      const { data, error } = await supabase.rpc('purge_and_sync_arbitrage', {
+        p_orphan_charge_ids: orphanIds.length > 0 ? orphanIds : null,
+        p_new_charges:       toInsert.length > 0 ? toInsert : null,
+      })
+      if (error) throw error
+
+      return { count: data?.inserted ?? toInsert.length, purged: data?.purged ?? orphanIds.length }
     },
     onSuccess: ({ count, purged }) => {
       qc.invalidateQueries({ queryKey: ['charges', tournamentId] })
@@ -309,35 +304,40 @@ export default function AdminFinanzasTab({ tournament, teams, tournamentId, matc
           throw new Error(`Motor de Integridad: ${selectedTeam.name} no paga arbitraje — cambia el tipo de cargo.`)
         }
       }
-      const { error } = await supabase.from('charges').insert({
+      // op_key (UUID generado al abrir el modal) garantiza que un doble-submit
+      // no registre el mismo cargo dos veces — el segundo choca en UNIQUE y se descarta.
+      const { error } = await supabase.from('charges').upsert({
         tournament_id: tournamentId,
         team_id:       form.team_id,
         type:          form.type,
         description:   form.description || CHARGE_TYPE_LABEL[form.type],
         amount:        Number(form.amount),
-      })
+        op_key:        form.op_key || null,
+      }, { onConflict: 'op_key', ignoreDuplicates: true })
       if (error) throw error
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['charges', tournamentId] })
       toast.success('Cargo agregado')
       setChargeModal(false)
-      setChargeForm({ team_id: '', type: 'other', description: '', amount: '' })
+      setChargeForm({ team_id: '', type: 'other', description: '', amount: '', op_key: '' })
     },
     onError: (e) => toast.error('Error: ' + e.message),
   })
 
   // Inscripción rápida para un equipo
   const addInscription = useMutation({
-    mutationFn: async ({ team, amount }) => {
+    mutationFn: async ({ team, amount, op_key }) => {
       if (!amount || Number(amount) <= 0) throw new Error('El monto debe ser mayor a 0')
-      const { error } = await supabase.from('charges').insert({
+      // op_key (UUID generado al abrir el modal) garantiza idempotencia en el insert
+      const { error } = await supabase.from('charges').upsert({
         tournament_id: tournamentId,
         team_id:       team.id,
         type:          'inscription',
         description:   'Inscripción',
         amount:        Number(amount),
-      })
+        op_key:        op_key || null,
+      }, { onConflict: 'op_key', ignoreDuplicates: true })
       if (error) throw error
     },
     onSuccess: () => {
@@ -345,6 +345,7 @@ export default function AdminFinanzasTab({ tournament, teams, tournamentId, matc
       toast.success('Cargo de inscripción agregado')
       setInscModal(null)
       setInscAmount('')
+      setInscOpKey('')
     },
     onError: (e) => toast.error('Error: ' + e.message),
   })
@@ -353,6 +354,15 @@ export default function AdminFinanzasTab({ tournament, teams, tournamentId, matc
     // Genera un UUID fresco por cada apertura de modal — protege contra doble-submit
     setPaymentForm({ amount: charge.balance.toFixed(2), notes: '', op_key: crypto.randomUUID() })
     setPaymentModal(charge)
+  }
+
+  // Calcula la cuota de inscripción esperada por equipo:
+  // tarifa base del torneo × (1 - descuento%) del equipo
+  function expectedInscFee(team) {
+    const base = Number(tournament?.inscription_fee ?? 0)
+    if (!base) return null
+    const disc = Number(team?.inscription_discount_pct ?? 0)
+    return base * (1 - disc / 100)
   }
 
   // ── Loading ──────────────────────────────────────────────────────────────────
@@ -472,7 +482,17 @@ export default function AdminFinanzasTab({ tournament, teams, tournamentId, matc
                   <span className="flex-1 text-sm font-medium text-gray-900">{team.name}</span>
                   {inscCharge ? (
                     <>
-                      <span className="text-xs text-gray-500 shrink-0">{fmt(inscCharge.paid)} / {fmt(inscCharge.amount)}</span>
+                      {/* Mostrar monto esperado vs cobrado cuando hay descuento */}
+                      {(() => {
+                        const expected = expectedInscFee(team)
+                        return expected && Math.abs(expected - Number(inscCharge.amount)) > 0.01 ? (
+                          <span className="text-xs text-amber-600 shrink-0" title={`Tarifa base: ${fmt(expected)}`}>
+                            {fmt(inscCharge.paid)} / {fmt(inscCharge.amount)} ⚠
+                          </span>
+                        ) : (
+                          <span className="text-xs text-gray-500 shrink-0">{fmt(inscCharge.paid)} / {fmt(inscCharge.amount)}</span>
+                        )
+                      })()}
                       {inscCharge.is_paid ? (
                         <span className="text-xs bg-green-50 text-green-700 px-2 py-0.5 rounded-full flex items-center gap-1 shrink-0">
                           <Check className="w-3 h-3" /> Pagada
@@ -487,12 +507,26 @@ export default function AdminFinanzasTab({ tournament, teams, tournamentId, matc
                       )}
                     </>
                   ) : (
-                    <button
-                      onClick={() => { setInscModal(team); setInscAmount('') }}
-                      className="text-xs border border-blue-300 text-blue-600 hover:bg-blue-50 px-3 py-1 rounded-lg transition-colors shrink-0"
-                    >
-                      + Agregar cargo
-                    </button>
+                    <>
+                      {/* Mostrar cuánto debe pagar antes de agregar el cargo */}
+                      {(() => {
+                        const expected = expectedInscFee(team)
+                        return expected ? (
+                          <span className="text-xs font-medium text-blue-700 shrink-0">{fmt(expected)}</span>
+                        ) : null
+                      })()}
+                      <button
+                        onClick={() => {
+                          const fee = expectedInscFee(team)
+                          setInscModal(team)
+                          setInscAmount(fee ? fee.toFixed(0) : '')
+                          setInscOpKey(crypto.randomUUID())
+                        }}
+                        className="text-xs border border-blue-300 text-blue-600 hover:bg-blue-50 px-3 py-1 rounded-lg transition-colors shrink-0"
+                      >
+                        + Agregar cargo
+                      </button>
+                    </>
                   )}
                 </li>
               )
@@ -513,7 +547,7 @@ export default function AdminFinanzasTab({ tournament, teams, tournamentId, matc
             )}
           </div>
           <button
-            onClick={() => { setChargeForm({ team_id: '', type: 'other', description: '', amount: '' }); setChargeModal(true) }}
+            onClick={() => { setChargeForm({ team_id: '', type: 'other', description: '', amount: '', op_key: crypto.randomUUID() }); setChargeModal(true) }}
             className="flex items-center gap-1.5 text-xs border border-gray-300 text-gray-600 hover:bg-gray-50 px-3 py-1.5 rounded-lg transition-colors"
           >
             <Plus className="w-3.5 h-3.5" /> Cargo manual
@@ -861,9 +895,21 @@ export default function AdminFinanzasTab({ tournament, teams, tournamentId, matc
       {inscModal && (
         <Modal title={`Inscripción — ${inscModal.name}`} onClose={() => setInscModal(null)}>
           <form
-            onSubmit={e => { e.preventDefault(); addInscription.mutate({ team: inscModal, amount: inscAmount }) }}
+            onSubmit={e => { e.preventDefault(); addInscription.mutate({ team: inscModal, amount: inscAmount, op_key: inscOpKey }) }}
             className="space-y-4"
           >
+            {/* Contexto: tarifa base del torneo y descuento del equipo */}
+            {tournament?.inscription_fee > 0 && (
+              <div className="p-3 bg-blue-50 rounded-lg text-xs text-blue-800 space-y-0.5">
+                <p>Tarifa base del torneo: <strong>{fmt(tournament.inscription_fee)}</strong></p>
+                {inscModal.inscription_discount_pct > 0 && (
+                  <p>Descuento del equipo: <strong>{inscModal.inscription_discount_pct}%</strong></p>
+                )}
+                <p className="font-semibold">
+                  Debe pagar: {fmt(expectedInscFee(inscModal))}
+                </p>
+              </div>
+            )}
             <Field label="Monto de inscripción *">
               <input
                 required type="number" min="0.01" step="100"
@@ -871,6 +917,11 @@ export default function AdminFinanzasTab({ tournament, teams, tournamentId, matc
                 onChange={e => setInscAmount(e.target.value)}
                 className={INPUT} placeholder="1500"
               />
+              {tournament?.inscription_fee > 0 && (
+                <p className="text-xs text-gray-400 mt-1">
+                  Pre-llenado con la tarifa calculada — ajusta si es necesario.
+                </p>
+              )}
             </Field>
             <div className="flex gap-3 pt-2">
               <button type="button" onClick={() => setInscModal(null)}

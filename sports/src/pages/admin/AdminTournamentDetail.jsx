@@ -308,29 +308,6 @@ export default function AdminTournamentDetail() {
         })
         if (error) throw error
       } else {
-        // Solo verificar arbitraje cuando el status CAMBIA de no-activo a activo
-        const ACTIVE = ['in_progress', 'completed', 'forfait']
-        const wasAlreadyActive = ACTIVE.includes(matchModal.status)
-        const becomesActive    = ACTIVE.includes(values.status)
-
-        if (becomesActive && !wasAlreadyActive) {
-          const { data: matchCharges } = await supabase
-            .from('charges')
-            .select('*, payments(amount)')
-            .eq('match_id', matchModal.id)
-            .eq('type', 'arbitrage')
-
-          const unpaid = (matchCharges || []).filter(c => {
-            const paid = (c.payments || []).reduce((s, p) => s + Number(p.amount), 0)
-            return paid < Number(c.amount)
-          })
-
-          if (unpaid.length > 0) {
-            const teamName = teams.find(t => t.id === unpaid[0].team_id)?.name || 'Un equipo'
-            const balance  = Number(unpaid[0].amount) - (unpaid[0].payments || []).reduce((s, p) => s + Number(p.amount), 0)
-            throw new Error(`${teamName} tiene arbitraje pendiente ($${balance})`)
-          }
-        }
         const { error } = await supabase.from('matches').update(payload).eq('id', matchModal.id)
         if (error) throw error
       }
@@ -362,6 +339,7 @@ export default function AdminTournamentDetail() {
   // ─── Event mutations ─────────────────────────────────────────────────────
   const [eventModal, setEventModal] = useState(null)
   const [eventForm, setEventForm] = useState(EMPTY_EVENT)
+  const [eventOpKey, setEventOpKey] = useState(null) // UUID generado al abrir modal — protege contra doble-registro
   const [deletingEvent, setDeletingEvent] = useState(null)
   const [confirmVuelta, setConfirmVuelta] = useState(false)
   const [confirmBracket, setConfirmBracket] = useState(false)
@@ -378,7 +356,12 @@ export default function AdminTournamentDetail() {
         team_name: teams.find(t => t.id === values.team_id)?.name || null,
       }
       if (eventModal === 'create') {
-        const { error } = await supabase.from('match_events').insert(payload)
+        // op_key (UUID generado al abrir el modal) garantiza que un doble-submit
+        // no registre el mismo gol/tarjeta dos veces — el segundo choca en UNIQUE.
+        const { error } = await supabase.from('match_events').upsert(
+          { ...payload, op_key: eventOpKey },
+          { onConflict: 'op_key', ignoreDuplicates: true }
+        )
         if (error) throw error
       } else {
         const { error } = await supabase.from('match_events').update(payload).eq('id', eventModal.id)
@@ -583,6 +566,7 @@ export default function AdminTournamentDetail() {
   // ── Open event modal pre-filled for a specific match ────────────────────
   function openEventForMatch(m) {
     setEventForm({ ...EMPTY_EVENT, match_id: m.id })
+    setEventOpKey(crypto.randomUUID()) // nuevo UUID por cada apertura — protege contra doble-submit
     setMatchTeamsFilter([m.home_team_id, m.away_team_id])
     setEventModal('create')
   }
