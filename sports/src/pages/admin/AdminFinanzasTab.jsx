@@ -328,7 +328,8 @@ export default function AdminFinanzasTab({ tournament, teams, tournamentId, matc
   // Inscripción rápida para un equipo
   const addInscription = useMutation({
     mutationFn: async ({ team, amount, op_key }) => {
-      if (!amount || Number(amount) <= 0) throw new Error('El monto debe ser mayor a 0')
+      if (amount === '' || amount === null || amount === undefined || Number(amount) < 0)
+        throw new Error('El monto debe ser 0 o mayor')
       // op_key (UUID generado al abrir el modal) garantiza idempotencia en el insert
       const { error } = await supabase.from('charges').upsert({
         tournament_id: tournamentId,
@@ -519,7 +520,7 @@ export default function AdminFinanzasTab({ tournament, teams, tournamentId, matc
                         onClick={() => {
                           const fee = expectedInscFee(team)
                           setInscModal(team)
-                          setInscAmount(fee ? fee.toFixed(0) : '')
+                          setInscAmount(fee !== null ? fee.toFixed(0) : '')
                           setInscOpKey(crypto.randomUUID())
                         }}
                         className="text-xs border border-blue-300 text-blue-600 hover:bg-blue-50 px-3 py-1 rounded-lg transition-colors shrink-0"
@@ -912,14 +913,16 @@ export default function AdminFinanzasTab({ tournament, teams, tournamentId, matc
             )}
             <Field label="Monto de inscripción *">
               <input
-                required type="number" min="0.01" step="100"
+                required type="number" min="0" step="100"
                 value={inscAmount}
                 onChange={e => setInscAmount(e.target.value)}
                 className={INPUT} placeholder="1500"
               />
               {tournament?.inscription_fee > 0 && (
                 <p className="text-xs text-gray-400 mt-1">
-                  Pre-llenado con la tarifa calculada — ajusta si es necesario.
+                  {Number(inscAmount) === 0
+                    ? 'Equipo exento — se registrará con $0 (pagado automáticamente).'
+                    : 'Pre-llenado con la tarifa calculada — ajusta si es necesario.'}
                 </p>
               )}
             </Field>
