@@ -110,7 +110,7 @@ export default function Layout({ children, currentPageName }) {
             </Link>
 
             {/* Desktop Navigation — grupos desplegables */}
-            <nav ref={navRef} className="hidden md:flex items-center gap-1 flex-1">
+            <nav ref={navRef} className="hidden lg:flex items-center gap-1 flex-1">
               {visibleNav.map((entry) => {
                 const Icon = entry.icon;
                 if (entry.type === 'link') {
@@ -178,7 +178,7 @@ export default function Layout({ children, currentPageName }) {
             </nav>
 
             {/* Logout desktop */}
-            <div className="hidden md:flex items-center flex-shrink-0 ml-auto">
+            <div className="hidden lg:flex items-center flex-shrink-0 ml-auto">
               <Button
                 variant="ghost"
                 size="icon"
@@ -194,7 +194,7 @@ export default function Layout({ children, currentPageName }) {
             <Button
               variant="ghost"
               size="icon"
-              className="md:hidden text-white hover:bg-blue-700 ml-auto"
+              className="lg:hidden text-white hover:bg-blue-700 ml-auto"
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             >
               {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
@@ -203,7 +203,7 @@ export default function Layout({ children, currentPageName }) {
 
           {/* Mobile Navigation — misma agrupación, con encabezados de sección */}
           {mobileMenuOpen && (
-            <nav className="md:hidden pb-4 space-y-1">
+            <nav className="lg:hidden pb-4 space-y-1">
               {visibleNav.map((entry) => {
                 if (entry.type === 'link') {
                   const Icon = entry.icon;
