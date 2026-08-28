@@ -17,7 +17,8 @@ import ERPPageHeader from '../components/layout/ERPPageHeader';
 import KPICard from '../components/layout/KPICard';
 
 export default function Expenses() {
-  const { canDelete } = usePerms('expenses');
+  const { canDelete, isAdmin } = usePerms('expenses');
+  const { data: me } = useQuery({ queryKey: ['currentUser'], queryFn: () => base44.auth.me() });
 const [showForm, setShowForm] = useState(false);
 const [editingExpense, setEditingExpense] = useState(null);
 const [searchTerm, setSearchTerm] = useState('');
@@ -135,6 +136,18 @@ updateMutation.mutate({ id: editingExpense.id, data, prev: editingExpense });
 } else {
 createMutation.mutate(data);
 }
+};
+
+// Ventana de corrección (espejo del candado en BD, regla 28/ago/26):
+// egresos generados por módulos (nómina/CxP) intocables; no-admin solo puede
+// corregir el MISMO DÍA y solo lo que él capturó (así el corte diario no cambia).
+const esDeModulo = (e) => !!e.source_module || !!e.payroll_item_id || !!e.cxp_payment_id;
+const puedeCorregir = (e) => {
+  if (esDeModulo(e)) return false;
+  if (isAdmin) return true;
+  const creado = e.created_date || e.created_at;
+  return !!creado && new Date(creado).toDateString() === new Date().toDateString()
+    && e.created_by === me?.email;
 };
 
 const handleEdit = (expense) => {
@@ -315,10 +328,12 @@ className="pl-9"
 <div className="flex items-center gap-4">
 <span className="text-2xl font-bold text-red-600">{formatCurrency(expense.amount)}</span>
 <div className="flex gap-2">
-<Button variant="ghost" size="icon" onClick={() => handleEdit(expense)}>
+{puedeCorregir(expense) && (
+<Button variant="ghost" size="icon" onClick={() => handleEdit(expense)} title="Corregir (ventana del mismo día)">
 <Edit className="w-4 h-4 text-blue-600" />
 </Button>
-{canDelete && (
+)}
+{canDelete && puedeCorregir(expense) && (
 <Button variant="ghost" size="icon" onClick={() => handleDelete(expense)}>
 <Trash2 className="w-4 h-4 text-red-600" />
 </Button>
