@@ -15,6 +15,13 @@ export default function PlayerForm({ player, onSubmit, onCancel, isLoading }) {
   const isAdmin = currentUser?.role === 'admin';
   const todayStr = new Date().toISOString().split('T')[0];
 
+  // Cuotas desde Configuración (club_settings → fees.mensualidad_montos); fallback local.
+  // Si el jugador ya tiene una cuota fuera del catálogo (p.ej. beca 50%), se agrega para no perderla.
+  const { data: clubSettings = [] } = useQuery({ queryKey: ['clubSettings'], queryFn: () => base44.entities.ClubSetting.list() });
+  const CUOTAS_DEFAULT = [2000, 1700, 1450, 1320, 1300, 1200, 1190, 1160, 1100, 1080, 1060, 960, 900, 800, 660, 600, 400, 300, 0];
+  const montosConfig = clubSettings.find(cs => cs.key === 'fees')?.value?.mensualidad_montos;
+  const cuotasBase = (montosConfig && montosConfig.length) ? montosConfig : CUOTAS_DEFAULT;
+
   const [formData, setFormData] = useState(() => {
     if (player) {
       return {
@@ -190,17 +197,15 @@ export default function PlayerForm({ player, onSubmit, onCancel, isLoading }) {
                   <SelectValue placeholder="Seleccionar cuota" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="2000">$2,000</SelectItem>
-                  <SelectItem value="1700">$1,700</SelectItem>
-                  <SelectItem value="1300">$1,300</SelectItem>
-                  <SelectItem value="1200">$1,200</SelectItem>
-                  <SelectItem value="1080">$1,080</SelectItem>
-                  <SelectItem value="960">$960</SelectItem>
-                  <SelectItem value="900">$900</SelectItem>
-                  <SelectItem value="800">$800</SelectItem>
-                  <SelectItem value="600">$600</SelectItem>
-                  <SelectItem value="400">$400</SelectItem>
-                  <SelectItem value="0">$0</SelectItem>
+                  {(() => {
+                    const actual = parseFloat(formData.monthly_fee);
+                    const lista = (!isNaN(actual) && !cuotasBase.some(c => parseFloat(c) === actual))
+                      ? [...cuotasBase, actual].sort((a, b) => b - a)
+                      : cuotasBase;
+                    return lista.map(c => (
+                      <SelectItem key={c} value={String(c)}>${Number(c).toLocaleString('en-US')}</SelectItem>
+                    ));
+                  })()}
                 </SelectContent>
               </Select>
             </div>
