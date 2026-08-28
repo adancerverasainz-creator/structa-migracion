@@ -278,7 +278,10 @@ export default function PlayerUnifiedDebt({
           const pendingAmt = isPending
             ? (pendienteMatch ? parseFloat(pendienteMatch[1].replace(/,/g, '')) : up.amount)
             : 0;
-          const paidAmt = up.amount - pendingAmt;
+          // Convención (28/ago/26): amount = dinero RECIBIDO en esa fila (anticipo/abono/
+          // liquidación); el resto por cobrar vive solo en notes. No se resta — restar
+          // producía abonados negativos (p.ej. anticipo $450 con resto $1,750 daba -$1,300).
+          const paidAmt = (isPending && !pendienteMatch) ? 0 : (Number(up.amount) || 0);
           return {
             label: up.notes?.replace(/\s*\|\s*Pendiente:.*/, '') || 'Uniformes',
             detail: isPending ? 'Saldo pendiente' : `Pagado el ${up.payment_date ? format(new Date(up.payment_date), 'dd/MMM/yy', { locale: es }) : '-'}`,
