@@ -1,4 +1,6 @@
 import React, { useState, useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/api/base44Client';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -41,6 +43,16 @@ export default function PlayerUnifiedDebt({
   const [search, setSearch] = useState('');
   const [showAll, setShowAll] = useState(false); // toggle: solo deudores vs todos
 
+  // Historial de cuotas por vigencia: la deuda de cada mes usa la cuota vigente ESE mes
+  const { data: feeHistory = [] } = useQuery({
+    queryKey: ['playerFeeHistory'],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('player_fee_history').select('player_id, monthly_fee, effective_from');
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
   const now = new Date();
   const currentYear = now.getFullYear();
   // Temporada vigente (inicio configurable en Configuración → Precios; default agosto)
@@ -68,6 +80,13 @@ export default function PlayerUnifiedDebt({
     const mensualidadIdx = new Map();   // `${pid}|${mes año}` -> suma pagada
     const inscIdx = new Map();          // pid -> { paid, liquidado } temporada actual
     const uniformIdx = new Map();       // pid -> [pagos de uniformes]
+    // Cuotas por vigencia (desc) y meses con pago parcial marcado 'pendiente'
+    const feeHistIdx = new Map();
+    for (const fhRow of [...feeHistory].sort((a, b) => (a.effective_from < b.effective_from ? 1 : -1))) {
+      if (!feeHistIdx.has(fhRow.player_id)) feeHistIdx.set(fhRow.player_id, []);
+      feeHistIdx.get(fhRow.player_id).push(fhRow);
+    }
+    const pendMensualidadSet = new Set();
     // Ids de pagos que fueron reversados (storno): ni el original reversado ni el
     // contra-movimiento (status 'pagado' por diseño del RPC) deben marcar 'liquidado'.
     const reversedPayIds = new Set(payments.filter(x => x.reversal_of).map(x => x.reversal_of));
@@ -80,6 +99,7 @@ export default function PlayerUnifiedDebt({
         if (k) {
           const key = `${pid}|${k}`;
           mensualidadIdx.set(key, (mensualidadIdx.get(key) || 0) + (pay.amount || 0));
+          if (pay.status === 'pendiente') pendMensualidadSet.add(key);
         }
       } else if ((pt === 'inscripcion' || pt === 'reinscripcion') && pay.month === currentSeason) {
         const cur = inscIdx.get(pid) || { paid: 0, liquidado: false };
@@ -171,14 +191,26 @@ export default function PlayerUnifiedDebt({
 
         // Pausa por lesión/permiso: mes completo → sin cuota; parcial → 50%
         const pausa = getPauseAdjustment(genCursor.getMonth(), mYear, pausesIdx.get(p.id));
-        let requiredFee = monthlyFee * season.factor * pausa.factor;
-        if (joinDate && genCursor.getFullYear() === joinDate.getFullYear() && genCursor.getMonth() === joinDate.getMonth() && joinDate.getDate() > 15) {
-          requiredFee = requiredFee * 0.5;
-        }
-        if (p.scholarship === '50%') requiredFee *= 0.5;
-        else if (p.scholarship === '100%') requiredFee = 0;
-
         const paidForMonth = mensualidadIdx.get(`${p.id}|${mName.toLowerCase()} ${mYear}`) || 0;
+        // Cuota vigente en el mes (historial). Meses previos a toda la historia:
+        // si el mes quedó saldado bajo la cuota de su época, se congela con lo
+        // abonado (sin morosos artificiales por aumentos — Carmen 02/sep/26).
+        const cursorEndKey = `${mYear}-${String(genCursor.getMonth() + 1).padStart(2, '0')}-31`;
+        const fh = feeHistIdx.get(p.id) || [];
+        const vig = fh.find(r => r.effective_from <= cursorEndKey);
+        const mesPendienteMarcado = pendMensualidadSet.has(`${p.id}|${mName.toLowerCase()} ${mYear}`);
+        let requiredFee;
+        if (!vig && fh.length && paidForMonth > 0 && !mesPendienteMarcado) {
+          requiredFee = paidForMonth; // mes histórico saldado en su época
+        } else {
+          const baseFee = vig ? Number(vig.monthly_fee) : monthlyFee;
+          requiredFee = baseFee * season.factor * pausa.factor;
+          if (joinDate && genCursor.getFullYear() === joinDate.getFullYear() && genCursor.getMonth() === joinDate.getMonth() && joinDate.getDate() > 15) {
+            requiredFee = requiredFee * 0.5;
+          }
+          if (p.scholarship === '50%') requiredFee *= 0.5;
+          else if (p.scholarship === '100%') requiredFee = 0;
+        }
         const waivedForMonth = waiverIdx.get(`${p.id}|${mKey.toLowerCase()}`) || 0;
 
         const basePending = Math.max(0, requiredFee - paidForMonth - waivedForMonth);
@@ -200,7 +232,7 @@ export default function PlayerUnifiedDebt({
           label: `${mName.charAt(0).toUpperCase() + mName.slice(1)} ${mYear}`,
           detail: requiredFee === 0
             ? (pausa.factor === 0 ? '⚕ Lesión/Pausa — sin cargo' : 'Beca 100% — sin cargo')
-            : `Cuota: ${formatCurrency(requiredFee)}${moratorio > 0 ? ` + Recargo día 15: ${formatCurrency(moratorio)}` : ''}${pausa.active && pausa.factor > 0 ? ' (50% — lesión)' : (season.factor !== 1 && season.label ? ` (${season.label})` : (requiredFee !== monthlyFee && requiredFee > 0 ? ' (50%)' : ''))}${waivedForMonth > 0 ? ` | Condonado: ${formatCurrency(waivedForMonth)}` : ''}`,
+            : `Cuota: ${formatCurrency(requiredFee)}${moratorio > 0 ? ` + Recargo día 15: ${formatCurrency(moratorio)}` : ''}${pausa.active && pausa.factor > 0 ? ' (50% — lesión)' : (season.factor !== 1 && season.label ? ` (${season.label})` : '')}${waivedForMonth > 0 ? ` | Condonado: ${formatCurrency(waivedForMonth)}` : ''}`,
           paid: paidForMonth,
           pending: totalPendingWithMoratorio,
           moratorio,
@@ -284,7 +316,7 @@ export default function PlayerUnifiedDebt({
           const paidAmt = (isPending && !pendienteMatch) ? 0 : (Number(up.amount) || 0);
           return {
             label: up.notes?.replace(/\s*\|\s*Pendiente:.*/, '') || 'Uniformes',
-            detail: isPending ? 'Saldo pendiente' : `Pagado el ${up.payment_date ? format(new Date(up.payment_date), 'dd/MMM/yy', { locale: es }) : '-'}`,
+            detail: isPending ? 'Saldo pendiente' : `Pagado el ${up.payment_date ? format(new Date(String(up.payment_date).slice(0, 10) + 'T00:00:00'), 'dd/MMM/yy', { locale: es }) : '-'}`,
             paid: paidAmt,
             pending: pendingAmt,
             payment_type: 'uniformes',
@@ -392,7 +424,7 @@ export default function PlayerUnifiedDebt({
 
     results.sort((a, b) => b.totalDebt - a.totalDebt);
     return results;
-  }, [players, payments, tournamentPayments, tournaments, tournamentAttendees, summerCampPayments, selectedMonthDate, currentSeason, debtWaivers, lateFeeSettings, seasonCalendar, feesConfig, playerPauses]);
+  }, [players, payments, tournamentPayments, tournaments, tournamentAttendees, summerCampPayments, selectedMonthDate, currentSeason, debtWaivers, lateFeeSettings, seasonCalendar, feesConfig, playerPauses, feeHistory]);
 
   // Filter: show all OR only with debt
   const visibleDebts = useMemo(() => {
