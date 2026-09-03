@@ -16,7 +16,7 @@ export default function PaymentForm({ payment, players, onSubmit, onCancel, isLo
     if (payment) {
       return {
         ...payment,
-        payment_date: payment.payment_date ? format(new Date(payment.payment_date), 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd'),
+        payment_date: payment.payment_date ? String(payment.payment_date).slice(0, 10) : format(new Date(), 'yyyy-MM-dd'),
         amount: payment.amount || '',
         surcharge: payment.surcharge || 0,
         bank_name: payment.bank_name || '',
