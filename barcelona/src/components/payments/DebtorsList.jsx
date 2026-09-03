@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/api/base44Client';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -43,6 +45,15 @@ function getMonthOptions() {
 
 export default function DebtorsList({ players, payments, isLoading, tournamentPayments = [], onAbonar, onAbonarInscripcion, lateFeeSettings = null, debtWaivers = [] , onCondonar, seasonCalendar = null, playerPauses = [] }) {
   const monthOptions = getMonthOptions();
+  // Historial de cuotas por vigencia (misma regla que Deuda Unificada)
+  const { data: feeHistory = [] } = useQuery({
+    queryKey: ['playerFeeHistory'],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('player_fee_history').select('player_id, monthly_fee, effective_from');
+      if (error) throw error;
+      return data || [];
+    },
+  });
   const [selectedMonth, setSelectedMonth] = useState(monthOptions[0].value);
   const [search, setSearch] = useState('');
   const [selectedSeason, setSelectedSeason] = useState('2025-2026');
@@ -91,6 +102,14 @@ export default function DebtorsList({ players, payments, isLoading, tournamentPa
   paymentsThisMonth.forEach(p => {
     paidAmountByPlayer[p.player_id] = (paidAmountByPlayer[p.player_id] || 0) + (p.amount || 0);
   });
+  const pendingMarkByPlayer = {};
+  paymentsThisMonth.forEach(p => { if (p.status === 'pendiente') pendingMarkByPlayer[p.player_id] = true; });
+  const feeHistIdx = new Map();
+  for (const fhRow of [...feeHistory].sort((a, b) => (a.effective_from < b.effective_from ? 1 : -1))) {
+    if (!feeHistIdx.has(fhRow.player_id)) feeHistIdx.set(fhRow.player_id, []);
+    feeHistIdx.get(fhRow.player_id).push(fhRow);
+  }
+  const selEndKey = `${selYear}-${String(selMonthIndex + 1).padStart(2, '0')}-31`;
 
   // Calcula la cuota requerida para el mes seleccionado:
   // Si el jugador ingresó después del día 15 de ese mismo mes → 50%, si no → 100%
@@ -101,7 +120,15 @@ export default function DebtorsList({ players, payments, isLoading, tournamentPa
     // Pausa por lesión/permiso del jugador en el mes seleccionado
     const pausa = getPauseAdjustment(selMonthIndex, parseInt(selYear), playerPauses.filter(pp => pp.player_id === player.id));
     if (pausa.factor === 0) return 0;
-    const fullFee = (player.monthly_fee || 0) * season.factor * pausa.factor;
+    // Cuota vigente en el mes seleccionado; meses previos a toda la historia:
+    // mes ya pagado sin marca de pendiente = saldado en su época (se congela).
+    const fh = feeHistIdx.get(player.id) || [];
+    const vig = fh.find(r => r.effective_from <= selEndKey);
+    if (!vig && fh.length) {
+      const yaPagado = paidAmountByPlayer[player.id] || 0;
+      if (yaPagado > 0 && !pendingMarkByPlayer[player.id]) return yaPagado;
+    }
+    const fullFee = (vig ? Number(vig.monthly_fee) : (player.monthly_fee || 0)) * season.factor * pausa.factor;
     if (!player.join_date) return fullFee;
     const joined = parseISO(player.join_date);
     const joinedYear = joined.getFullYear();
