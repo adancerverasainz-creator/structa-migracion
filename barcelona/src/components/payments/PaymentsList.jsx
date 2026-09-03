@@ -139,7 +139,7 @@ export default function PaymentsList({ payments, players, isLoading, onEdit, onD
                     <div className="flex flex-wrap gap-4 text-sm text-gray-600">
                       <div className="flex items-center gap-1">
                         <Calendar className="w-4 h-4" />
-                        <span>{format(new Date(payment.payment_date), 'dd/MM/yyyy')}</span>
+                        <span>{format(new Date(String(payment.payment_date).slice(0, 10) + 'T00:00:00'), 'dd/MM/yyyy')}</span>
                       </div>
                       {payment.bank_name && (
                         <div className="flex items-center gap-1">
