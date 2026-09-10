@@ -450,7 +450,7 @@ export default function PlayerUnifiedDebt({
   // ── Handlers ──
   const handleAbonar = (player, item) => {
     if (item.isTournament) {
-      onAbonarTorneo?.({ player, tournament: { id: item.tournament_id, name: item.tournament_name }, debt: item.pending, fee: item.registration_fee, totalPaid: item.paid });
+      onAbonarTorneo?.({ player, tournamentId: item.tournament_id, tournamentName: item.tournament_name, registrationFee: item.registration_fee, totalPaid: item.paid, tournament: { id: item.tournament_id, name: item.tournament_name }, debt: item.pending, fee: item.registration_fee });
     } else {
       onAbonar?.({ player, pendingAmount: item.pending, payment_type: item.payment_type, month: item.month, existingPaymentId: item.existingPaymentId });
     }
