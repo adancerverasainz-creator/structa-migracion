@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { base44 } from '@/api/base44Client';
+import { base44, supabase } from '@/api/base44Client';
+import { toast } from 'sonner';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -28,9 +29,18 @@ export default function TournamentAttendees({ tournament, players, payments, onR
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['tournamentAttendees', tournament?.id] }),
   });
 
+  // Quitar asistente = edición del roster (RPC con permiso tournaments.update);
+  // el motor bloquea con mensaje claro si el asistente ya tiene pagos.
   const removeMutation = useMutation({
-    mutationFn: (attendeeId) => base44.entities.TournamentAttendee.delete(attendeeId),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['tournamentAttendees', tournament?.id] }),
+    mutationFn: async (attendeeId) => {
+      const { error } = await supabase.rpc('quitar_asistente', { p_attendee_id: attendeeId });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tournamentAttendees', tournament?.id] });
+      toast.success('Asistente quitado del torneo');
+    },
+    onError: (err) => toast.error(err?.message || 'No se pudo quitar al asistente'),
   });
 
   const addExternal = () => {
