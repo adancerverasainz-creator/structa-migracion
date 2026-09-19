@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { base44 } from '@/api/base44Client';
+import { supabase } from '@/api/base44Client';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,68 +10,23 @@ import { Textarea } from '@/components/ui/textarea';
 import { X, Save, Wallet } from 'lucide-react';
 import { format } from 'date-fns';
 
+// Nombres cortos para las tarjetas de saldo (la RPC devuelve el nombre completo)
+const ETIQUETAS_CORTAS = { MercadoPagoBIA: 'MP BIA', 'Fondos (caja)': 'Fondos' };
+
 export default function ExpenseForm({ expense, onSubmit, onCancel, isLoading }) {
-  const { data: payments = [] } = useQuery({
-    queryKey: ['payments'],
-    queryFn: () => base44.entities.Payment.list(),
+  // Fuente única de saldos: RPC saldos_por_cuenta() — misma cifra que Dashboard,
+  // Pagos, Egresos y Tesorería. (Antes el formulario calculaba saldos propios con
+  // 4 listas de ingresos y quedaba mal: ignoraba Summer Camp, cortes de caja,
+  // traspasos y la caja de Fondos.)
+  const { data: saldosCuentas = [] } = useQuery({
+    queryKey: ['saldosPorCuenta'],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('saldos_por_cuenta');
+      if (error) throw error;
+      return data || [];
+    },
   });
 
-  const { data: tournamentPayments = [] } = useQuery({
-    queryKey: ['tournamentPayments'],
-    queryFn: () => base44.entities.TournamentPayment.list(),
-  });
-
-  const { data: leaguePayments = [] } = useQuery({
-    queryKey: ['leaguePayments'],
-    queryFn: () => base44.entities.LeaguePayment.list(),
-  });
-
-  const { data: generalPayments = [] } = useQuery({
-    queryKey: ['generalPayments'],
-    queryFn: () => base44.entities.GeneralPayment.list(),
-  });
-
-  const { data: expenses = [] } = useQuery({
-    queryKey: ['expenses'],
-    queryFn: () => base44.entities.Expense.list(),
-  });
-
-  // Calcular saldos
-  const calculateAccountBalances = () => {
-    const allPayments = [...payments, ...tournamentPayments, ...leaguePayments, ...generalPayments];
-    const allExpenses = expenses;
-
-    const balances = {
-      efectivo: 0,
-      BBVA: 0,
-      MP: 0,
-      NU: 0,
-      OpenBank: 0,
-      MercadoPagoBIA: 0,
-    };
-
-    allPayments.forEach(p => {
-      if (p.payment_method === 'efectivo') {
-        balances.efectivo += p.amount || 0;
-      } else if (p.payment_method === 'transferencia' && p.bank_name) {
-        balances[p.bank_name] = (balances[p.bank_name] || 0) + (p.amount || 0);
-      } else if (p.payment_method === 'tarjeta' && p.bank_name) {
-        balances[p.bank_name] = (balances[p.bank_name] || 0) + (p.amount || 0);
-      }
-    });
-
-    allExpenses.forEach(e => {
-      if (e.payment_method === 'efectivo') {
-        balances.efectivo -= e.amount || 0;
-      } else if (e.payment_method === 'transferencia' && e.account) {
-        balances[e.account] = (balances[e.account] || 0) - (e.amount || 0);
-      }
-    });
-
-    return balances;
-  };
-
-  const accountBalances = calculateAccountBalances();
   const [formData, setFormData] = useState(expense || {
     concept: '',
     amount: '',
@@ -109,43 +64,21 @@ export default function ExpenseForm({ expense, onSubmit, onCancel, isLoading }) 
               <Wallet className="w-5 h-5 text-blue-600" />
               <h3 className="font-semibold text-blue-800">Saldos Disponibles</h3>
             </div>
-            <div className="grid grid-cols-2 md:grid-cols-6 gap-3 text-sm">
-              <div>
-                <p className="text-gray-600">Efectivo</p>
-                <p className={`font-bold ${accountBalances.efectivo >= 0 ? 'text-blue-600' : 'text-red-600'}`}>
-                  ${accountBalances.efectivo.toFixed(2)}
-                </p>
-              </div>
-              <div>
-                <p className="text-gray-600">BBVA</p>
-                <p className={`font-bold ${accountBalances.BBVA >= 0 ? 'text-blue-600' : 'text-red-600'}`}>
-                  ${accountBalances.BBVA.toFixed(2)}
-                </p>
-              </div>
-              <div>
-                <p className="text-gray-600">MP</p>
-                <p className={`font-bold ${accountBalances.MP >= 0 ? 'text-blue-600' : 'text-red-600'}`}>
-                  ${accountBalances.MP.toFixed(2)}
-                </p>
-              </div>
-              <div>
-                <p className="text-gray-600">NU</p>
-                <p className={`font-bold ${accountBalances.NU >= 0 ? 'text-blue-600' : 'text-red-600'}`}>
-                  ${accountBalances.NU.toFixed(2)}
-                </p>
-              </div>
-              <div>
-                <p className="text-gray-600">OpenBank</p>
-                <p className={`font-bold ${accountBalances.OpenBank >= 0 ? 'text-blue-600' : 'text-red-600'}`}>
-                  ${accountBalances.OpenBank.toFixed(2)}
-                </p>
-              </div>
-              <div>
-                <p className="text-gray-600">MP BIA</p>
-                <p className={`font-bold ${accountBalances.MercadoPagoBIA >= 0 ? 'text-teal-600' : 'text-red-600'}`}>
-                  ${(accountBalances.MercadoPagoBIA || 0).toFixed(2)}
-                </p>
-              </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 text-sm">
+              {saldosCuentas.map((s) => {
+                const saldo = Number(s.saldo) || 0;
+                return (
+                  <div key={s.cuenta}>
+                    <p className="text-gray-600">{ETIQUETAS_CORTAS[s.cuenta] || s.cuenta}</p>
+                    <p className={`font-bold ${saldo >= 0 ? 'text-blue-600' : 'text-red-600'}`}>
+                      ${saldo.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </p>
+                  </div>
+                );
+              })}
+              {saldosCuentas.length === 0 && (
+                <p className="text-gray-400 col-span-full">Cargando saldos…</p>
+              )}
             </div>
           </div>
 
@@ -170,7 +103,6 @@ export default function ExpenseForm({ expense, onSubmit, onCancel, isLoading }) 
                   step="0.01"
                   value={formData.amount}
                   onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
-                  onWheel={e => e.currentTarget.blur()}
                   className="pl-7"
                   required
                 />
@@ -217,7 +149,7 @@ export default function ExpenseForm({ expense, onSubmit, onCancel, isLoading }) 
               <Label htmlFor="payment_method">Método de Pago *</Label>
               <Select
                 value={formData.payment_method}
-                onValueChange={(value) => setFormData({ ...formData, payment_method: value })}
+                onValueChange={(value) => setFormData({ ...formData, payment_method: value, account: '' })}
               >
                 <SelectTrigger>
                   <SelectValue />
@@ -229,6 +161,24 @@ export default function ExpenseForm({ expense, onSubmit, onCancel, isLoading }) 
                 </SelectContent>
               </Select>
             </div>
+            {formData.payment_method === 'efectivo' && (
+              <div className="space-y-2">
+                <Label htmlFor="cash_source">Caja de origen *</Label>
+                <Select
+                  value={formData.account === 'Fondos' ? 'Fondos' : 'caja_efectivo'}
+                  onValueChange={(value) => setFormData({ ...formData, account: value === 'Fondos' ? 'Fondos' : '' })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="caja_efectivo">Efectivo (caja chica)</SelectItem>
+                    <SelectItem value="Fondos">Fondos (caja)</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-gray-500">De qué caja sale el efectivo. El saldo se descuenta solo de la caja elegida.</p>
+              </div>
+            )}
             {formData.payment_method === 'transferencia' && (
               <div className="space-y-2">
                 <Label htmlFor="account">Cuenta</Label>
