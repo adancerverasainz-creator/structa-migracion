@@ -18,7 +18,7 @@ export default function ExpenseForm({ expense, onSubmit, onCancel, isLoading }) 
   // Pagos, Egresos y Tesorería. (Antes el formulario calculaba saldos propios con
   // 4 listas de ingresos y quedaba mal: ignoraba Summer Camp, cortes de caja,
   // traspasos y la caja de Fondos.)
-  const { data: saldosCuentas = [] } = useQuery({
+  const { data: saldosCuentas = [], isError: saldosError } = useQuery({
     queryKey: ['saldosPorCuenta'],
     queryFn: async () => {
       const { data, error } = await supabase.rpc('saldos_por_cuenta');
@@ -39,8 +39,14 @@ export default function ExpenseForm({ expense, onSubmit, onCancel, isLoading }) 
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    // En efectivo la cuenta solo puede ser '' (caja chica) o 'Fondos'; se normaliza
+    // por si un egreso viejo traía un residuo de cuenta de otro método.
+    const account = formData.payment_method === 'efectivo'
+      ? (formData.account === 'Fondos' ? 'Fondos' : '')
+      : formData.account;
     onSubmit({
       ...formData,
+      account,
       amount: parseFloat(formData.amount) || 0,
       source_module: formData.source_module || 'egresos',
     });
@@ -77,7 +83,9 @@ export default function ExpenseForm({ expense, onSubmit, onCancel, isLoading }) 
                 );
               })}
               {saldosCuentas.length === 0 && (
-                <p className="text-gray-400 col-span-full">Cargando saldos…</p>
+                <p className={`col-span-full ${saldosError ? 'text-red-500' : 'text-gray-400'}`}>
+                  {saldosError ? 'No se pudieron cargar los saldos (el gasto se puede registrar igual).' : 'Cargando saldos…'}
+                </p>
               )}
             </div>
           </div>
