@@ -139,9 +139,11 @@ createMutation.mutate(data);
 };
 
 // Ventana de corrección (espejo del candado en BD, regla 28/ago/26):
-// egresos generados por módulos (nómina/CxP) intocables; no-admin solo puede
-// corregir el MISMO DÍA y solo lo que él capturó (así el corte diario no cambia).
-const esDeModulo = (e) => !!e.source_module || !!e.payroll_item_id || !!e.cxp_payment_id;
+// egresos generados por módulos (nómina/CxP/corte/fondos) intocables; no-admin solo
+// puede corregir el MISMO DÍA y solo lo que él capturó (así el corte diario no cambia).
+// OJO: 'egresos' es el source_module de los gastos capturados A MANO en este módulo
+// (lo pone el propio formulario), así que NO cuenta como "de módulo".
+const esDeModulo = (e) => (!!e.source_module && e.source_module !== 'egresos') || !!e.payroll_item_id || !!e.cxp_payment_id;
 const puedeCorregir = (e) => {
   if (esDeModulo(e)) return false;
   if (isAdmin) return true;
