@@ -143,7 +143,9 @@ createMutation.mutate(data);
 // puede corregir el MISMO DÍA y solo lo que él capturó (así el corte diario no cambia).
 // OJO: 'egresos' es el source_module de los gastos capturados A MANO en este módulo
 // (lo pone el propio formulario), así que NO cuenta como "de módulo".
-const esDeModulo = (e) => (!!e.source_module && e.source_module !== 'egresos') || !!e.payroll_item_id || !!e.cxp_payment_id;
+// Los traspasos (is_transfer) también cuentan como "de módulo" aunque los viejos
+// traigan source_module 'egresos': se administran desde Tesorería, no aquí.
+const esDeModulo = (e) => (!!e.source_module && e.source_module !== 'egresos') || !!e.payroll_item_id || !!e.cxp_payment_id || !!e.is_transfer;
 const puedeCorregir = (e) => {
   if (esDeModulo(e)) return false;
   if (isAdmin) return true;
