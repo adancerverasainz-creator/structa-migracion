@@ -30,8 +30,13 @@ export default function GeneralPaymentForm({ payment, onSubmit, onCancel, isLoad
     submittedRef.current = true;
     // Preserve the date as selected by adding time to avoid timezone shift
     const dateWithTime = formData.payment_date + 'T12:00:00';
+    // En efectivo el destino solo puede ser '' (caja chica) o 'Fondos'
+    const bank_name = formData.payment_method === 'efectivo'
+      ? (formData.bank_name === 'Fondos' ? 'Fondos' : '')
+      : formData.bank_name;
     onSubmit({
       ...formData,
+      bank_name,
       payment_date: dateWithTime,
       amount: parseFloat(formData.amount)
     });
@@ -99,7 +104,6 @@ export default function GeneralPaymentForm({ payment, onSubmit, onCancel, isLoad
                     step="0.01"
                     value={formData.amount}
                     onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
-                    onWheel={e => e.currentTarget.blur()}
                     placeholder="0.00"
                     required
                     className="pl-7"
@@ -145,7 +149,7 @@ export default function GeneralPaymentForm({ payment, onSubmit, onCancel, isLoad
               <Label htmlFor="payment_method">Método de Pago *</Label>
               <Select
                 value={formData.payment_method}
-                onValueChange={(value) => setFormData({ ...formData, payment_method: value })}
+                onValueChange={(value) => setFormData({ ...formData, payment_method: value, bank_name: '' })}
               >
                 <SelectTrigger>
                   <SelectValue />
@@ -157,6 +161,26 @@ export default function GeneralPaymentForm({ payment, onSubmit, onCancel, isLoad
                 </SelectContent>
               </Select>
             </div>
+
+            {/* Caja de destino (si es efectivo) */}
+            {formData.payment_method === 'efectivo' && (
+              <div>
+                <Label htmlFor="cash_destination">Caja de destino *</Label>
+                <Select
+                  value={formData.bank_name === 'Fondos' ? 'Fondos' : 'caja_efectivo'}
+                  onValueChange={(value) => setFormData({ ...formData, bank_name: value === 'Fondos' ? 'Fondos' : '' })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="caja_efectivo">Efectivo (caja chica)</SelectItem>
+                    <SelectItem value="Fondos">Fondos (caja)</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-gray-500 mt-1">A qué caja ingresa el efectivo. El saldo se acredita solo en la caja elegida.</p>
+              </div>
+            )}
 
             {/* Banco (si es transferencia) */}
             {formData.payment_method === 'transferencia' && (
@@ -212,14 +236,14 @@ export default function GeneralPaymentForm({ payment, onSubmit, onCancel, isLoad
               type="button"
               variant="outline"
               onClick={onCancel}
-              disabled={isLoading || (formData.payment_method === 'transferencia' && !formData.bank_name)}
+              disabled={isLoading}
             >
               Cancelar
             </Button>
             <Button
               type="submit"
               className="bg-blue-600 hover:bg-blue-700"
-              disabled={isLoading}
+              disabled={isLoading || (formData.payment_method === 'transferencia' && !formData.bank_name)}
             >
               {isLoading ? 'Guardando...' : payment ? 'Actualizar' : 'Registrar'}
             </Button>
