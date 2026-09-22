@@ -121,10 +121,13 @@ export default function GeneralPaymentsList({ payments, isLoading, onEdit, onDel
                 <div className="flex items-center gap-2">
                   {payment.reversal_of && <Badge className="bg-gray-200 text-gray-700">↩ Reverso</Badge>}
                   {reversedIds.has(payment.id) && <Badge className="bg-red-100 text-red-700">Reversado</Badge>}
+                  {/* Sin vale para reversos: el contra-movimiento no es documento de caja */}
+                  {!payment.reversal_of && (
                   <Button size="sm" variant="outline" onClick={() => reimprimirVale(payment)}
                     className="text-gray-600 hover:text-gray-800" title="Imprimir vale (térmica 80mm)">
                     <Printer className="w-4 h-4" />
                   </Button>
+                  )}
                   {puedeCorregir(payment) ? (
                     <>
                       <Button size="sm" variant="outline" onClick={() => onEdit(payment)}
