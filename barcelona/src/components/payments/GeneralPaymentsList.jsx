@@ -3,10 +3,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Edit, Trash2, Search, DollarSign, Undo2 } from 'lucide-react';
+import { Edit, Trash2, Search, DollarSign, Undo2, Printer } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { formatCurrency } from '../lib/formatCurrency';
+import { imprimirVale, folioDesdeId, cuentaLegible } from '../print/PrintVale';
 
 export default function GeneralPaymentsList({ payments, isLoading, onEdit, onDelete, onReverse, currentUserEmail, isAdmin }) {
   // #80 Storno fase 2: ventana de corrección (mismo día) + reverso admin
@@ -27,6 +28,20 @@ export default function GeneralPaymentsList({ payments, isLoading, onEdit, onDel
     patrocinio: 'Patrocinio',
     otros: 'Otros'
   };
+
+  // Reimpresión del vale térmico 80mm
+  const reimprimirVale = (payment) => imprimirVale({
+    tipoVale: 'INGRESO',
+    folio: folioDesdeId(payment.id),
+    fecha: payment.payment_date,
+    concepto: payment.concept || 'Pago general',
+    monto: payment.amount,
+    cuenta_nombre: cuentaLegible(payment),
+    forma_pago: payment.payment_method,
+    referencia: payment.reference_number,
+    categoria_nombre: categoryLabels[payment.category] || payment.category,
+    autorizado_por: payment.created_by || currentUserEmail || '',
+  });
 
   const paymentMethodLabels = {
     efectivo: 'Efectivo',
@@ -106,6 +121,10 @@ export default function GeneralPaymentsList({ payments, isLoading, onEdit, onDel
                 <div className="flex items-center gap-2">
                   {payment.reversal_of && <Badge className="bg-gray-200 text-gray-700">↩ Reverso</Badge>}
                   {reversedIds.has(payment.id) && <Badge className="bg-red-100 text-red-700">Reversado</Badge>}
+                  <Button size="sm" variant="outline" onClick={() => reimprimirVale(payment)}
+                    className="text-gray-600 hover:text-gray-800" title="Imprimir vale (térmica 80mm)">
+                    <Printer className="w-4 h-4" />
+                  </Button>
                   {puedeCorregir(payment) ? (
                     <>
                       <Button size="sm" variant="outline" onClick={() => onEdit(payment)}
