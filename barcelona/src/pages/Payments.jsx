@@ -19,6 +19,7 @@ import UnifiedPaymentGateway from '../components/payments/UnifiedPaymentGateway'
 import PagoGeneralModal from '../components/payments/PagoGeneralModal';
 import { formatCurrency } from '../components/lib/formatCurrency';
 import { logAudit } from '../components/lib/auditLogger';
+import { imprimirVale, folioDesdeId, cuentaLegible } from '../components/print/PrintVale';
 
 export default function Payments() {
 const { canDelete } = usePerms('payments');
@@ -147,6 +148,21 @@ queryKey: ['tournamentAttendees'],
 queryFn: () => base44.entities.TournamentAttendee.list(),
 });
 
+// Vale térmico 80mm de un ingreso (tipoVale, no 'tipo': ese campo ya es la categoría)
+const valeDeIngreso = ({ id, fecha, concepto, monto, metodo, cuenta, referencia, categoria, cliente }) => ({
+  tipoVale: 'INGRESO',
+  folio: folioDesdeId(id),
+  fecha,
+  concepto,
+  monto,
+  cuenta_nombre: cuenta,
+  forma_pago: metodo,
+  referencia,
+  categoria_nombre: categoria,
+  cliente_nombre: cliente,
+  autorizado_por: currentUser?.email || '',
+});
+
 const createMutation = useMutation({
 mutationFn: async (data) => {
 const result = await base44.entities.Payment.create(data);
@@ -160,11 +176,20 @@ details: `Mes: ${data.month}, Monto: $${data.amount}, Método: ${data.payment_me
 });
 return result;
 },
-onSuccess: () => {
+onSuccess: (result, data) => {
 queryClient.invalidateQueries({ queryKey: ['payments'] });
 queryClient.invalidateQueries({ queryKey: ['saldosPorCuenta'] });
 setShowForm(false);
 setEditingPayment(null);
+// Impresión automática del vale SOLO al crear (no al editar)
+const player = players.find(p => p.id === data.player_id);
+imprimirVale(valeDeIngreso({
+  id: result?.id, fecha: data.payment_date, monto: data.amount,
+  concepto: data.month ? `Mensualidad ${data.month}` : (data.concept || data.payment_type || 'Pago'),
+  metodo: data.payment_method, cuenta: cuentaLegible(data),
+  referencia: data.reference_number, categoria: player?.category,
+  cliente: player?.full_name,
+}));
 },
 });
 
@@ -238,10 +263,20 @@ details: `Torneo ID: ${data.tournament_id}, Abonado: $${data.paid_amount}, Méto
 });
 return result;
 },
-onSuccess: () => {
+onSuccess: (result, data) => {
 queryClient.invalidateQueries({ queryKey: ['tournamentPayments'] });
 queryClient.invalidateQueries({ queryKey: ['tournamentAttendees'] });
 setPaymentConfig(null);
+// Vale automático del abono de torneo
+const player = players.find(p => p.id === data.player_id);
+const torneo = tournaments.find(t => t.id === data.tournament_id);
+imprimirVale(valeDeIngreso({
+  id: result?.id, fecha: data.payment_date, monto: data.paid_amount ?? data.amount,
+  concepto: torneo ? `Torneo — ${torneo.name}` : 'Pago de torneo',
+  metodo: data.payment_method, cuenta: cuentaLegible(data),
+  referencia: data.reference_number, categoria: player?.category,
+  cliente: player?.full_name,
+}));
 },
 });
 
@@ -450,10 +485,17 @@ details: `Monto: $${data.amount}, Método: ${data.payment_method}`
 });
 return result;
 },
-onSuccess: () => {
+onSuccess: (result, data) => {
 queryClient.invalidateQueries({ queryKey: ['generalPayments'] });
 setShowGeneralForm(false);
 setEditingGeneralPayment(null);
+// Vale automático del pago general
+imprimirVale(valeDeIngreso({
+  id: result?.id, fecha: data.payment_date, monto: data.amount,
+  concepto: data.concept || 'Pago general',
+  metodo: data.payment_method, cuenta: cuentaLegible(data),
+  referencia: data.reference_number, categoria: data.category,
+}));
 },
 });
 
