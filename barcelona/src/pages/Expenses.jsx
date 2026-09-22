@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Plus, TrendingDown, Trash2, Edit, Search } from 'lucide-react';
+import { Plus, TrendingDown, Trash2, Edit, Search, Printer } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import ExpenseForm from '../components/expenses/ExpenseForm';
@@ -15,6 +15,7 @@ import { formatCurrency } from '../components/lib/formatCurrency';
 import { logAudit } from '../components/lib/auditLogger';
 import ERPPageHeader from '../components/layout/ERPPageHeader';
 import KPICard from '../components/layout/KPICard';
+import { imprimirVale, folioDesdeId, cuentaLegible } from '../components/print/PrintVale';
 
 export default function Expenses() {
   const { canDelete, isAdmin } = usePerms('expenses');
@@ -71,6 +72,20 @@ queryKey: ['cashRegisters'],
 queryFn: () => base44.entities.CashRegister.list('-register_date'),
 });
 
+// Vale térmico 80mm de un egreso (tipoVale, no 'tipo': ese campo ya es la categoría)
+const valeDeEgreso = (e) => ({
+  tipoVale: 'EGRESO',
+  folio: folioDesdeId(e.id),
+  fecha: e.expense_date,
+  concepto: e.concept,
+  monto: e.amount,
+  cuenta_nombre: cuentaLegible(e),
+  forma_pago: e.payment_method,
+  referencia: e.reference_number,
+  categoria_nombre: e.category,
+  autorizado_por: e.created_by || me?.email || '',
+});
+
 const createMutation = useMutation({
 mutationFn: async (data) => {
 const result = await base44.entities.Expense.create(data);
@@ -82,11 +97,13 @@ details: `Categoría: ${data.category}, Monto: $${data.amount}`
 });
 return result;
 },
-onSuccess: () => {
+onSuccess: (result, data) => {
 queryClient.invalidateQueries({ queryKey: ['expenses'] });
 queryClient.invalidateQueries({ queryKey: ['saldosPorCuenta'] });
 setShowForm(false);
 setEditingExpense(null);
+// Impresión automática del vale SOLO al crear (no al editar)
+imprimirVale(valeDeEgreso({ ...data, id: result?.id }));
 },
 onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desconocido'}`),
 });
@@ -332,6 +349,9 @@ className="pl-9"
 <div className="flex items-center gap-4">
 <span className="text-2xl font-bold text-red-600">{formatCurrency(expense.amount)}</span>
 <div className="flex gap-2">
+<Button variant="ghost" size="icon" onClick={() => imprimirVale(valeDeEgreso(expense))} title="Imprimir vale (térmica 80mm)">
+<Printer className="w-4 h-4 text-gray-600" />
+</Button>
 {puedeCorregir(expense) && (
 <Button variant="ghost" size="icon" onClick={() => handleEdit(expense)} title="Corregir (ventana del mismo día)">
 <Edit className="w-4 h-4 text-blue-600" />
