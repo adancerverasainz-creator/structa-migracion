@@ -3,9 +3,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Edit, Trash2, Search, CreditCard, Calendar, User, Undo2 } from 'lucide-react';
+import { Edit, Trash2, Search, CreditCard, Calendar, User, Undo2, Printer } from 'lucide-react';
 import { format } from 'date-fns';
 import { formatCurrency } from '../lib/formatCurrency';
+import { imprimirVale, folioDesdeId, cuentaLegible } from '../print/PrintVale';
 
 const PAGE_SIZE = 100;
 
@@ -59,6 +60,21 @@ export default function PaymentsList({ payments, players, isLoading, onEdit, onD
 
   // Paginación: renderizar 10k tarjetas congela el navegador — se muestra por bloques
   const visiblePayments = filteredPayments.slice(0, visibleCount);
+
+  // Reimpresión del vale térmico 80mm
+  const reimprimirVale = (payment) => imprimirVale({
+    tipoVale: 'INGRESO',
+    folio: folioDesdeId(payment.id),
+    fecha: payment.payment_date,
+    concepto: getPaymentConcept(payment),
+    monto: payment.amount,
+    cuenta_nombre: cuentaLegible(payment),
+    forma_pago: payment.payment_method,
+    referencia: payment.reference_number,
+    categoria_nombre: playerById.get(payment.player_id)?.category,
+    cliente_nombre: getPlayerName(payment.player_id),
+    autorizado_por: payment.created_by || currentUserEmail || '',
+  });
 
   const methodColors = {
     efectivo: 'bg-green-100 text-green-800',
@@ -162,6 +178,16 @@ export default function PaymentsList({ payments, players, isLoading, onEdit, onD
                   </div>
 
                   <div className="flex md:flex-col gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => reimprimirVale(payment)}
+                      className="flex-1 md:flex-none"
+                      title="Imprimir vale (térmica 80mm)"
+                    >
+                      <Printer className="w-4 h-4 md:mr-0 mr-1" />
+                      <span className="md:hidden">Imprimir</span>
+                    </Button>
                     {puedeCorregir(payment) ? (
                       <>
                         <Button
