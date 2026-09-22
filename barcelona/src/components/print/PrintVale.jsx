@@ -47,29 +47,31 @@ export function imprimirVale(vale) {
 <html lang="es"><head><meta charset="utf-8">
 <title>Vale ${esc(vale.tipoVale)} ${esc(vale.folio)}</title>
 <style>
+  /* Térmicas: NADA de grises (los ditherean y se ven borrosos) — todo negro puro,
+     sin fondos invertidos y tamaños mínimos de 10px. */
   @page { size: 80mm auto; margin: 4mm; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { width: 72mm; font-family: 'Segoe UI', Arial, sans-serif; color: #111; font-size: 11px; }
+  body { width: 72mm; font-family: Arial, Helvetica, sans-serif; color: #000; font-size: 12px;
+         -webkit-print-color-adjust: exact; }
   .center { text-align: center; }
   .logo { max-width: 34mm; max-height: 18mm; object-fit: contain; margin: 0 auto 2px; display: block; }
-  .club { font-weight: 700; font-size: 12px; }
-  .titulo { font-size: 11px; letter-spacing: 1px; color: #444; margin-top: 1px; }
-  .badge { display: inline-block; margin: 5px auto 3px; padding: 3px 14px; border: 2px solid #111;
-           border-radius: 4px; font-weight: 800; font-size: 13px; letter-spacing: 2px;
-           ${esEgreso ? '' : 'background:#111;color:#fff;'} }
-  .folio { font-size: 20px; font-weight: 800; letter-spacing: 1px; }
-  .fecha { font-size: 10px; color: #555; }
-  .monto { font-size: 24px; font-weight: 800; text-align: center; margin: 6px 0;
-           padding: 5px 0; border-top: 2px solid #111; border-bottom: 2px solid #111; }
-  .campo { margin: 5px 0; }
-  .campo .lbl { font-size: 8.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; color: #666; }
-  .campo .val { font-size: 11.5px; word-break: break-word; }
+  .club { font-weight: 700; font-size: 13px; }
+  .titulo { font-size: 11px; letter-spacing: 2px; font-weight: 700; margin-top: 1px; }
+  .badge { display: inline-block; margin: 5px auto 3px; padding: 3px 16px; border: 3px solid #000;
+           border-radius: 4px; font-weight: 900; font-size: 15px; letter-spacing: 3px; color: #000; }
+  .folio { font-size: 22px; font-weight: 900; letter-spacing: 1px; }
+  .fecha { font-size: 12px; font-weight: 700; }
+  .monto { font-size: 26px; font-weight: 900; text-align: center; margin: 6px 0;
+           padding: 5px 0; border-top: 2px solid #000; border-bottom: 2px solid #000; }
+  .campo { margin: 6px 0; }
+  .campo .lbl { font-size: 10px; font-weight: 700; text-transform: uppercase; }
+  .campo .val { font-size: 13px; font-weight: 600; word-break: break-word; }
   .firmas { display: flex; gap: 6mm; margin-top: 12mm; }
-  .firma { flex: 1; text-align: center; font-size: 9px; }
-  .firma .linea { border-top: 1px solid #111; padding-top: 2px; }
-  .firma .nombre { font-size: 9.5px; font-weight: 600; min-height: 11px; }
-  .disclaimer { margin-top: 6mm; text-align: center; font-size: 8px; color: #666;
-                border-top: 1px dashed #999; padding-top: 3px; }
+  .firma { flex: 1; text-align: center; font-size: 11px; font-weight: 700; }
+  .firma .linea { border-top: 1.5px solid #000; padding-top: 2px; }
+  .firma .nombre { font-size: 11px; font-weight: 700; min-height: 13px; }
+  .disclaimer { margin-top: 6mm; text-align: center; font-size: 10px; font-weight: 700;
+                border-top: 1px dashed #000; padding-top: 3px; }
 </style></head>
 <body>
   <div class="center">
