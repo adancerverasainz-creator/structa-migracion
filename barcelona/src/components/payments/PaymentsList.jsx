@@ -178,6 +178,8 @@ export default function PaymentsList({ payments, players, isLoading, onEdit, onD
                   </div>
 
                   <div className="flex md:flex-col gap-2">
+                    {/* Sin vale para reversos: el contra-movimiento no es documento de caja */}
+                    {!payment.reversal_of && (
                     <Button
                       variant="outline"
                       size="sm"
@@ -188,6 +190,7 @@ export default function PaymentsList({ payments, players, isLoading, onEdit, onD
                       <Printer className="w-4 h-4 md:mr-0 mr-1" />
                       <span className="md:hidden">Imprimir</span>
                     </Button>
+                    )}
                     {puedeCorregir(payment) ? (
                       <>
                         <Button
