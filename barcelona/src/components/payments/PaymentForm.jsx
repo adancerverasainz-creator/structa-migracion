@@ -43,7 +43,10 @@ export default function PaymentForm({ payment, players, onSubmit, onCancel, isLo
   // Recargo por transferencia (temporada 26-27): la cuota es el precio en EFECTIVO;
   // transferencia cuesta cuota × 1550/1320 redondeado a decena (club_settings.fees).
   // Se suma al cambiar a transferencia y se retira al volver a otro método.
-  const transferExtraRef = React.useRef(0);
+  // Al EDITAR un pago, formData.amount ya es el TOTAL cobrado (cuota+recargo) y el
+  // recargo guardado ya existe: la primera corrida es solo línea base (null) y no
+  // ajusta nada — los deltas aplican únicamente a cambios posteriores del usuario.
+  const transferExtraRef = React.useRef(payment ? null : 0);
   React.useEffect(() => {
     if (formData.payment_type !== 'mensualidad') return;
     const rc = feesConfig?.recargo_transferencia;
@@ -52,6 +55,7 @@ export default function PaymentForm({ payment, players, onSubmit, onCancel, isLo
     const extra = (rc?.num && rc?.den && base > 0 && formData.payment_method === 'transferencia')
       ? Math.round((base * rc.num) / rc.den / red) * red - base
       : 0;
+    if (transferExtraRef.current === null) { transferExtraRef.current = extra; return; }
     if (extra !== transferExtraRef.current) {
       setFormData(f => ({ ...f, surcharge: Math.max(0, (parseFloat(f.surcharge) || 0) - transferExtraRef.current + extra) }));
       transferExtraRef.current = extra;
@@ -348,8 +352,7 @@ export default function PaymentForm({ payment, players, onSubmit, onCancel, isLo
                        <div className="relative">
                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 font-semibold">$</span>
                           <Input
-                            type="number" min="0.01" onWheel={(e) => e.target.blur()}
-                            min="0"
+                            type="number" min="0"
                             placeholder="0.00"
                             value={montoRecibido}
                             onChange={e => setMontoRecibido(e.target.value)}
