@@ -75,6 +75,7 @@ queryFn: () => base44.entities.CashRegister.list('-register_date'),
 // Vale térmico 80mm de un egreso (tipoVale, no 'tipo': ese campo ya es la categoría)
 const valeDeEgreso = (e) => ({
   tipoVale: 'EGRESO',
+  id: e.id,
   folio: folioDesdeId(e.id),
   fecha: e.expense_date,
   concepto: e.concept,
