@@ -43,8 +43,9 @@ const money = (n) => '$' + Number(n || 0).toLocaleString('en-US', { minimumFract
 const fmtFecha = (f) => {
   try {
     const d = f instanceof Date ? f : new Date(String(f).slice(0, 10) + 'T00:00:00');
+    if (isNaN(d.getTime())) return '—'; // fecha ausente o corrupta: nunca "Invalid Date"
     return d.toLocaleDateString('es-MX', { day: '2-digit', month: '2-digit', year: 'numeric' });
-  } catch { return String(f || ''); }
+  } catch { return '—'; }
 };
 
 const FORMAS = { efectivo: 'Efectivo', transferencia: 'Transferencia', tarjeta: 'Tarjeta' };
