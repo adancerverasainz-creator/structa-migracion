@@ -65,7 +65,7 @@ export default function AdminTournaments() {
       toast.success(modal === 'create' ? 'Torneo creado' : 'Torneo actualizado')
       setModal(null)
     },
-    onError: (e) => toast.error('Error al guardar: ' + (e?.message ?? e?.details ?? e?.hint ?? String(e))),
+    onError: (e) => toast.error('Error al guardar: ' + (e?.message || e?.details || e?.hint || String(e))),
   })
 
   const deleteMutation = useMutation({
@@ -78,7 +78,7 @@ export default function AdminTournaments() {
       toast.success('Torneo eliminado')
       setDeleting(null)
     },
-    onError: () => toast.error('Error al eliminar'),
+    onError: (e) => toast.error('Error al eliminar: ' + (e?.message || e?.details || e?.hint || String(e))),
   })
 
   function openCreate() {
