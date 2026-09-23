@@ -61,8 +61,9 @@ export function imprimirVale(vale) {
            border-radius: 4px; font-weight: 900; font-size: 15px; letter-spacing: 3px; color: #000; }
   .folio { font-size: 22px; font-weight: 900; letter-spacing: 1px; }
   .fecha { font-size: 12px; font-weight: 700; }
-  .monto { font-size: 26px; font-weight: 900; text-align: center; margin: 6px 0;
-           padding: 5px 0; border-top: 2px solid #000; border-bottom: 2px solid #000; }
+  .monto { font-size: 17px; font-weight: 800; text-align: center; margin: 6px 0;
+           padding: 4px 0; letter-spacing: .5px;
+           border-top: 1.5px solid #000; border-bottom: 1.5px solid #000; }
   .campo { margin: 6px 0; }
   .campo .lbl { font-size: 10px; font-weight: 700; text-transform: uppercase; }
   .campo .val { font-size: 13px; font-weight: 600; word-break: break-word; }
