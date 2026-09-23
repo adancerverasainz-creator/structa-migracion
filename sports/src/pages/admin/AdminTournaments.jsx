@@ -22,7 +22,6 @@ const EMPTY_FORM = {
   description: '',
   points_win: 3,
   points_draw: 1,
-  points_loss: 0,
   yellows_for_suspension: 3,
   playoff_format: 'none',
 }
@@ -66,7 +65,7 @@ export default function AdminTournaments() {
       toast.success(modal === 'create' ? 'Torneo creado' : 'Torneo actualizado')
       setModal(null)
     },
-    onError: () => toast.error('Error al guardar'),
+    onError: (e) => toast.error('Error al guardar: ' + (e?.message ?? e?.details ?? e?.hint ?? String(e))),
   })
 
   const deleteMutation = useMutation({
