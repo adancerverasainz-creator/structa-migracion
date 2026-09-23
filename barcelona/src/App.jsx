@@ -20,6 +20,7 @@ import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import Login from './pages/Login';
 import ResetPassword from './pages/ResetPassword';
+import Verificar from './pages/Verificar';
 
 const { Pages, Layout, mainPage } = pagesConfig;
 const mainPageKey = mainPage ?? Object.keys(Pages)[0];
@@ -50,6 +51,11 @@ const AuthenticatedApp = () => {
   const isResetRoute = window.location.pathname.toLowerCase() === '/reset-password';
   if (isResetRoute) {
     return <ResetPassword />;
+  }
+  // Verificación pública de vales por QR (sin sesión)
+  const isVerificarRoute = window.location.pathname.toLowerCase() === '/verificar';
+  if (isVerificarRoute) {
+    return <Verificar />;
   }
   const isLoginRoute = window.location.pathname.toLowerCase() === '/login'
     || window.location.hash.toLowerCase().startsWith('#/login');
