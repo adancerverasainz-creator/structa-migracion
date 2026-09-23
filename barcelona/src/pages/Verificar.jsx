@@ -9,8 +9,11 @@ const LOGO_URL = 'https://swtrrldixeeecsmfseah.supabase.co/storage/v1/object/pub
 
 const money = (n) => '$' + Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fecha = (f) => {
-  try { return new Date(String(f).slice(0, 10) + 'T00:00:00').toLocaleDateString('es-MX', { day: '2-digit', month: 'long', year: 'numeric' }); }
-  catch { return String(f || ''); }
+  try {
+    const d = new Date(String(f).slice(0, 10) + 'T00:00:00');
+    if (isNaN(d.getTime())) return '—'; // fecha ausente o corrupta: nunca "Invalid Date"
+    return d.toLocaleDateString('es-MX', { day: '2-digit', month: 'long', year: 'numeric' });
+  } catch { return '—'; }
 };
 const METODOS = { efectivo: 'Efectivo', transferencia: 'Transferencia', tarjeta: 'Tarjeta' };
 
