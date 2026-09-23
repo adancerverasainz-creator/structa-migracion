@@ -12,8 +12,24 @@
 //   id              uuid del movimiento: imprime un QR que abre la página
 //                   pública /Verificar?id=... (verificación sin sesión).
 
+import { supabase } from '@/api/base44Client';
+
 const LOGO_URL = 'https://swtrrldixeeecsmfseah.supabase.co/storage/v1/object/public/assets/logo-bia-transparente.png';
-const CLUB_NOMBRE = 'Barcelona Inter Academy';
+
+// Branding multi-club: nombre y logo salen de Configuración (club_settings.branding);
+// estos valores son solo el respaldo si la configuración no existe o no carga.
+const BRANDING_DEFECTO = { nombre: 'Barcelona Inter Academy', logo_url: LOGO_URL };
+let _branding = null;
+let _brandingPromise = null;
+function obtenerBranding() {
+  if (_branding) return Promise.resolve(_branding);
+  if (!_brandingPromise) {
+    _brandingPromise = supabase.from('club_settings').select('value').eq('key', 'branding').maybeSingle()
+      .then(({ data }) => { _branding = { ...BRANDING_DEFECTO, ...(data?.value || {}) }; return _branding; })
+      .catch(() => { _branding = BRANDING_DEFECTO; return _branding; });
+  }
+  return _brandingPromise;
+}
 
 const esc = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
@@ -50,6 +66,9 @@ export function imprimirVale(vale) {
     ? `https://bia.structa.mx/Verificar?id=${vale.id}`
     : null;
 
+  // El branding se resuelve async (una sola consulta por sesión, con respaldo);
+  // la ventana ya está abierta, así que el popup no se pierde.
+  obtenerBranding().then((club) => {
   const html = `<!doctype html>
 <html lang="es"><head><meta charset="utf-8">
 <title>Vale ${esc(vale.tipoVale)} ${esc(vale.folio)}</title>
@@ -83,8 +102,8 @@ export function imprimirVale(vale) {
 </style></head>
 <body>
   <div class="center">
-    <img class="logo" src="${LOGO_URL}" onerror="this.style.display='none'">
-    <div class="club">${esc(CLUB_NOMBRE)}</div>
+    <img class="logo" src="${club.logo_url || ''}" onerror="this.style.display='none'">
+    <div class="club">${esc(club.nombre || '')}</div>
     <div class="titulo">VALE DE CAJA</div>
     <div><span class="badge">${esc(vale.tipoVale)}</span></div>
     <div class="folio">${esc(vale.folio || '—')}</div>
@@ -117,10 +136,15 @@ export function imprimirVale(vale) {
 
   w.document.write(html);
   w.document.close();
+  });
 }
 
-// Folio corto y estable a partir del id (uuid) del movimiento
+// Folio corto y estable a partir del id (uuid) del movimiento (respaldo legado)
 export const folioDesdeId = (id) => (id ? String(id).replace(/-/g, '').slice(0, 8).toUpperCase() : '—');
+
+// Folio oficial: serie secuencial de caja (V-000123); si el movimiento aún no
+// trae folio (dato viejo sin refrescar), cae al folio derivado del uuid.
+export const folioVale = (m) => (m?.folio ? 'V-' + String(m.folio).padStart(6, '0') : folioDesdeId(m?.id));
 
 // Nombre legible de la caja/cuenta según la convención del motor de saldos
 export const cuentaLegible = ({ payment_method, account, bank_name }) => {
@@ -130,4 +154,4 @@ export const cuentaLegible = ({ payment_method, account, bank_name }) => {
   return cta === 'MercadoPagoBIA' ? 'Mercado Pago BIA' : (cta || '—');
 };
 
-export default { imprimirVale, folioDesdeId, cuentaLegible };
+export default { imprimirVale, folioDesdeId, folioVale, cuentaLegible };
