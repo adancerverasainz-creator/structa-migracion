@@ -40,6 +40,25 @@ export default function PaymentForm({ payment, players, onSubmit, onCancel, isLo
     };
   });
 
+  // Recargo por transferencia (temporada 26-27): la cuota es el precio en EFECTIVO;
+  // transferencia cuesta cuota × 1550/1320 redondeado a decena (club_settings.fees).
+  // Se suma al cambiar a transferencia y se retira al volver a otro método.
+  const transferExtraRef = React.useRef(0);
+  React.useEffect(() => {
+    if (formData.payment_type !== 'mensualidad') return;
+    const rc = feesConfig?.recargo_transferencia;
+    const base = parseFloat(formData.amount) || 0;
+    const red = rc?.redondeo || 10;
+    const extra = (rc?.num && rc?.den && base > 0 && formData.payment_method === 'transferencia')
+      ? Math.round((base * rc.num) / rc.den / red) * red - base
+      : 0;
+    if (extra !== transferExtraRef.current) {
+      setFormData(f => ({ ...f, surcharge: Math.max(0, (parseFloat(f.surcharge) || 0) - transferExtraRef.current + extra) }));
+      transferExtraRef.current = extra;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData.payment_method, formData.amount, formData.payment_type]);
+
   const amountsByType = {
     mensualidad: feesConfig?.mensualidad_montos?.length ? feesConfig.mensualidad_montos : [2000, 1700, 1450, 1320, 1300, 1200, 1190, 1160, 1100, 1080, 1060, 960, 900, 800, 600, 400, 300, 0],
     inscripcion: feesConfig?.inscripcion_montos?.length ? feesConfig.inscripcion_montos : [2100, 1890, 1300, 650],
@@ -541,10 +560,10 @@ export default function PaymentForm({ payment, players, onSubmit, onCancel, isLo
           </div>
         </CardContent>
         <CardFooter className="flex justify-end gap-3">
-          <Button type="button" variant="outline" onClick={onCancel} disabled={isLoading || (formData.payment_method === 'transferencia' && !formData.bank_name)}>
+          <Button type="button" variant="outline" onClick={onCancel} disabled={isLoading}>
             Cancelar
           </Button>
-          <Button type="submit" disabled={isLoading} className="bg-green-600 hover:bg-green-700">
+          <Button type="submit" disabled={isLoading || (formData.payment_method === 'transferencia' && !formData.bank_name)} className="bg-green-600 hover:bg-green-700">
             <Save className="w-4 h-4 mr-2" />
             {payment ? 'Actualizar' : 'Guardar'}
           </Button>
