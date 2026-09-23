@@ -28,7 +28,12 @@ function obtenerBranding() {
       .then(({ data }) => { _branding = { ...BRANDING_DEFECTO, ...(data?.value || {}) }; return _branding; })
       .catch(() => { _branding = BRANDING_DEFECTO; return _branding; });
   }
-  return _brandingPromise;
+  // Límite de 1.5s: si la red se cuelga, el vale sale con el respaldo — la
+  // ventana de impresión nunca se queda en blanco.
+  return Promise.race([
+    _brandingPromise,
+    new Promise((resolve) => setTimeout(() => resolve(_branding || BRANDING_DEFECTO), 1500)),
+  ]);
 }
 
 const esc = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
