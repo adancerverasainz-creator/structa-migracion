@@ -7,7 +7,7 @@ import { Edit, Trash2, Search, DollarSign, Undo2, Printer } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { formatCurrency } from '../lib/formatCurrency';
-import { imprimirVale, folioDesdeId, cuentaLegible } from '../print/PrintVale';
+import { imprimirVale, folioVale, cuentaLegible } from '../print/PrintVale';
 
 export default function GeneralPaymentsList({ payments, isLoading, onEdit, onDelete, onReverse, currentUserEmail, isAdmin }) {
   // #80 Storno fase 2: ventana de corrección (mismo día) + reverso admin
@@ -33,7 +33,7 @@ export default function GeneralPaymentsList({ payments, isLoading, onEdit, onDel
   const reimprimirVale = (payment) => imprimirVale({
     tipoVale: 'INGRESO',
     id: payment.id,
-    folio: folioDesdeId(payment.id),
+    folio: folioVale(payment),
     fecha: payment.payment_date,
     concepto: payment.concept || 'Pago general',
     monto: payment.amount,
