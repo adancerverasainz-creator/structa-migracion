@@ -17,6 +17,7 @@ const METODOS = { efectivo: 'Efectivo', transferencia: 'Transferencia', tarjeta:
 export default function Verificar() {
   const [estado, setEstado] = useState('cargando'); // cargando | ok | reversado | no | error
   const [mov, setMov] = useState(null);
+  const [club, setClub] = useState({ nombre: 'Barcelona Inter Academy', logo_url: LOGO_URL });
 
   useEffect(() => {
     const id = new URLSearchParams(window.location.search).get('id');
@@ -24,6 +25,7 @@ export default function Verificar() {
     supabase.rpc('verificar_movimiento', { p_id: id })
       .then(({ data, error }) => {
         if (error) { setEstado('error'); return; }
+        if (data?.club?.nombre) setClub((c) => ({ ...c, ...data.club }));
         if (!data?.encontrado) { setEstado('no'); return; }
         setMov(data);
         setEstado(data.estado === 'REVERSADO' ? 'reversado' : 'ok');
@@ -71,8 +73,8 @@ export default function Verificar() {
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
       <div className="w-full max-w-sm bg-white rounded-2xl shadow-lg border border-gray-100 p-6 text-center space-y-5">
         <div>
-          <img src={LOGO_URL} alt="BIA" className="w-16 h-16 object-contain mx-auto mb-1" onError={(e) => { e.target.style.display = 'none'; }} />
-          <h1 className="font-bold text-gray-900">Barcelona Inter Academy</h1>
+          <img src={club.logo_url} alt="" className="w-16 h-16 object-contain mx-auto mb-1" onError={(e) => { e.target.style.display = 'none'; }} />
+          <h1 className="font-bold text-gray-900">{club.nombre}</h1>
           <p className="text-xs text-gray-400 uppercase tracking-widest">Verificación de vale de caja</p>
         </div>
 
@@ -80,6 +82,9 @@ export default function Verificar() {
 
         {mov && (
           <div className="text-left border-t border-gray-100 pt-4 space-y-2 text-sm">
+            {mov.folio && (
+              <div className="flex justify-between"><span className="text-gray-500">Folio</span><span className="font-bold tracking-wider">{mov.folio}</span></div>
+            )}
             <div className="flex justify-between"><span className="text-gray-500">Tipo</span><span className="font-semibold">{mov.tipo}</span></div>
             <div className="flex justify-between"><span className="text-gray-500">Fecha</span><span className="font-semibold">{fecha(mov.fecha)}</span></div>
             <div className="flex justify-between"><span className="text-gray-500">Concepto</span><span className="font-semibold text-right ml-4">{mov.concepto}</span></div>
