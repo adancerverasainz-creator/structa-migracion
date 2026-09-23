@@ -334,7 +334,7 @@ toast.error(`No se pudo aplicar el abono: ${err?.message || 'error desconocido'}
 (async () => {
 const existing = payments.find(p => p.id === existingPaymentId);
 try {
-const { error } = await supabase.rpc('abonar_partida', {
+const { data: abonoRes, error } = await supabase.rpc('abonar_partida', {
 p_payment_id: existingPaymentId,
 p_monto: paymentData.amount || 0,
 p_metodo: paymentData.payment_method || 'efectivo',
@@ -345,6 +345,20 @@ p_surcharge: paymentData.surcharge || 0,
 p_notas: paymentData.notes || null,
 });
 if (error) throw error;
+// Vale térmico automático del abono/liquidación (la RPC devuelve id y folio)
+const jugadorAbono = players.find(pl => pl.id === existing?.player_id);
+imprimirVale(valeDeIngreso({
+  id: abonoRes?.abono_id || abonoRes?.partida_id || existingPaymentId,
+  folio: abonoRes?.folio,
+  fecha: (paymentData.payment_date || '').slice(0, 10) || undefined,
+  monto: paymentData.amount,
+  concepto: `${abonoRes?.liquidado ? 'Liquidación' : 'Abono'}${paymentData.month ? ` — ${paymentData.month}` : ''}`,
+  metodo: paymentData.payment_method || 'efectivo',
+  cuenta: cuentaLegible(paymentData),
+  referencia: paymentData.reference_number,
+  categoria: jugadorAbono?.category,
+  cliente: jugadorAbono?.full_name,
+}));
 await logAudit({
 action: 'MODIFICACIÓN', module: 'Pagos', entity_type: 'Payment',
 entity_id: existingPaymentId,
