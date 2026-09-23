@@ -15,7 +15,7 @@ import { formatCurrency } from '../components/lib/formatCurrency';
 import { logAudit } from '../components/lib/auditLogger';
 import ERPPageHeader from '../components/layout/ERPPageHeader';
 import KPICard from '../components/layout/KPICard';
-import { imprimirVale, folioDesdeId, cuentaLegible } from '../components/print/PrintVale';
+import { imprimirVale, folioVale, cuentaLegible } from '../components/print/PrintVale';
 
 export default function Expenses() {
   const { canDelete, isAdmin } = usePerms('expenses');
@@ -76,7 +76,7 @@ queryFn: () => base44.entities.CashRegister.list('-register_date'),
 const valeDeEgreso = (e) => ({
   tipoVale: 'EGRESO',
   id: e.id,
-  folio: folioDesdeId(e.id),
+  folio: folioVale(e),
   fecha: e.expense_date,
   concepto: e.concept,
   monto: e.amount,
@@ -104,7 +104,7 @@ queryClient.invalidateQueries({ queryKey: ['saldosPorCuenta'] });
 setShowForm(false);
 setEditingExpense(null);
 // Impresión automática del vale SOLO al crear (no al editar)
-imprimirVale(valeDeEgreso({ ...data, id: result?.id }));
+imprimirVale(valeDeEgreso({ ...data, id: result?.id, folio: result?.folio }));
 },
 onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desconocido'}`),
 });
