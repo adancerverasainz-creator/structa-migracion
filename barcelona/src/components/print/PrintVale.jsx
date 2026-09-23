@@ -9,6 +9,8 @@
 //   concepto, monto, cuenta_nombre, forma_pago, referencia,
 //   autorizado_por, categoria_nombre (equivalente de obra en clubes),
 //   proveedor_nombre, cliente_nombre  — los vacíos no se imprimen.
+//   id              uuid del movimiento: imprime un QR que abre la página
+//                   pública /Verificar?id=... (verificación sin sesión).
 
 const LOGO_URL = 'https://swtrrldixeeecsmfseah.supabase.co/storage/v1/object/public/assets/logo-bia-transparente.png';
 const CLUB_NOMBRE = 'Barcelona Inter Academy';
@@ -42,6 +44,11 @@ export function imprimirVale(vale) {
     ['Categoría', vale.categoria_nombre],
     [esEgreso ? 'Pagado a' : 'Recibido de', esEgreso ? vale.proveedor_nombre : vale.cliente_nombre],
   ].filter(([, v]) => v != null && String(v).trim() !== '');
+
+  // QR de verificación pública (solo si el movimiento trae su uuid)
+  const verifyUrl = vale.id && /^[0-9a-f-]{36}$/i.test(String(vale.id))
+    ? `https://bia.structa.mx/Verificar?id=${vale.id}`
+    : null;
 
   const html = `<!doctype html>
 <html lang="es"><head><meta charset="utf-8">
@@ -89,8 +96,23 @@ export function imprimirVale(vale) {
     <div class="firma"><div class="nombre">${esc(vale.autorizado_por || '')}</div><div class="linea">Autorizó</div></div>
     <div class="firma"><div class="nombre">&nbsp;</div><div class="linea">${esEgreso ? 'Recibió' : 'Entregó'}</div></div>
   </div>
+  ${verifyUrl ? `<div class="center" style="margin-top:5mm">
+    <div id="qr" style="display:inline-block"></div>
+    <div style="font-size:10px;font-weight:700;margin-top:2px">ESCANEA PARA VERIFICAR ESTE VALE</div>
+  </div>` : ''}
   <div class="disclaimer">ESTE DOCUMENTO NO ES COMPROBANTE FISCAL</div>
-  <script>window.onload = function(){ window.print(); };<\/script>
+  ${verifyUrl ? '<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"><\/script>' : ''}
+  <script>
+    var __printed = false;
+    function __go(){ if (!__printed) { __printed = true; window.print(); } }
+    window.onload = function(){
+      try {
+        ${verifyUrl ? `if (window.QRCode) { new QRCode(document.getElementById('qr'), { text: '${verifyUrl}', width: 88, height: 88, correctLevel: QRCode.CorrectLevel.M }); }` : ''}
+      } catch (e) {}
+      setTimeout(__go, ${verifyUrl ? 400 : 0});
+    };
+    setTimeout(__go, 2500); // respaldo: imprime aunque el QR no cargue
+  <\/script>
 </body></html>`;
 
   w.document.write(html);
