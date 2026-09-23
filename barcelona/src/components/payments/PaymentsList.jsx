@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Edit, Trash2, Search, CreditCard, Calendar, User, Undo2, Printer } from 'lucide-react';
 import { format } from 'date-fns';
 import { formatCurrency } from '../lib/formatCurrency';
-import { imprimirVale, folioDesdeId, cuentaLegible } from '../print/PrintVale';
+import { imprimirVale, folioVale, cuentaLegible } from '../print/PrintVale';
 
 const PAGE_SIZE = 100;
 
@@ -65,7 +65,7 @@ export default function PaymentsList({ payments, players, isLoading, onEdit, onD
   const reimprimirVale = (payment) => imprimirVale({
     tipoVale: 'INGRESO',
     id: payment.id,
-    folio: folioDesdeId(payment.id),
+    folio: folioVale(payment),
     fecha: payment.payment_date,
     concepto: getPaymentConcept(payment),
     monto: payment.amount,
