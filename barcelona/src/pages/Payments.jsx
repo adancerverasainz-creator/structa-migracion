@@ -151,6 +151,7 @@ queryFn: () => base44.entities.TournamentAttendee.list(),
 // Vale térmico 80mm de un ingreso (tipoVale, no 'tipo': ese campo ya es la categoría)
 const valeDeIngreso = ({ id, fecha, concepto, monto, metodo, cuenta, referencia, categoria, cliente }) => ({
   tipoVale: 'INGRESO',
+  id,
   folio: folioDesdeId(id),
   fecha,
   concepto,
