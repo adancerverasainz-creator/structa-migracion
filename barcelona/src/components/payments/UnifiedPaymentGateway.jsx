@@ -128,6 +128,26 @@ export default function UnifiedPaymentGateway({ config, onSubmit, onCancel, isLo
     }
   }, [month, paymentDate, type, itemPaymentType]);
 
+  // Recargo por transferencia (temporada 26-27): la cuota es el precio en EFECTIVO;
+  // transferencia cuesta cuota × 1550/1320 redondeado a decena (club_settings.fees).
+  // Se suma al cambiar a transferencia y se retira al regresar a otro método,
+  // sin pisar el recargo por atraso; se puede ajustar a mano después.
+  const transferExtraRef = React.useRef(0);
+  useEffect(() => {
+    if ((type || itemPaymentType) !== 'mensualidad') return;
+    const rc = feesConfig?.recargo_transferencia;
+    const base = parseFloat(amount) || 0;
+    const red = rc?.redondeo || 10;
+    const extra = (rc?.num && rc?.den && base > 0 && paymentMethod === 'transferencia')
+      ? Math.round((base * rc.num) / rc.den / red) * red - base
+      : 0;
+    if (extra !== transferExtraRef.current) {
+      setSurcharge(s => Math.max(0, (parseFloat(s) || 0) - transferExtraRef.current + extra));
+      transferExtraRef.current = extra;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paymentMethod, amount, type, itemPaymentType]);
+
   // ── Derivations ──
   const baseAmount = parseFloat(amount) || 0;
   const isMensualidad = (type || itemPaymentType) === 'mensualidad';
