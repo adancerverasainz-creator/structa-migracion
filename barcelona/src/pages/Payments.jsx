@@ -19,7 +19,7 @@ import UnifiedPaymentGateway from '../components/payments/UnifiedPaymentGateway'
 import PagoGeneralModal from '../components/payments/PagoGeneralModal';
 import { formatCurrency } from '../components/lib/formatCurrency';
 import { logAudit } from '../components/lib/auditLogger';
-import { imprimirVale, folioDesdeId, cuentaLegible } from '../components/print/PrintVale';
+import { imprimirVale, folioVale, cuentaLegible } from '../components/print/PrintVale';
 
 export default function Payments() {
 const { canDelete } = usePerms('payments');
@@ -149,10 +149,10 @@ queryFn: () => base44.entities.TournamentAttendee.list(),
 });
 
 // Vale térmico 80mm de un ingreso (tipoVale, no 'tipo': ese campo ya es la categoría)
-const valeDeIngreso = ({ id, fecha, concepto, monto, metodo, cuenta, referencia, categoria, cliente }) => ({
+const valeDeIngreso = ({ id, folio, fecha, concepto, monto, metodo, cuenta, referencia, categoria, cliente }) => ({
   tipoVale: 'INGRESO',
   id,
-  folio: folioDesdeId(id),
+  folio: folioVale({ folio, id }),
   fecha,
   concepto,
   monto,
@@ -185,7 +185,7 @@ setEditingPayment(null);
 // Impresión automática del vale SOLO al crear (no al editar)
 const player = players.find(p => p.id === data.player_id);
 imprimirVale(valeDeIngreso({
-  id: result?.id, fecha: data.payment_date, monto: data.amount,
+  id: result?.id, folio: result?.folio, fecha: data.payment_date, monto: data.amount,
   concepto: data.month ? `Mensualidad ${data.month}` : (data.concept || data.payment_type || 'Pago'),
   metodo: data.payment_method, cuenta: cuentaLegible(data),
   referencia: data.reference_number, categoria: player?.category,
@@ -272,7 +272,7 @@ setPaymentConfig(null);
 const player = players.find(p => p.id === data.player_id);
 const torneo = tournaments.find(t => t.id === data.tournament_id);
 imprimirVale(valeDeIngreso({
-  id: result?.id, fecha: data.payment_date, monto: data.paid_amount ?? data.amount,
+  id: result?.id, folio: result?.folio, fecha: data.payment_date, monto: data.paid_amount ?? data.amount,
   concepto: torneo ? `Torneo — ${torneo.name}` : 'Pago de torneo',
   metodo: data.payment_method, cuenta: cuentaLegible(data),
   referencia: data.reference_number, categoria: player?.category,
@@ -492,7 +492,7 @@ setShowGeneralForm(false);
 setEditingGeneralPayment(null);
 // Vale automático del pago general
 imprimirVale(valeDeIngreso({
-  id: result?.id, fecha: data.payment_date, monto: data.amount,
+  id: result?.id, folio: result?.folio, fecha: data.payment_date, monto: data.amount,
   concepto: data.concept || 'Pago general',
   metodo: data.payment_method, cuenta: cuentaLegible(data),
   referencia: data.reference_number, categoria: data.category,
