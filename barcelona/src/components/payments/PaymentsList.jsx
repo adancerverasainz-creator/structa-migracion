@@ -64,6 +64,7 @@ export default function PaymentsList({ payments, players, isLoading, onEdit, onD
   // Reimpresión del vale térmico 80mm
   const reimprimirVale = (payment) => imprimirVale({
     tipoVale: 'INGRESO',
+    id: payment.id,
     folio: folioDesdeId(payment.id),
     fecha: payment.payment_date,
     concepto: getPaymentConcept(payment),
