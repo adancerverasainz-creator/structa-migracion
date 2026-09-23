@@ -320,6 +320,20 @@ previousData: existing, newData: { ...paymentData, resto: res?.resto },
 monetaryDiff: paymentData.amount || 0,
 details: res?.liquidado ? `Saldo de uniformes liquidado: $${paymentData.amount}` : `Abono a uniformes: $${paymentData.amount} — resta $${res?.resto}`,
 });
+// Vale térmico automático del abono de uniformes (la RPC devuelve id y folio)
+const jugadorUnif = players.find(pl => pl.id === existing?.player_id);
+imprimirVale(valeDeIngreso({
+  id: res?.abono_id || existingPaymentId,
+  folio: res?.folio,
+  fecha: (paymentData.payment_date || '').slice(0, 10) || undefined,
+  monto: paymentData.amount,
+  concepto: res?.liquidado ? 'Uniformes — Liquidación' : `Uniformes — Abono (resta $${res?.resto})`,
+  metodo: paymentData.payment_method || 'efectivo',
+  cuenta: cuentaLegible(paymentData),
+  referencia: paymentData.reference_number,
+  categoria: jugadorUnif?.category,
+  cliente: jugadorUnif?.full_name,
+}));
 queryClient.invalidateQueries({ queryKey: ['payments'] });
 queryClient.invalidateQueries({ queryKey: ['saldosPorCuenta'] });
 toast.success(res?.liquidado ? 'Saldo de uniformes liquidado' : `Abono registrado — resta $${res?.resto}`);
