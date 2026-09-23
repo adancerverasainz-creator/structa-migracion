@@ -96,7 +96,6 @@ export default function AdminTournaments() {
       description: t.description || '',
       points_win: t.points_win ?? 3,
       points_draw: t.points_draw ?? 1,
-      points_loss: t.points_loss ?? 0,
       yellows_for_suspension: t.yellows_for_suspension ?? 3,
       playoff_format: t.playoff_format || 'none',
     })
