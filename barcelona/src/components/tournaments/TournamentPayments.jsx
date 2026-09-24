@@ -10,7 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ArrowLeft, Plus, CheckCircle, AlertCircle, X, Save, Trash2, Search, Edit, Users, Clock, Globe, Undo2 } from 'lucide-react';
+import { ArrowLeft, Plus, CheckCircle, AlertCircle, X, Save, Trash2, Search, Edit, Users, Clock, Globe, Undo2, Printer } from 'lucide-react';
+import { imprimirVale, folioVale, cuentaLegible } from '../print/PrintVale';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -88,10 +89,27 @@ export default function TournamentPayments({ tournament, players, payments: allP
   // Pagos huérfanos
   const orphanCount = findOrphanPayments(payments, tournament?.id).length;
 
+  // Vale térmico 80mm de un pago de torneo (mismo formato que Pagos/Egresos)
+  const valeDeTorneo = (p) => ({
+    tipoVale: 'INGRESO',
+    id: p.id,
+    folio: folioVale(p),
+    fecha: p.payment_date,
+    concepto: `Torneo — ${tournament?.name || ''}`,
+    monto: p.paid_amount ?? p.amount,
+    cuenta_nombre: cuentaLegible(p),
+    forma_pago: p.payment_method,
+    referencia: p.reference_number,
+    cliente_nombre: getPlayerName(p.player_id, p.external_name),
+    autorizado_por: currentUser?.email || '',
+  });
+
   const createMutation = useMutation({
     mutationFn: (data) => base44.entities.TournamentPayment.create(data),
     onSuccess: (created, data) => {
       const playerName = players.find(p => p.id === data.player_id)?.full_name || data.player_id;
+      // Auto-imprime el vale al registrar (igual que en mostrador)
+      imprimirVale(valeDeTorneo({ ...data, id: created?.id, folio: created?.folio }));
       logAudit({
         action: 'CREACIÓN',
         module: 'Torneos',
@@ -664,6 +682,12 @@ export default function TournamentPayments({ tournament, players, payments: allP
                     <span className={`text-xl font-bold ${effectivePaid(payment) < 0 ? 'text-red-600' : 'text-green-600'}`}>{formatCurrency(effectivePaid(payment))}</span>
                     {payment.reversal_of && <Badge className="bg-gray-200 text-gray-700">↩ Reverso</Badge>}
                     {reversedIds.has(payment.id) && <Badge className="bg-red-100 text-red-700">Reversado</Badge>}
+                    {!payment.reversal_of && (
+                      <Button variant="outline" size="sm" title="Imprimir vale"
+                        onClick={() => imprimirVale(valeDeTorneo(payment))}>
+                        <Printer className="w-4 h-4" />
+                      </Button>
+                    )}
                     {puedeCorregir(payment) ? (
                       <>
                         <Button variant="outline" size="sm" className="text-blue-600 hover:bg-blue-50"
