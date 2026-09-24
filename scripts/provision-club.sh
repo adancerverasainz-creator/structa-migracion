@@ -45,7 +45,15 @@ psql "postgresql://postgres:${DB_PASS}@db.${PROJECT_REF}.supabase.co:5432/postgr
 -- Configuración mínima operable; el club la ajusta después en /Configuracion
 insert into club_settings (key, value, updated_by) values
  ('late_fee', '{"amount":100,"cutoff_day":15,"enabled":true}', 'provision'),
- ('fees', '{"inscripcion_default":1800,"summer_week":1200,"inscripcion_montos":[1800],"reinscripcion_montos":[1800]}', 'provision')
+ -- fees.recargo_transferencia: cuota del jugador = precio en EFECTIVO; pagar por
+ -- transferencia cuesta cuota × num/den redondeado a "redondeo". Ajustar o quitar
+ -- la clave si el club no diferencia precios por método de pago.
+ ('fees', '{"inscripcion_default":1800,"summer_week":1200,"inscripcion_montos":[1800],"reinscripcion_montos":[1800],"mensualidad_montos":[1800],"season_start_month":8,"recargo_transferencia":{"num":1550,"den":1320,"redondeo":10}}', 'provision'),
+ -- season_calendar: meses con cobro parcial o nulo, {"YYYY-MM":{"factor":0..1}}
+ -- (ej. julio 50%, agosto sin actividad). El club lo ajusta a su temporada.
+ ('season_calendar', '{}', 'provision'),
+ -- branding: nombre y logo que salen en vales térmicos y /Verificar
+ ('branding', '{"nombre":"","logo_url":""}', 'provision')
 on conflict (key) do nothing;
 insert into bank_accounts (name, sort_order) values ('Efectivo bancario', 10) on conflict do nothing;
 SQL
