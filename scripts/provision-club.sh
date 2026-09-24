@@ -41,7 +41,7 @@ supabase db push --project-ref "$PROJECT_REF" || \
   psql "$(supabase projects api-keys get "$PROJECT_REF" --db-url)" -f supabase/schema.sql
 
 echo "══ 3/5 · Semillas de configuración del club"
-psql "postgresql://postgres:${DB_PASS}@db.${PROJECT_REF}.supabase.co:5432/postgres" <<'SQL'
+psql "postgresql://postgres:${DB_PASS}@db.${PROJECT_REF}.supabase.co:5432/postgres" <<SQL
 -- Configuración mínima operable; el club la ajusta después en /Configuracion
 insert into club_settings (key, value, updated_by) values
  ('late_fee', '{"amount":100,"cutoff_day":15,"enabled":true}', 'provision'),
@@ -52,8 +52,11 @@ insert into club_settings (key, value, updated_by) values
  -- season_calendar: meses con cobro parcial o nulo, {"YYYY-MM":{"factor":0..1}}
  -- (ej. julio 50%, agosto sin actividad). El club lo ajusta a su temporada.
  ('season_calendar', '{}', 'provision'),
- -- branding: nombre y logo que salen en vales térmicos y /Verificar
- ('branding', '{"nombre":"","logo_url":""}', 'provision')
+ -- branding: nombre y logo que salen en vales térmicos y /Verificar. NUNCA
+ -- sembrar strings vacíos: el front hace spread sobre el respaldo y un ""
+ -- imprimiría vales sin nombre de club. El slug es legible hasta que el
+ -- club suba su nombre y logo reales en /Configuracion.
+ ('branding', '{"nombre":"${CLUB_SLUG}","logo_url":""}', 'provision')
 on conflict (key) do nothing;
 insert into bank_accounts (name, sort_order) values ('Efectivo bancario', 10) on conflict do nothing;
 SQL
