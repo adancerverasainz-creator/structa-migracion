@@ -17,7 +17,10 @@ export default function PaymentForm({ payment, players, onSubmit, onCancel, isLo
       return {
         ...payment,
         payment_date: payment.payment_date ? String(payment.payment_date).slice(0, 10) : format(new Date(), 'yyyy-MM-dd'),
-        amount: payment.amount || '',
+        // El registro guarda amount = TOTAL cobrado (cuota + recargo); el formulario
+        // trabaja con la cuota base y el guardado vuelve a sumar el recargo, así que
+        // aquí se resta para no inflar el pago en cada edición.
+        amount: Math.max(0, (parseFloat(payment.amount) || 0) - (parseFloat(payment.surcharge) || 0)) || '',
         surcharge: payment.surcharge || 0,
         bank_name: payment.bank_name || '',
         reference_number: payment.reference_number || '',
