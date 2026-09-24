@@ -108,8 +108,11 @@ export default function TournamentPayments({ tournament, players, payments: allP
     mutationFn: (data) => base44.entities.TournamentPayment.create(data),
     onSuccess: (created, data) => {
       const playerName = players.find(p => p.id === data.player_id)?.full_name || data.player_id;
-      // Auto-imprime el vale al registrar (igual que en mostrador)
-      imprimirVale(valeDeTorneo({ ...data, id: created?.id, folio: created?.folio }));
+      // Auto-imprime el vale al registrar (igual que en mostrador).
+      // Un becado ($0) no recibe dinero: no hay vale que imprimir.
+      if (((data.paid_amount ?? data.amount) || 0) > 0) {
+        imprimirVale(valeDeTorneo({ ...data, id: created?.id, folio: created?.folio }));
+      }
       logAudit({
         action: 'CREACIÓN',
         module: 'Torneos',
