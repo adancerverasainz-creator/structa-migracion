@@ -42,6 +42,14 @@ if (r.tournament_id !== undefined && r.paid_amount !== undefined) return r.paid_
 return r.amount || 0;
 }
 
+// Reversos (storno): el contra-movimiento lleva reversal_of y se asienta el día en
+// que se descubre el error (norma contable: el pasado no se reescribe). En los
+// reportes se separa de la operación del día y el original se marca como reversado.
+const esReverso = (r) => !!r.reversal_of;
+// Efecto en caja de un contra-movimiento: reverso de ingreso resta, de egreso devuelve.
+const efectoReverso = (r) => (r.expense_date !== undefined ? -(r.amount || 0) : getEffectiveAmount(r));
+const fmtFechaCorta = (d) => { const p = parseLocalDate(d); return p && !isNaN(p) ? format(p, 'dd/MM/yy') : ''; };
+
 function getConceptLabel(r, players = [], tournaments = [], teams = []) {
 if (r.concept && r.concept.trim()) return r.concept.trim();
 if (r.player_name) {
@@ -176,7 +184,7 @@ className="w-full flex items-center justify-between px-4 py-3 bg-red-50 hover:bg
 );
 }
 
-function MethodBreakdown({ payments, expenses, players, tournaments, teams }) {
+function MethodBreakdown({ payments, expenses, players, tournaments, teams, reversedMap = new Map() }) {
 const methods = ['efectivo', 'tarjeta', 'transferencia'];
 const [expanded, setExpanded] = React.useState({});
 const toggle = (k) => setExpanded(p => ({ ...p, [k]: !p[k] }));
@@ -187,10 +195,12 @@ return (
 <CardContent>
 <div className="space-y-2">
 {methods.map(m => {
-const incR = payments.filter(p => p.payment_method === m);
-const expR = expenses.filter(e => e.payment_method === m);
+const incR = payments.filter(p => p.payment_method === m && !esReverso(p));
+const expR = expenses.filter(e => e.payment_method === m && !esReverso(e));
+const revR = [...payments, ...expenses].filter(r => r.payment_method === m && esReverso(r));
 const inc = incR.reduce((s, p) => s + getEffectiveAmount(p), 0);
 const exp = expR.reduce((s, e) => s + (e.amount || 0), 0);
+const rev = revR.reduce((s, r) => s + efectoReverso(r), 0);
 const isOpen = expanded[m];
 return (
 <div key={m} className="rounded border border-gray-200 overflow-hidden">
@@ -202,7 +212,8 @@ return (
 <div className="flex gap-4 text-sm">
 <span className="text-green-600">+{formatCurrency(inc)}</span>
 <span className="text-red-600">-{formatCurrency(exp)}</span>
-<span className={`font-bold ${inc - exp >= 0 ? 'text-blue-600' : 'text-red-600'}`}>{formatCurrency(inc - exp)}</span>
+{rev !== 0 && <span className="text-amber-700">↩ {rev > 0 ? '+' : ''}{formatCurrency(rev)}</span>}
+<span className={`font-bold ${inc - exp + rev >= 0 ? 'text-blue-600' : 'text-red-600'}`}>{formatCurrency(inc - exp + rev)}</span>
 </div>
 </button>
 {isOpen && (
@@ -215,10 +226,13 @@ return (
 <div key={i} className="flex justify-between text-xs text-gray-700 gap-2">
 <span className="truncate max-w-[55%]">{getConceptLabel(r, players, tournaments, teams)}</span>
 <div className="flex items-center gap-2 shrink-0">
+{reversedMap.has(r.id) && (
+<Badge variant="outline" className="text-[10px] px-1.5 py-0 border-amber-400 text-amber-700 bg-amber-50">↩ Reversado el {fmtFechaCorta(reversedMap.get(r.id))}</Badge>
+)}
 {m === 'transferencia' && r.bank_name && (
 <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-blue-300 text-blue-700 bg-blue-50">{r.bank_name}</Badge>
 )}
-<span className="text-green-700 font-medium">+{formatCurrency(getEffectiveAmount(r))}</span>
+<span className={`font-medium ${reversedMap.has(r.id) ? 'text-gray-400 line-through' : 'text-green-700'}`}>+{formatCurrency(getEffectiveAmount(r))}</span>
 </div>
 </div>
 ))}
@@ -233,11 +247,27 @@ return (
 <div key={i} className="flex justify-between text-xs text-gray-700 gap-2">
 <span className="truncate max-w-[55%]">{r.concept || '—'}</span>
 <div className="flex items-center gap-2 shrink-0">
+{reversedMap.has(r.id) && (
+<Badge variant="outline" className="text-[10px] px-1.5 py-0 border-amber-400 text-amber-700 bg-amber-50">↩ Reversado el {fmtFechaCorta(reversedMap.get(r.id))}</Badge>
+)}
 {m === 'transferencia' && (r.account || r.bank_name) && (
 <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-blue-300 text-blue-700 bg-blue-50">{r.account || r.bank_name}</Badge>
 )}
-<span className="text-red-700 font-medium">-{formatCurrency(r.amount)}</span>
+<span className={`font-medium ${reversedMap.has(r.id) ? 'text-gray-400 line-through' : 'text-red-700'}`}>-{formatCurrency(r.amount)}</span>
 </div>
+</div>
+))}
+</div>
+</div>
+)}
+{revR.length > 0 && (
+<div className="bg-amber-50 px-4 py-2">
+<p className="text-xs font-semibold text-amber-700 mb-1 uppercase tracking-wide">Reversos aplicados este día ({revR.length}) — corrigen movimientos de otros días</p>
+<div className="space-y-1">
+{revR.map((r, i) => (
+<div key={i} className="flex justify-between text-xs text-gray-700 gap-2">
+<span className="truncate max-w-[65%]">{r.concept || r.notes || getConceptLabel(r, players, tournaments, teams)}</span>
+<span className={`font-medium shrink-0 ${efectoReverso(r) >= 0 ? 'text-green-700' : 'text-amber-700'}`}>{efectoReverso(r) > 0 ? '+' : ''}{formatCurrency(efectoReverso(r))}</span>
 </div>
 ))}
 </div>
@@ -304,8 +334,20 @@ const prevMonthStart = startOfMonth(subMonths(now,1)); const prevMonthEnd = endO
 const calcInc = (arr, s, e) => arr.filter(p => inRange(p,s,e)).reduce((t,p) => t + getEffectiveAmount(p), 0);
 const calcExp = (arr, s, e) => arr.filter(r => inRange(r,s,e)).reduce((t,r) => t + (r.amount||0), 0);
 
-const dayInc = calcInc(allPayments, dayStart, dayEnd);
-const dayExp = calcExp(allExpenses, dayStart, dayEnd);
+// Mapa de originales reversados (id → fecha del contra-movimiento). Se calcula
+// sobre TODO el histórico para poder marcar el día original aunque el reverso
+// se haya asentado en otra fecha.
+const reversedMap = new Map();
+for (const r of [...allPayments, ...expenses]) {
+  if (r.reversal_of) reversedMap.set(r.reversal_of, getDateField(r));
+}
+
+// Día: la operación se reporta SIN reversos; su efecto va aparte para que los
+// ingresos/egresos del día reflejen solo lo que de verdad se movió ese día.
+const dayInc = calcInc(allPayments.filter(p => !esReverso(p)), dayStart, dayEnd);
+const dayExp = calcExp(allExpenses.filter(e => !esReverso(e)), dayStart, dayEnd);
+const dayRev = calcInc(allPayments.filter(esReverso), dayStart, dayEnd)
+  - calcExp(allExpenses.filter(esReverso), dayStart, dayEnd);
 const weekInc = calcInc(allPayments, weekStart, weekEnd);
 const weekExp = calcExp(allExpenses, weekStart, weekEnd);
 const monthInc = calcInc(allPayments, monthStart, monthEnd);
@@ -595,13 +637,17 @@ return (
 <div className="bg-indigo-50 border border-indigo-200 rounded-lg px-4 py-2 text-sm text-indigo-700 font-medium">
 {format(now, "EEEE, d 'de' MMMM 'de' yyyy", { locale: es })}
 </div>
-<div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+<div className={dayRev !== 0 ? 'grid grid-cols-1 md:grid-cols-4 gap-4' : 'grid grid-cols-1 md:grid-cols-3 gap-4'}>
 <KPI title="Ingresos del Día" value={formatCurrency(dayInc)} color="green" icon={TrendingUp} />
 <KPI title="Egresos del Día" value={formatCurrency(dayExp)} color="red" icon={TrendingDown} />
-<KPI title="Utilidad del Día" value={formatCurrency(dayInc - dayExp)} color={dayInc-dayExp>=0?'blue':'red'} icon={DollarSign}
-sub={dayInc-dayExp>=0?'Positivo':'Negativo'} />
+{dayRev !== 0 && (
+<KPI title="Reversos aplicados" value={`${dayRev > 0 ? '+' : ''}${formatCurrency(dayRev)}`} color={dayRev>=0?'blue':'red'} icon={DollarSign}
+sub="Correcciones de movimientos de otros días" />
+)}
+<KPI title="Utilidad del Día" value={formatCurrency(dayInc - dayExp + dayRev)} color={dayInc-dayExp+dayRev>=0?'blue':'red'} icon={DollarSign}
+sub={dayRev !== 0 ? 'Incluye el efecto de los reversos' : (dayInc-dayExp>=0?'Positivo':'Negativo')} />
 </div>
-<MethodBreakdown payments={allPayments.filter(p=>inRange(p,dayStart,dayEnd))} expenses={allExpenses.filter(e=>inRange(e,dayStart,dayEnd))} players={players} tournaments={tournaments} teams={teams} />
+<MethodBreakdown payments={allPayments.filter(p=>inRange(p,dayStart,dayEnd))} expenses={allExpenses.filter(e=>inRange(e,dayStart,dayEnd))} players={players} tournaments={tournaments} teams={teams} reversedMap={reversedMap} />
 </TabsContent>
 
 {/* ── SEMANAL ── */}
@@ -630,7 +676,7 @@ Semana: {format(weekStart,'d MMM',{locale:es})} – {format(weekEnd,'d MMM yyyy'
 </ResponsiveContainer>
 </CardContent>
 </Card>
-<MethodBreakdown payments={allPayments.filter(p=>inRange(p,weekStart,weekEnd))} expenses={allExpenses.filter(e=>inRange(e,weekStart,weekEnd))} players={players} tournaments={tournaments} teams={teams} />
+<MethodBreakdown payments={allPayments.filter(p=>inRange(p,weekStart,weekEnd))} expenses={allExpenses.filter(e=>inRange(e,weekStart,weekEnd))} players={players} tournaments={tournaments} teams={teams} reversedMap={reversedMap} />
 </TabsContent>
 
 {/* ── MENSUAL ── */}
@@ -660,7 +706,7 @@ Semana: {format(weekStart,'d MMM',{locale:es})} – {format(weekEnd,'d MMM yyyy'
 </ResponsiveContainer>
 </CardContent>
 </Card>
-<MethodBreakdown payments={allPayments.filter(p=>inRange(p,monthStart,monthEnd))} expenses={allExpenses.filter(e=>inRange(e,monthStart,monthEnd))} players={players} tournaments={tournaments} teams={teams} />
+<MethodBreakdown payments={allPayments.filter(p=>inRange(p,monthStart,monthEnd))} expenses={allExpenses.filter(e=>inRange(e,monthStart,monthEnd))} players={players} tournaments={tournaments} teams={teams} reversedMap={reversedMap} />
 </TabsContent>
 </Tabs>
 </div>
