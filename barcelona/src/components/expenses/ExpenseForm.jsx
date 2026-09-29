@@ -7,8 +7,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { X, Save, Wallet } from 'lucide-react';
+import { X, Save, Wallet, AlertTriangle } from 'lucide-react';
 import { format } from 'date-fns';
+import { base44 } from '@/api/base44Client';
 
 // Nombres cortos para las tarjetas de saldo (la RPC devuelve el nombre completo)
 const ETIQUETAS_CORTAS = { MercadoPagoBIA: 'MP BIA', 'Fondos (caja)': 'Fondos' };
@@ -27,6 +28,16 @@ export default function ExpenseForm({ expense, onSubmit, onCancel, isLoading }) 
     },
   });
 
+  // Anti-duplicados: si el concepto se parece a una CxP abierta, se avisa que el
+  // abono se registra desde Cuentas por Pagar (el motor CxP ya genera su egreso).
+  const { data: cxpAbiertas = [] } = useQuery({
+    queryKey: ['cxpAbiertas'],
+    queryFn: async () => {
+      const rows = await base44.entities.AccountPayable.list();
+      return (rows || []).filter((c) => c.status !== 'pagado');
+    },
+  });
+
   const [formData, setFormData] = useState(expense || {
     concept: '',
     amount: '',
@@ -36,6 +47,24 @@ export default function ExpenseForm({ expense, onSubmit, onCancel, isLoading }) 
     account: '',
     notes: '',
   });
+
+  // Coincidencia por palabras significativas (≥4 letras) entre lo tecleado y
+  // proveedor+concepto de cada CxP abierta; con 2+ palabras en común se avisa.
+  const normaliza = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const palabras = (t) => new Set(normaliza(t).split(/[^a-z0-9]+/).filter((w) => w.length >= 4));
+  const cxpParecida = React.useMemo(() => {
+    if (expense) return null; // solo al capturar nuevo, no al editar
+    const mias = palabras(formData.concept);
+    if (mias.size < 2) return null;
+    for (const c of cxpAbiertas) {
+      const suyas = palabras(`${c.supplier || ''} ${c.concept || ''}`);
+      let comunes = 0;
+      for (const w of mias) if (suyas.has(w)) comunes++;
+      if (comunes >= 2) return c;
+    }
+    return null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData.concept, cxpAbiertas, expense]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -100,6 +129,17 @@ export default function ExpenseForm({ expense, onSubmit, onCancel, isLoading }) 
                 placeholder="Descripción del gasto"
                 required
               />
+              {cxpParecida && (
+                <div className="flex items-start gap-2 p-3 rounded-md bg-amber-50 border border-amber-300 text-sm text-amber-800">
+                  <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+                  <span>
+                    Este concepto se parece a una <b>cuenta por pagar abierta</b>:
+                    {' '}<b>{cxpParecida.supplier ? `${cxpParecida.supplier} — ` : ''}{cxpParecida.concept}</b>.
+                    Si es un abono de esa cuenta, regístralo en <b>Cuentas por Pagar</b> —
+                    el sistema genera el egreso solo y así no se duplica.
+                  </span>
+                </div>
+              )}
             </div>
             <div className="space-y-2">
               <Label htmlFor="amount">Monto *</Label>
