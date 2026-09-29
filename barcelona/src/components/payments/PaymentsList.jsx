@@ -216,7 +216,7 @@ export default function PaymentsList({ payments, players, isLoading, onEdit, onD
                           </Button>
                         )}
                       </>
-                    ) : (!payment.reversal_of && !reversedIds.has(payment.id) && onReverse) ? (
+                    ) : (!payment.reversal_of && !reversedIds.has(payment.id) && onReverse && (isAdmin || payment.created_by === currentUserEmail)) ? (
                       <Button
                         variant="outline"
                         size="sm"
