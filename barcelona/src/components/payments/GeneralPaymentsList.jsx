@@ -142,7 +142,7 @@ export default function GeneralPaymentsList({ payments, isLoading, onEdit, onDel
                         </Button>
                       )}
                     </>
-                  ) : (!payment.reversal_of && !reversedIds.has(payment.id) && onReverse) ? (
+                  ) : (!payment.reversal_of && !reversedIds.has(payment.id) && onReverse && (isAdmin || payment.created_by === currentUserEmail)) ? (
                     <Button size="sm" variant="outline" onClick={() => onReverse(payment)}
                       className="text-amber-700 hover:text-amber-800 hover:bg-amber-50" title="Storno: contra-movimiento que anula el pago">
                       <Undo2 className="w-4 h-4" />
