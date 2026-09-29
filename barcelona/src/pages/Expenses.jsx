@@ -7,7 +7,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Plus, TrendingDown, Trash2, Edit, Search, Printer } from 'lucide-react';
+import { Plus, TrendingDown, Trash2, Edit, Search, Printer, Undo2 } from 'lucide-react';
+import { toast } from 'sonner';
+import { confirmar } from '@/components/ui/confirmar';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import ExpenseForm from '../components/expenses/ExpenseForm';
@@ -23,6 +25,8 @@ export default function Expenses() {
 const [showForm, setShowForm] = useState(false);
 const [editingExpense, setEditingExpense] = useState(null);
 const [searchTerm, setSearchTerm] = useState('');
+const [reversarInfo, setReversarInfo] = useState(null); // egreso a reversar (storno)
+const [motivoReverso, setMotivoReverso] = useState('');
 const queryClient = useQueryClient();
 
 const { data: expenses = [], isLoading } = useQuery({
@@ -164,6 +168,34 @@ createMutation.mutate(data);
 // Los traspasos (is_transfer) también cuentan como "de módulo" aunque los viejos
 // traigan source_module 'egresos': se administran desde Tesorería, no aquí.
 const esDeModulo = (e) => (!!e.source_module && e.source_module !== 'egresos') || !!e.payroll_item_id || !!e.cxp_payment_id || !!e.is_transfer;
+
+// Storno self-service: quien capturó el egreso (o un admin) puede reversarlo
+// CUALQUIER día, con motivo obligatorio — el reverso es contra-movimiento, no borrado.
+const reversedIds = new Set(expenses.filter(e => e.reversal_of).map(e => e.reversal_of));
+const puedeReversar = (e) => !esDeModulo(e) && !e.reversal_of && !reversedIds.has(e.id)
+  && (isAdmin || e.created_by === me?.email);
+
+const reversarMutation = useMutation({
+  mutationFn: async ({ expense, motivo }) => {
+    const { data, error } = await supabase.rpc('reversar_egreso', { p_id: expense.id, p_motivo: motivo });
+    if (error) throw new Error(error.message);
+    return data;
+  },
+  onSuccess: async (newId, { expense, motivo }) => {
+    await logAudit({
+      action: 'REVERSO', module: 'Egresos', entity_type: 'Expense',
+      entity_id: newId, entity_name: expense.concept,
+      previousValue: expense, monetaryDiff: expense.amount || 0,
+      details: `Reverso (storno) del egreso ${expense.id}. Motivo: ${motivo}`,
+    });
+    queryClient.invalidateQueries({ queryKey: ['expenses'] });
+    queryClient.invalidateQueries({ queryKey: ['saldosPorCuenta'] });
+    toast.success('Reverso registrado — el egreso queda anulado por contra-movimiento');
+    setReversarInfo(null); setMotivoReverso('');
+  },
+  onError: (e) => toast.error(`No se pudo reversar: ${e.message}`),
+});
+
 const puedeCorregir = (e) => {
   if (esDeModulo(e)) return false;
   if (isAdmin) return true;
@@ -350,9 +382,19 @@ className="pl-9"
 <div className="flex items-center gap-4">
 <span className="text-2xl font-bold text-red-600">{formatCurrency(expense.amount)}</span>
 <div className="flex gap-2">
+{expense.reversal_of && <Badge className="bg-gray-200 text-gray-700">↩ Reverso</Badge>}
+{reversedIds.has(expense.id) && <Badge className="bg-red-100 text-red-700">Reversado</Badge>}
+{!expense.reversal_of && (
 <Button variant="ghost" size="icon" onClick={() => imprimirVale(valeDeEgreso(expense))} title="Imprimir vale (térmica 80mm)">
 <Printer className="w-4 h-4 text-gray-600" />
 </Button>
+)}
+{puedeReversar(expense) && (
+<Button variant="ghost" size="icon" title="Reversar (contra-movimiento con motivo)"
+  onClick={() => { setReversarInfo(expense); setMotivoReverso(''); }}>
+<Undo2 className="w-4 h-4 text-amber-700" />
+</Button>
+)}
 {puedeCorregir(expense) && (
 <Button variant="ghost" size="icon" onClick={() => handleEdit(expense)} title="Corregir (ventana del mismo día)">
 <Edit className="w-4 h-4 text-blue-600" />
@@ -372,6 +414,41 @@ className="pl-9"
 </div>
 )}
 </>
+)}
+
+{/* Modal de reverso: motivo obligatorio, contra-movimiento (storno) */}
+{reversarInfo && (
+<div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+  <Card className="w-full max-w-md">
+    <CardHeader>
+      <CardTitle className="text-base">Reversar egreso</CardTitle>
+    </CardHeader>
+    <CardContent className="space-y-3">
+      <p className="text-sm text-gray-700">
+        <span className="font-semibold">{reversarInfo.concept}</span> — {formatCurrency(reversarInfo.amount)}
+      </p>
+      <p className="text-xs text-gray-500">
+        Se creará un contra-movimiento por el monto contrario. El egreso original no se
+        borra: queda marcado como reversado y la caja se corrige al instante.
+      </p>
+      <textarea
+        className="w-full border rounded-md p-2 text-sm min-h-[70px]"
+        placeholder="Motivo del reverso (obligatorio, mínimo 5 caracteres)"
+        value={motivoReverso}
+        onChange={(e) => setMotivoReverso(e.target.value)}
+      />
+      <div className="flex justify-end gap-2">
+        <Button variant="outline" disabled={reversarMutation.isPending}
+          onClick={() => { setReversarInfo(null); setMotivoReverso(''); }}>Cancelar</Button>
+        <Button className="bg-amber-600 hover:bg-amber-700"
+          disabled={reversarMutation.isPending || motivoReverso.trim().length < 5}
+          onClick={() => reversarMutation.mutate({ expense: reversarInfo, motivo: motivoReverso.trim() })}>
+          {reversarMutation.isPending ? 'Reversando…' : 'Confirmar reverso'}
+        </Button>
+      </div>
+    </CardContent>
+  </Card>
+</div>
 )}
 </div>
 );
