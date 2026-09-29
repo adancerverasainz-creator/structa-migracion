@@ -708,7 +708,7 @@ export default function TournamentPayments({ tournament, players, payments: allP
                           </Button>
                         )}
                       </>
-                    ) : (!payment.reversal_of && !reversedIds.has(payment.id) && isAdmin) ? (
+                    ) : (!payment.reversal_of && !reversedIds.has(payment.id) && (isAdmin || payment.created_by === currentUser?.email)) ? (
                       <Button variant="outline" size="sm" className="text-amber-700 hover:bg-amber-50"
                         title="Storno: contra-movimiento que anula el pago" onClick={() => { setReversarInfo(payment); setMotivoReverso(''); }}>
                         <Undo2 className="w-4 h-4" />
