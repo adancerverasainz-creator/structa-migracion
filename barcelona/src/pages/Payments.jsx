@@ -715,7 +715,7 @@ players={players}
 isLoading={paymentsLoading || playersLoading}
 onEdit={handleEdit}
 onDelete={canDelete ? handleDelete : null}
-onReverse={isAdmin ? (p) => { setReversarInfo(p); setMotivoReverso(''); } : null}
+onReverse={(p) => { setReversarInfo(p); setMotivoReverso(''); }}
 currentUserEmail={currentUser?.email}
 isAdmin={isAdmin}
 />
@@ -727,7 +727,7 @@ payments={generalPayments}
 isLoading={generalPaymentsLoading}
 onEdit={handleGeneralEdit}
 onDelete={canDelete ? handleGeneralDelete : null}
-onReverse={isAdmin ? (p) => { setReversarInfo({ ...p, __tipo: 'general' }); setMotivoReverso(''); } : null}
+onReverse={(p) => { setReversarInfo({ ...p, __tipo: 'general' }); setMotivoReverso(''); }}
 currentUserEmail={currentUser?.email}
 isAdmin={isAdmin}
 />
