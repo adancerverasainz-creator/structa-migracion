@@ -217,20 +217,38 @@ return (
 {isOpen ? <ChevronDown className="w-4 h-4 text-gray-400" /> : <ChevronRight className="w-4 h-4 text-gray-400" />}
 <span className="capitalize font-medium text-sm">{m}</span>
 </div>
-<div className="flex items-center gap-4 text-sm">
-<span className="text-green-600">+{formatCurrency(inc)}</span>
-<span className="text-red-600">-{formatCurrency(exp)}</span>
-{rev !== 0 && <span className="text-amber-700">↩ {rev > 0 ? '+' : ''}{formatCurrency(rev)}</span>}
+<div className="flex items-center gap-5 text-sm flex-wrap justify-end">
+<div className="text-right">
+  <p className="text-[10px] uppercase tracking-wider text-gray-400 leading-none mb-1">Ingresos</p>
+  <p className="text-green-600 font-medium leading-none">+{formatCurrency(inc)}</p>
+</div>
+<div className="text-right">
+  <p className="text-[10px] uppercase tracking-wider text-gray-400 leading-none mb-1">Egresos</p>
+  <p className="text-red-600 font-medium leading-none">-{formatCurrency(exp)}</p>
+</div>
+{rev !== 0 && (
+<div className="text-right">
+  <p className="text-[10px] uppercase tracking-wider text-amber-500 leading-none mb-1">Reversos</p>
+  <p className="text-amber-700 font-medium leading-none">{rev > 0 ? '+' : ''}{formatCurrency(rev)}</p>
+</div>
+)}
 {difiere ? (
 <>
-<span className="text-gray-400 line-through">{formatCurrency(bruto)}</span>
-<span className={`font-bold px-2 py-0.5 rounded-md ${netoReal >= 0 ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-red-50 text-red-700 border border-red-200'}`}
+<div className="text-right">
+  <p className="text-[10px] uppercase tracking-wider text-gray-400 leading-none mb-1">Total bruto</p>
+  <p className="text-gray-400 line-through leading-none">{formatCurrency(bruto)}</p>
+</div>
+<div className={`text-right px-2.5 py-1 rounded-md border ${netoReal >= 0 ? 'bg-blue-50 border-blue-200' : 'bg-red-50 border-red-200'}`}
   title="Solo movimientos vigentes: sin reversados y sin contra-movimientos. Este es el dinero que realmente quedó del período.">
-  Neto real: {formatCurrency(netoReal)}
-</span>
+  <p className={`text-[10px] uppercase tracking-wider leading-none mb-1 ${netoReal >= 0 ? 'text-blue-500' : 'text-red-500'}`}>Neto real</p>
+  <p className={`font-bold leading-none ${netoReal >= 0 ? 'text-blue-700' : 'text-red-700'}`}>{formatCurrency(netoReal)}</p>
+</div>
 </>
 ) : (
-<span className={`font-bold ${bruto >= 0 ? 'text-blue-600' : 'text-red-600'}`}>{formatCurrency(bruto)}</span>
+<div className="text-right">
+  <p className="text-[10px] uppercase tracking-wider text-gray-400 leading-none mb-1">Total</p>
+  <p className={`font-bold leading-none ${bruto >= 0 ? 'text-blue-600' : 'text-red-600'}`}>{formatCurrency(bruto)}</p>
+</div>
 )}
 </div>
 </button>
