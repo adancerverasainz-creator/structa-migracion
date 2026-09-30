@@ -80,9 +80,13 @@ export default function AbonoForm({ account, pendingAmount, onSubmit, onCancel, 
 
             {/* Alerta de estado */}
             {isOverpay && (
-              <div className="flex items-center gap-2 text-orange-700 bg-orange-50 border border-orange-200 rounded-lg px-3 py-2 text-sm">
+              <div className="flex items-center gap-2 text-red-700 bg-red-50 border border-red-300 rounded-lg px-3 py-2 text-sm">
                 <AlertCircle className="w-4 h-4 shrink-0" />
-                El abono excede el saldo pendiente. Solo se aplicará {formatCurrency(pendingAmount)}.
+                <span>
+                  El abono excede el saldo pendiente — el máximo aquí es <b>{formatCurrency(pendingAmount)}</b>.
+                  Si pagaste de más al proveedor, el excedente se registra como abono en su
+                  siguiente cuenta por pagar.
+                </span>
               </div>
             )}
             {isExact && (
@@ -199,7 +203,7 @@ export default function AbonoForm({ account, pendingAmount, onSubmit, onCancel, 
             <Button type="button" variant="outline" onClick={onCancel} disabled={isLoading}>
               Cancelar
             </Button>
-            <Button type="submit" disabled={isLoading || amount <= 0} className="bg-green-600 hover:bg-green-700 gap-2">
+            <Button type="submit" disabled={isLoading || amount <= 0 || isOverpay} className="bg-green-600 hover:bg-green-700 gap-2">
               <DollarSign className="w-4 h-4" />
               {isLoading ? 'Registrando...' : 'Registrar Abono'}
             </Button>
