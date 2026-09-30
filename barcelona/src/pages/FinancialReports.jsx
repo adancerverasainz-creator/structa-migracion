@@ -201,6 +201,14 @@ const revR = [...payments, ...expenses].filter(r => r.payment_method === m && es
 const inc = incR.reduce((s, p) => s + getEffectiveAmount(p), 0);
 const exp = expR.reduce((s, e) => s + (e.amount || 0), 0);
 const rev = revR.reduce((s, r) => s + efectoReverso(r), 0);
+// Neto real = solo movimientos VIGENTES del período (sin reversados y sin
+// contra-movimientos): el dinero que de verdad quedó — el número para cortes
+// y entregas de efectivo, sin sumas ni restas manuales.
+const incNeto = incR.filter(r => !reversedMap.has(r.id)).reduce((s, p) => s + getEffectiveAmount(p), 0);
+const expNeto = expR.filter(r => !reversedMap.has(r.id)).reduce((s, e) => s + (e.amount || 0), 0);
+const netoReal = incNeto - expNeto;
+const bruto = inc - exp + rev;
+const difiere = Math.abs(netoReal - bruto) > 0.005;
 const isOpen = expanded[m];
 return (
 <div key={m} className="rounded border border-gray-200 overflow-hidden">
@@ -209,11 +217,21 @@ return (
 {isOpen ? <ChevronDown className="w-4 h-4 text-gray-400" /> : <ChevronRight className="w-4 h-4 text-gray-400" />}
 <span className="capitalize font-medium text-sm">{m}</span>
 </div>
-<div className="flex gap-4 text-sm">
+<div className="flex items-center gap-4 text-sm">
 <span className="text-green-600">+{formatCurrency(inc)}</span>
 <span className="text-red-600">-{formatCurrency(exp)}</span>
 {rev !== 0 && <span className="text-amber-700">↩ {rev > 0 ? '+' : ''}{formatCurrency(rev)}</span>}
-<span className={`font-bold ${inc - exp + rev >= 0 ? 'text-blue-600' : 'text-red-600'}`}>{formatCurrency(inc - exp + rev)}</span>
+{difiere ? (
+<>
+<span className="text-gray-400 line-through">{formatCurrency(bruto)}</span>
+<span className={`font-bold px-2 py-0.5 rounded-md ${netoReal >= 0 ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-red-50 text-red-700 border border-red-200'}`}
+  title="Solo movimientos vigentes: sin reversados y sin contra-movimientos. Este es el dinero que realmente quedó del período.">
+  Neto real: {formatCurrency(netoReal)}
+</span>
+</>
+) : (
+<span className={`font-bold ${bruto >= 0 ? 'text-blue-600' : 'text-red-600'}`}>{formatCurrency(bruto)}</span>
+)}
 </div>
 </button>
 {isOpen && (
@@ -348,6 +366,18 @@ const dayInc = calcInc(allPayments.filter(p => !esReverso(p)), dayStart, dayEnd)
 const dayExp = calcExp(allExpenses.filter(e => !esReverso(e)), dayStart, dayEnd);
 const dayRev = calcInc(allPayments.filter(esReverso), dayStart, dayEnd)
   - calcExp(allExpenses.filter(esReverso), dayStart, dayEnd);
+
+// Neto real del día: solo movimientos vigentes (sin reversados después y sin
+// contra-movimientos) — el número contra el que se cuenta el efectivo entregado.
+const vigente = (r) => !esReverso(r) && !reversedMap.has(r.id);
+const dayNetoReal = calcInc(allPayments.filter(vigente), dayStart, dayEnd)
+  - calcExp(allExpenses.filter(vigente), dayStart, dayEnd);
+const dayBruto = dayInc - dayExp + dayRev;
+const dayDifiere = Math.abs(dayNetoReal - dayBruto) > 0.005;
+const kpiCount = 3 + (dayRev !== 0 ? 1 : 0) + (dayDifiere ? 1 : 0);
+const kpiGrid = kpiCount === 5 ? 'grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4'
+  : kpiCount === 4 ? 'grid grid-cols-1 md:grid-cols-4 gap-4'
+  : 'grid grid-cols-1 md:grid-cols-3 gap-4';
 const weekInc = calcInc(allPayments, weekStart, weekEnd);
 const weekExp = calcExp(allExpenses, weekStart, weekEnd);
 const monthInc = calcInc(allPayments, monthStart, monthEnd);
@@ -637,7 +667,7 @@ return (
 <div className="bg-indigo-50 border border-indigo-200 rounded-lg px-4 py-2 text-sm text-indigo-700 font-medium">
 {format(now, "EEEE, d 'de' MMMM 'de' yyyy", { locale: es })}
 </div>
-<div className={dayRev !== 0 ? 'grid grid-cols-1 md:grid-cols-4 gap-4' : 'grid grid-cols-1 md:grid-cols-3 gap-4'}>
+<div className={kpiGrid}>
 <KPI title="Ingresos del Día" value={formatCurrency(dayInc)} color="green" icon={TrendingUp} />
 <KPI title="Egresos del Día" value={formatCurrency(dayExp)} color="red" icon={TrendingDown} />
 {dayRev !== 0 && (
@@ -646,6 +676,10 @@ sub="Correcciones de movimientos de otros días" />
 )}
 <KPI title="Utilidad del Día" value={formatCurrency(dayInc - dayExp + dayRev)} color={dayInc-dayExp+dayRev>=0?'blue':'red'} icon={DollarSign}
 sub={dayRev !== 0 ? 'Incluye el efecto de los reversos' : (dayInc-dayExp>=0?'Positivo':'Negativo')} />
+{dayDifiere && (
+<KPI title="Neto real del Día" value={formatCurrency(dayNetoReal)} color={dayNetoReal>=0?'green':'red'} icon={DollarSign}
+sub="Sin reversados ni contra-movimientos — el dinero que realmente quedó" />
+)}
 </div>
 <MethodBreakdown payments={allPayments.filter(p=>inRange(p,dayStart,dayEnd))} expenses={allExpenses.filter(e=>inRange(e,dayStart,dayEnd))} players={players} tournaments={tournaments} teams={teams} reversedMap={reversedMap} />
 </TabsContent>
