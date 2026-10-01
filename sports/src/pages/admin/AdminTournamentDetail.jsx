@@ -345,6 +345,7 @@ export default function AdminTournamentDetail() {
   const [confirmBracket, setConfirmBracket] = useState(false)
   const [confirmIda, setConfirmIda] = useState(false)
   const [pendingTeam, setPendingTeam] = useState(null) // team con partidos pendientes
+  const [confirmCompletarIda, setConfirmCompletarIda] = useState(false)
   const [matchTeamsFilter, setMatchTeamsFilter] = useState(null) // [home_id, away_id] when opened from a match row
   const [expandedMatch, setExpandedMatch] = useState(null) // match id whose events are shown inline
 
@@ -535,6 +536,72 @@ export default function AdminTournamentDetail() {
   })
 
   // ── Generar partidos pendientes para un equipo tardío ────────────────────
+
+  // ── Completar ida: genera los partidos que faltan cuando se jugó J1 manualmente ──
+  const generarCompletarIda = useMutation({
+    mutationFn: async () => {
+      if (teams.length < 2) throw new Error('Se necesitan al menos 2 equipos')
+      const scheduledPairs = new Set(
+        realMatches.map(m => [m.home_team_id, m.away_team_id].sort().join('|'))
+      )
+      const missingPairs = []
+      for (let i = 0; i < teams.length; i++) {
+        for (let j = i + 1; j < teams.length; j++) {
+          const key = [teams[i].id, teams[j].id].sort().join('|')
+          if (!scheduledPairs.has(key)) {
+            missingPairs.push({ home: teams[i], away: teams[j] })
+          }
+        }
+      }
+      if (missingPairs.length === 0) {
+        throw new Error('Ya están generados todos los partidos de ida. Puedes generar la vuelta.')
+      }
+      // Greedy: distribuye en jornadas, cada equipo aparece máx 1 vez por jornada
+      const rounds = []
+      const remaining = [...missingPairs]
+      while (remaining.length > 0) {
+        const round = []
+        const usedTeams = new Set()
+        const leftover = []
+        for (const pair of remaining) {
+          if (!usedTeams.has(pair.home.id) && !usedTeams.has(pair.away.id)) {
+            round.push(pair)
+            usedTeams.add(pair.home.id)
+            usedTeams.add(pair.away.id)
+          } else {
+            leftover.push(pair)
+          }
+        }
+        rounds.push(round)
+        remaining.length = 0
+        remaining.push(...leftover)
+      }
+      const startDay = maxRealMatchday + 1
+      const newMatches = []
+      rounds.forEach((round, ri) => {
+        round.forEach(pair => {
+          newMatches.push({
+            tournament_id: id, category_id: null, group_id: null,
+            matchday: startDay + ri,
+            home_team_id: pair.home.id, away_team_id: pair.away.id,
+            home_team_name: pair.home.name, away_team_name: pair.away.name,
+            field: null, match_date: null, match_time: null,
+            status: 'scheduled', home_goals: null, away_goals: null, forfait_team_id: null,
+          })
+        })
+      })
+      const { error } = await supabase.from('matches').insert(newMatches)
+      if (error) throw error
+      return { rounds: rounds.length, total: newMatches.length }
+    },
+    onSuccess: ({ rounds, total }) => {
+      qc.invalidateQueries({ queryKey: ['admin-matches', id] })
+      toast.success(`${rounds} jornada${rounds !== 1 ? 's' : ''} generada${rounds !== 1 ? 's' : ''} (${total} partido${total !== 1 ? 's' : ''}) — ida completada.`)
+      setConfirmCompletarIda(false)
+    },
+    onError: (e) => toast.error('Error: ' + e.message),
+  })
+
   const generarPendientes = useMutation({
     mutationFn: async (lateTeam) => {
       // Equipos que YA jugaron en jornadas anteriores (excluyendo al equipo tardío)
@@ -695,6 +762,9 @@ export default function AdminTournamentDetail() {
   )
   // Motor de Bracket: ya existen partidos de eliminatoria
   const hasBracket = matches.some(m => m.home_team_id === null && m.away_team_id === null)
+  // Ida incompleta: hay partidos reales pero faltan parejas
+  const totalPairs = teams.length * (teams.length - 1) / 2
+  const idaIncompleta = realMatches.length > 0 && realMatches.length < totalPairs
 
   // ── Grouped matches by matchday ───────────────────────────────────────────
   const matchesByDay = matches.reduce((acc, m) => {
@@ -907,6 +977,15 @@ export default function AdminTournamentDetail() {
                   className="flex items-center gap-1.5 border border-blue-600 text-blue-700 hover:bg-blue-50 text-sm font-medium px-3 py-1.5 rounded-lg transition-colors"
                 >
                   <Calendar className="w-4 h-4" /> Generar ida
+                </button>
+              )}
+              {/* Completar ida: hay partidos pero faltan parejas (equipos tardíos) */}
+              {idaIncompleta && !hasVuelta && (
+                <button
+                  onClick={() => setConfirmCompletarIda(true)}
+                  className="flex items-center gap-1.5 border border-blue-600 text-blue-700 hover:bg-blue-50 text-sm font-medium px-3 py-1.5 rounded-lg transition-colors"
+                >
+                  <Calendar className="w-4 h-4" /> Completar ida
                 </button>
               )}
               {/* Motor de Idempotencia: solo mostrar si no existe vuelta */}
@@ -1572,6 +1651,24 @@ export default function AdminTournamentDetail() {
               <button onClick={() => setConfirmIda(false)} className="flex-1 border border-gray-300 text-gray-700 font-medium py-2 rounded-lg text-sm hover:bg-gray-50 transition-colors">Cancelar</button>
               <button onClick={() => generarIda.mutate()} disabled={generarIda.isPending} className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white font-medium py-2 rounded-lg text-sm transition-colors">
                 {generarIda.isPending ? 'Generando...' : 'Generar ida'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {confirmCompletarIda && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6">
+            <h3 className="font-semibold text-gray-900 mb-2">Completar jornadas de ida</h3>
+            <p className="text-sm text-gray-600 mb-1">
+              Ya existen <strong>{realMatches.length} partido{realMatches.length !== 1 ? 's' : ''}</strong> de {totalPairs} posibles.
+              Se generarán los <strong>{totalPairs - realMatches.length} partidos restantes</strong> en jornadas adicionales.
+            </p>
+            <p className="text-sm text-gray-500 mb-6">Los partidos existentes no se modificarán — solo se agregan los que faltan.</p>
+            <div className="flex gap-3">
+              <button onClick={() => setConfirmCompletarIda(false)} className="flex-1 border border-gray-300 text-gray-700 font-medium py-2 rounded-lg text-sm hover:bg-gray-50 transition-colors">Cancelar</button>
+              <button onClick={() => generarCompletarIda.mutate()} disabled={generarCompletarIda.isPending} className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white font-medium py-2 rounded-lg text-sm transition-colors">
+                {generarCompletarIda.isPending ? 'Generando...' : 'Completar ida'}
               </button>
             </div>
           </div>
