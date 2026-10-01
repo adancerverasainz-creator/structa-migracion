@@ -556,25 +556,37 @@ export default function AdminTournamentDetail() {
       if (missingPairs.length === 0) {
         throw new Error('Ya están generados todos los partidos de ida. Puedes generar la vuelta.')
       }
-      // Greedy: distribuye en jornadas, cada equipo aparece máx 1 vez por jornada
-      const rounds = []
-      const remaining = [...missingPairs]
-      while (remaining.length > 0) {
-        const round = []
-        const usedTeams = new Set()
-        const leftover = []
-        for (const pair of remaining) {
-          if (!usedTeams.has(pair.home.id) && !usedTeams.has(pair.away.id)) {
-            round.push(pair)
-            usedTeams.add(pair.home.id)
-            usedTeams.add(pair.away.id)
-          } else {
-            leftover.push(pair)
+      // Matching máximo por jornada: backtracking garantiza la mejor distribución
+      // (el greedy simple deja equipos "huérfanos" cuando J1 ya cubrió parejas simétricas)
+      function maxRoundMatching(pairs, nTeams) {
+        const maxSize = Math.floor(nTeams / 2)
+        let best = []
+        let found = false
+        function bt(i, curr, used) {
+          if (found) return
+          if (curr.length > best.length) best = [...curr]
+          if (best.length === maxSize) { found = true; return }
+          if (i >= pairs.length) return
+          const p = pairs[i]
+          if (!used.has(p.home.id) && !used.has(p.away.id)) {
+            used.add(p.home.id); used.add(p.away.id); curr.push(p)
+            bt(i + 1, curr, used)
+            curr.pop(); used.delete(p.home.id); used.delete(p.away.id)
           }
+          if (!found) bt(i + 1, curr, used)
         }
+        bt(0, [], new Set())
+        return best
+      }
+
+      const rounds = []
+      let remaining = [...missingPairs]
+      while (remaining.length > 0) {
+        const round = maxRoundMatching(remaining, teams.length)
+        if (round.length === 0) break // seguridad
+        const roundKeys = new Set(round.map(p => p.home.id + '::' + p.away.id))
+        remaining = remaining.filter(p => !roundKeys.has(p.home.id + '::' + p.away.id))
         rounds.push(round)
-        remaining.length = 0
-        remaining.push(...leftover)
       }
       const startDay = maxRealMatchday + 1
       const newMatches = []
