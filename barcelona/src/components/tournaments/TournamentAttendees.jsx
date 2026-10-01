@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Search, UserPlus, UserMinus, CheckCircle2, AlertCircle, Users, Globe } from 'lucide-react';
 import { formatCurrency } from '../lib/formatCurrency';
-import { getTotalPaidForAttendee, isAttendeeBecado } from '@/lib/tournamentBalance';
+import { isAttendeeAlCorriente } from '@/lib/tournamentBalance';
 
 export default function TournamentAttendees({ tournament, players, payments, onRegisterPayment, onRegisterExternalPayment }) {
   const [search, setSearch] = useState('');
@@ -64,8 +64,7 @@ export default function TournamentAttendees({ tournament, players, payments, onR
   // única que Pagos y Morosos (lib/tournamentBalance). El status del registro
   // NO decide: un pago reversado y su contra-movimiento también traen 'pagado'.
   const registrationFee = tournament?.registration_fee || 0;
-  const estaPagado = (a) => isAttendeeBecado(a, payments, tournament?.id)
-    || getTotalPaidForAttendee(a, payments, tournament?.id) >= registrationFee;
+  const estaPagado = (a) => isAttendeeAlCorriente(a, payments, tournament?.id, registrationFee);
 
   const attendeesList = attendees.map(a => {
     if (a.is_external) {

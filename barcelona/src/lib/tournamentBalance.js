@@ -64,6 +64,17 @@ export function isAttendeeBecado(attendee, payments, tournamentId) {
  * @param {number} registrationFee - Cuota de inscripción del torneo
  * @returns {{ totalPaid: number, pending: number, isFullyPaid: boolean, isBecado: boolean, payments: Array }}
  */
+/**
+ * Al corriente: con cuota configurada, el neto la cubre; SIN cuota (0 o sin
+ * capturar) solo cuenta como pagado un becado o quien tenga abono neto > 0.
+ * (Guarda: una cuota olvidada no debe pintar a todo el torneo de "Pagado".)
+ */
+export function isAttendeeAlCorriente(attendee, payments, tournamentId, registrationFee) {
+  if (isAttendeeBecado(attendee, payments, tournamentId)) return true;
+  const neto = getTotalPaidForAttendee(attendee, payments, tournamentId);
+  return (registrationFee || 0) > 0 ? neto >= registrationFee : neto > 0;
+}
+
 export function calculateAttendeeBalance(attendee, payments, tournamentId, registrationFee) {
   const totalPaid = getTotalPaidForAttendee(attendee, payments, tournamentId);
   const isBecado = isAttendeeBecado(attendee, payments, tournamentId);
@@ -80,7 +91,7 @@ export function calculateAttendeeBalance(attendee, payments, tournamentId, regis
   return {
     totalPaid,
     pending,
-    isFullyPaid: pending === 0,
+    isFullyPaid: isAttendeeAlCorriente(attendee, payments, tournamentId, registrationFee),
     isBecado,
     payments: attendeePayments,
   };
@@ -151,7 +162,7 @@ export function getPaidAttendeeIds(attendees, payments, tournamentId, registrati
   attendees
     .filter(a => !a.is_external && a.player_id && !isAttendeeBecado(a, payments, tournamentId))
     .forEach(a => {
-      if (getTotalPaidForAttendee(a, payments, tournamentId) >= registrationFee) {
+      if (isAttendeeAlCorriente(a, payments, tournamentId, registrationFee)) {
         ids.add(a.player_id);
       }
     });
