@@ -1112,7 +1112,7 @@ export default function AdminTournamentDetail() {
                 </select>
               </Field>
             </div>
-            <Field label={`Inscripción ($)${teamModal !== 'create' ? ' — dejar en 0 si ya existe' : ''}`}>
+            <Field label={teamModal === 'create' ? 'Inscripción ($)' : 'Cargo adicional de inscripción ($) — 0 = sin nuevo cargo'}>
               <input
                 type="number"
                 min="0"
