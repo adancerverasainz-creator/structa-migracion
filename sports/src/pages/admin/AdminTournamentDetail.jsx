@@ -325,8 +325,8 @@ export default function AdminTournamentDetail() {
   const [confirmVuelta, setConfirmVuelta] = useState(false)
   const [confirmBracket, setConfirmBracket] = useState(false)
   const [confirmIda, setConfirmIda] = useState(false)
-  const [confirmCompletarIda, setConfirmCompletarIda] = useState(false)
   const [pendingTeam, setPendingTeam] = useState(null) // team con partidos pendientes
+  const [confirmCompletarIda, setConfirmCompletarIda] = useState(false)
   const [matchTeamsFilter, setMatchTeamsFilter] = useState(null) // [home_id, away_id] when opened from a match row
   const [expandedMatch, setExpandedMatch] = useState(null) // match id whose events are shown inline
 
@@ -516,17 +516,15 @@ export default function AdminTournamentDetail() {
     onError: (e) => toast.error('Error al generar ida: ' + e.message),
   })
 
-  // ── Completar jornadas de ida faltantes (ida parcial) ───────────────────
+  // ── Generar partidos pendientes para un equipo tardío ────────────────────
+
+  // ── Completar ida: genera los partidos que faltan cuando se jugó J1 manualmente ──
   const generarCompletarIda = useMutation({
     mutationFn: async () => {
       if (teams.length < 2) throw new Error('Se necesitan al menos 2 equipos')
-
-      // Parejas ya programadas (independientemente del orden local/visitante)
       const scheduledPairs = new Set(
         realMatches.map(m => [m.home_team_id, m.away_team_id].sort().join('|'))
       )
-
-      // Todas las parejas posibles que aún faltan
       const missingPairs = []
       for (let i = 0; i < teams.length; i++) {
         for (let j = i + 1; j < teams.length; j++) {
@@ -536,69 +534,67 @@ export default function AdminTournamentDetail() {
           }
         }
       }
-
       if (missingPairs.length === 0) {
         throw new Error('Ya están generados todos los partidos de ida. Puedes generar la vuelta.')
       }
-
-      // Distribuir en jornadas: algoritmo greedy — cada equipo aparece máx 1 vez por jornada
-      const rounds = []
-      const remaining = [...missingPairs]
-      while (remaining.length > 0) {
-        const round = []
-        const usedTeams = new Set()
-        const leftover = []
-        for (const pair of remaining) {
-          if (!usedTeams.has(pair.home.id) && !usedTeams.has(pair.away.id)) {
-            round.push(pair)
-            usedTeams.add(pair.home.id)
-            usedTeams.add(pair.away.id)
-          } else {
-            leftover.push(pair)
+      // Matching máximo por jornada: backtracking garantiza la mejor distribución
+      // (el greedy simple deja equipos "huérfanos" cuando J1 ya cubrió parejas simétricas)
+      function maxRoundMatching(pairs, nTeams) {
+        const maxSize = Math.floor(nTeams / 2)
+        let best = []
+        let found = false
+        function bt(i, curr, used) {
+          if (found) return
+          if (curr.length > best.length) best = [...curr]
+          if (best.length === maxSize) { found = true; return }
+          if (i >= pairs.length) return
+          const p = pairs[i]
+          if (!used.has(p.home.id) && !used.has(p.away.id)) {
+            used.add(p.home.id); used.add(p.away.id); curr.push(p)
+            bt(i + 1, curr, used)
+            curr.pop(); used.delete(p.home.id); used.delete(p.away.id)
           }
+          if (!found) bt(i + 1, curr, used)
         }
-        rounds.push(round)
-        remaining.length = 0
-        remaining.push(...leftover)
+        bt(0, [], new Set())
+        return best
       }
 
+      const rounds = []
+      let remaining = [...missingPairs]
+      while (remaining.length > 0) {
+        const round = maxRoundMatching(remaining, teams.length)
+        if (round.length === 0) break // seguridad
+        const roundKeys = new Set(round.map(p => p.home.id + '::' + p.away.id))
+        remaining = remaining.filter(p => !roundKeys.has(p.home.id + '::' + p.away.id))
+        rounds.push(round)
+      }
       const startDay = maxRealMatchday + 1
       const newMatches = []
       rounds.forEach((round, ri) => {
         round.forEach(pair => {
           newMatches.push({
-            tournament_id: id,
-            category_id: null,
-            group_id: null,
+            tournament_id: id, category_id: null, group_id: null,
             matchday: startDay + ri,
-            home_team_id: pair.home.id,
-            away_team_id: pair.away.id,
-            home_team_name: pair.home.name,
-            away_team_name: pair.away.name,
-            field: null,
-            match_date: null,
-            match_time: null,
-            status: 'scheduled',
-            home_goals: null,
-            away_goals: null,
-            forfait_team_id: null,
+            home_team_id: pair.home.id, away_team_id: pair.away.id,
+            home_team_name: pair.home.name, away_team_name: pair.away.name,
+            field: null, match_date: null, match_time: null,
+            status: 'scheduled', home_goals: null, away_goals: null, forfait_team_id: null,
           })
         })
       })
-
       const { error } = await supabase.from('matches').insert(newMatches)
       if (error) throw error
       return { rounds: rounds.length, total: newMatches.length }
     },
     onSuccess: ({ rounds, total }) => {
       qc.invalidateQueries({ queryKey: ['admin-matches', id] })
-      toast.success(`${rounds} jornadas generadas (${total} partidos) — ida completada.`)
+      toast.success(`${rounds} jornada${rounds !== 1 ? 's' : ''} generada${rounds !== 1 ? 's' : ''} (${total} partido${total !== 1 ? 's' : ''}) — ida completada.`)
       setConfirmCompletarIda(false)
     },
     onError: (e) => toast.error('Error: ' + e.message),
   })
 
-  // ── Generar partidos pendientes para un equipo tardío ────────────────────
   const generarPendientes = useMutation({
     mutationFn: async (lateTeam) => {
       // Equipos que YA jugaron en jornadas anteriores (excluyendo al equipo tardío)
@@ -759,7 +755,7 @@ export default function AdminTournamentDetail() {
   )
   // Motor de Bracket: ya existen partidos de eliminatoria
   const hasBracket = matches.some(m => m.home_team_id === null && m.away_team_id === null)
-  // Ida incompleta: hay matches reales pero faltan parejas (N*(N-1)/2 total)
+  // Ida incompleta: hay partidos reales pero faltan parejas
   const totalPairs = teams.length * (teams.length - 1) / 2
   const idaIncompleta = realMatches.length > 0 && realMatches.length < totalPairs
 
@@ -966,7 +962,7 @@ export default function AdminTournamentDetail() {
                   <Calendar className="w-4 h-4" /> Generar ida
                 </button>
               )}
-              {/* Completar ida: hay matches pero faltan parejas */}
+              {/* Completar ida: hay partidos pero faltan parejas (equipos tardíos) */}
               {idaIncompleta && !hasVuelta && (
                 <button
                   onClick={() => setConfirmCompletarIda(true)}
