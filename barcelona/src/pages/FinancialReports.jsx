@@ -392,6 +392,22 @@ const dayNetoReal = calcInc(allPayments.filter(vigente), dayStart, dayEnd)
   - calcExp(allExpenses.filter(vigente), dayStart, dayEnd);
 const dayBruto = dayInc - dayExp + dayRev;
 const dayDifiere = Math.abs(dayNetoReal - dayBruto) > 0.005;
+// ── Corte de caja (efectivo a entregar por quien cobra) ──
+// Cobros del día que entraron a la caja chica (efectivo vigente; lo que va
+// directo a Fondos no pasa por las manos del cajero) MENOS los gastos
+// operativos pagados A MANO desde esa caja con dinero del día. Nómina
+// (payroll_item_id), abonos CxP (cxp_payment_id), egresos de otros módulos y
+// traspasos se fondean desde Fondos: no descuentan el corte del cajero.
+const cobrosCaja = allPayments.filter(p => vigente(p) && inRange(p, dayStart, dayEnd)
+  && p.payment_method === 'efectivo' && p.bank_name !== 'Fondos');
+const gastosCaja = allExpenses.filter(e => vigente(e) && inRange(e, dayStart, dayEnd)
+  && e.payment_method === 'efectivo' && e.account !== 'Fondos'
+  && !e.payroll_item_id && !e.cxp_payment_id
+  && (!e.source_module || e.source_module === 'egresos'));
+const corteCobros = cobrosCaja.reduce((s, p) => s + getEffectiveAmount(p), 0);
+const corteGastos = gastosCaja.reduce((s, e) => s + (e.amount || 0), 0);
+const corteEntregar = corteCobros - corteGastos;
+
 const kpiCount = 3 + (dayRev !== 0 ? 1 : 0) + (dayDifiere ? 1 : 0);
 const kpiGrid = kpiCount === 5 ? 'grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4'
   : kpiCount === 4 ? 'grid grid-cols-1 md:grid-cols-4 gap-4'
@@ -699,6 +715,43 @@ sub={dayRev !== 0 ? 'Incluye el efecto de los reversos' : (dayInc-dayExp>=0?'Pos
 sub="Sin reversados ni contra-movimientos — el dinero que realmente quedó" />
 )}
 </div>
+{/* Corte de caja: el número contra el que se recibe el efectivo del día */}
+<Card className="border-2 border-emerald-300">
+<CardHeader>
+<CardTitle className="text-base flex items-center justify-between flex-wrap gap-2">
+<span>Corte de caja — efectivo a entregar</span>
+<span className={`text-2xl font-bold ${corteEntregar >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>{formatCurrency(corteEntregar)}</span>
+</CardTitle>
+</CardHeader>
+<CardContent className="text-sm space-y-3">
+<div className="flex justify-between">
+<span className="text-gray-600">Cobros en efectivo del día ({cobrosCaja.length})</span>
+<span className="font-semibold text-green-700">+{formatCurrency(corteCobros)}</span>
+</div>
+<div>
+<div className="flex justify-between mb-1">
+<span className="text-gray-600">Gastos pagados de la caja ({gastosCaja.length})</span>
+<span className="font-semibold text-red-700">-{formatCurrency(corteGastos)}</span>
+</div>
+{gastosCaja.length > 0 && (
+<div className="space-y-1 bg-red-50 rounded-md px-3 py-2">
+{gastosCaja.map((e, i) => (
+<div key={i} className="flex justify-between text-xs text-gray-700 gap-2">
+<span className="truncate max-w-[70%]">{e.concept || '—'}</span>
+<span className="text-red-700 shrink-0">-{formatCurrency(e.amount)}</span>
+</div>
+))}
+</div>
+)}
+</div>
+<p className="text-[11px] text-gray-400 border-t pt-2">
+Solo movimientos vigentes de la caja del día. La nómina, los abonos a cuentas por
+pagar y todo lo fondeado desde Fondos no descuentan este corte: ese dinero no sale
+de los cobros del día.
+</p>
+</CardContent>
+</Card>
+
 <MethodBreakdown payments={allPayments.filter(p=>inRange(p,dayStart,dayEnd))} expenses={allExpenses.filter(e=>inRange(e,dayStart,dayEnd))} players={players} tournaments={tournaments} teams={teams} reversedMap={reversedMap} />
 </TabsContent>
 
