@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../../lib/supabase'
 import { formatDate } from '../../lib/utils'
 import {
-  ArrowLeft, Plus, Pencil, Trash2, X, Users, Calendar, Zap, Link2, Trophy, RefreshCw, AlertTriangle, CheckCircle2, XCircle, ShieldCheck
+  ArrowLeft, Plus, Pencil, Trash2, X, Users, Calendar, Zap, Link2, Trophy, AlertTriangle, CheckCircle2, XCircle, ShieldCheck
 } from 'lucide-react'
 import { toast } from 'sonner'
 import AdminFinanzasTab from './AdminFinanzasTab'
@@ -136,7 +136,6 @@ export default function AdminTournamentDetail() {
   const [teamModal, setTeamModal] = useState(null)
   const [teamForm, setTeamForm] = useState(EMPTY_TEAM)
   const [deletingTeam, setDeletingTeam] = useState(null)
-  const [renewingTeamId, setRenewingTeamId] = useState(null)
   const [validatingTeamId, setValidatingTeamId] = useState(null)
 
   const saveTeam = useMutation({
@@ -221,24 +220,6 @@ export default function AdminTournamentDetail() {
       setDeletingTeam(null)
     },
     onError: () => toast.error('Error al eliminar'),
-  })
-
-  const renewToken = useMutation({
-    mutationFn: async (teamId) => {
-      setRenewingTeamId(teamId)
-      const { data, error } = await supabase.rpc('renew_captain_token', { p_team_id: teamId })
-      if (error) throw error
-      return data
-    },
-    onSuccess: (data) => {
-      qc.invalidateQueries({ queryKey: ['admin-teams', id] })
-      // Copiar nuevo enlace al portapapeles
-      const url = `${window.location.origin}/capitan/${data.token}`
-      navigator.clipboard.writeText(url).catch(() => {})
-      toast.success('Token renovado 90 días · Enlace copiado')
-    },
-    onError: (e) => toast.error('Error al renovar token: ' + e.message),
-    onSettled: () => setRenewingTeamId(null),
   })
 
   // ─── Match mutations ─────────────────────────────────────────────────────
@@ -920,26 +901,16 @@ export default function AdminTournamentDetail() {
                                 Expira pronto
                               </span>
                             )}
-                            {!isExpired && (
-                              <button
-                                onClick={() => {
-                                  const url = `${window.location.origin}/capitan/${t.captain_token}`
-                                  navigator.clipboard.writeText(url)
-                                  toast.success('Enlace del capitán copiado')
-                                }}
-                                title="Copiar enlace del capitán"
-                                className="p-1.5 text-gray-400 hover:text-blue-600 rounded-lg transition-colors"
-                              >
-                                <Link2 className="w-4 h-4" />
-                              </button>
-                            )}
                             <button
-                              onClick={() => renewToken.mutate(t.id)}
-                              disabled={renewingTeamId === t.id}
-                              title={isExpired ? 'Renovar token (expirado)' : 'Renovar token (+90 días)'}
-                              className={`p-1.5 rounded-lg transition-colors ${isExpired ? 'text-red-400 hover:text-red-600' : 'text-gray-400 hover:text-orange-500'}`}
+                              onClick={() => {
+                                const url = `${window.location.origin}/capitan/${t.captain_token}`
+                                navigator.clipboard.writeText(url)
+                                toast.success('Enlace del capitán copiado')
+                              }}
+                              title="Copiar enlace del capitán"
+                              className="p-1.5 text-gray-400 hover:text-blue-600 rounded-lg transition-colors"
                             >
-                              <RefreshCw className={`w-4 h-4 ${renewingTeamId === t.id ? 'animate-spin' : ''}`} />
+                              <Link2 className="w-4 h-4" />
                             </button>
                           </>
                         )
