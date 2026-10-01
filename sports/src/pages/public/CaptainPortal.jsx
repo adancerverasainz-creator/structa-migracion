@@ -59,6 +59,10 @@ export default function CaptainPortal() {
   async function handleLogoUpload(e) {
     const file = e.target.files?.[0]
     if (!file) return
+    if (!file.type.startsWith('image/')) {
+      alert('Solo se permiten imágenes (JPG, PNG, WebP, etc.).')
+      return
+    }
     if (file.size > 5 * 1024 * 1024) {
       alert('La imagen no puede pesar más de 5 MB.')
       return
@@ -186,7 +190,6 @@ export default function CaptainPortal() {
                   ref={fileInputRef}
                   type="file"
                   accept="image/*"
-                  capture="environment"
                   className="hidden"
                   onChange={handleLogoUpload}
                   disabled={isLocked || uploadingLogo}
