@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Search, UserPlus, UserMinus, CheckCircle2, AlertCircle, Users, Globe } from 'lucide-react';
 import { formatCurrency } from '../lib/formatCurrency';
+import { getTotalPaidForAttendee, isAttendeeBecado } from '@/lib/tournamentBalance';
 
 export default function TournamentAttendees({ tournament, players, payments, onRegisterPayment, onRegisterExternalPayment }) {
   const [search, setSearch] = useState('');
@@ -57,14 +58,18 @@ export default function TournamentAttendees({ tournament, players, payments, onR
   };
 
   const attendeePlayerIds = new Set(attendees.filter(a => !a.is_external).map(a => a.player_id));
-  const paidPlayerIds = new Set(payments.filter(p => p.status === 'pagado').map(p => p.player_id));
   const activePlayers = players.filter(p => p.status === 'activo');
 
-  const paidExternalIds = new Set(payments.filter(p => p.external_attendee_id && p.status === 'pagado').map(p => p.external_attendee_id));
+  // Pagado = saldo NETO cubierto (los reversos restan) o becado — misma fuente
+  // única que Pagos y Morosos (lib/tournamentBalance). El status del registro
+  // NO decide: un pago reversado y su contra-movimiento también traen 'pagado'.
+  const registrationFee = tournament?.registration_fee || 0;
+  const estaPagado = (a) => isAttendeeBecado(a, payments, tournament?.id)
+    || getTotalPaidForAttendee(a, payments, tournament?.id) >= registrationFee;
 
   const attendeesList = attendees.map(a => {
     if (a.is_external) {
-      return { ...a, displayName: a.external_name, displayCategory: a.external_category, paid: paidExternalIds.has(a.id), isExternal: true };
+      return { ...a, displayName: a.external_name, displayCategory: a.external_category, paid: estaPagado(a), isExternal: true };
     }
     const player = players.find(p => p.id === a.player_id);
     return {
@@ -72,7 +77,7 @@ export default function TournamentAttendees({ tournament, players, payments, onR
       player,
       displayName: player?.full_name,
       displayCategory: player?.category,
-      paid: paidPlayerIds.has(a.player_id),
+      paid: estaPagado(a),
       isExternal: false,
     };
   }).filter(a => a.isExternal || a.player);
