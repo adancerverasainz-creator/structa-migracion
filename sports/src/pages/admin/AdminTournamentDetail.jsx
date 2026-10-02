@@ -937,10 +937,11 @@ export default function AdminTournamentDetail() {
                               <button
                                 onClick={() => {
                                   const url = `${window.location.origin}/capitan/${t.captain_token}`
-                                  navigator.clipboard.writeText(url)
-                                  toast.success('Enlace del capitán copiado')
+                                  const msg = `¡Hola! 👋 Registra los jugadores de *${t.name}* en el Portal del Capitán:\n${url}`
+                                  navigator.clipboard.writeText(msg).catch(() => navigator.clipboard.writeText(url))
+                                  toast.success('Mensaje para WhatsApp copiado al portapapeles')
                                 }}
-                                title="Copiar enlace del capitán"
+                                title="Copiar mensaje con enlace del capitán (listo para WhatsApp)"
                                 className="p-1.5 rounded-lg transition-colors text-gray-400 hover:text-blue-600"
                               >
                                 <Link2 className="w-4 h-4" />

@@ -115,17 +115,30 @@ export default function TournamentPage() {
         <Link to="/" className="inline-flex items-center gap-1 text-sm text-gray-400 hover:text-green-700 mb-4 transition-colors">
           <ArrowLeft className="w-4 h-4" /> Todos los torneos
         </Link>
-        <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
-          <div className="flex items-start justify-between gap-4 flex-wrap">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">{tournament.name}</h1>
-              {tournament.season && <p className="text-gray-500 mt-1">{tournament.season}</p>}
-              <div className="flex gap-4 mt-3 text-sm text-gray-400 flex-wrap">
-                {tournament.start_date && <span className="flex items-center gap-1"><Calendar className="w-4 h-4" />{formatDate(tournament.start_date)}{tournament.end_date ? ` — ${formatDate(tournament.end_date)}` : ''}</span>}
-                <span className="flex items-center gap-1"><Users className="w-4 h-4" />{teams.length} equipos</span>
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+          {tournament.banner_url && (
+            <img
+              src={tournament.banner_url}
+              alt={`Banner ${tournament.name}`}
+              className="w-full h-40 object-cover"
+              onError={e => { e.currentTarget.style.display = 'none' }}
+            />
+          )}
+          <div className="p-6">
+            <div className="flex items-start justify-between gap-4 flex-wrap">
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900">{tournament.name}</h1>
+                {tournament.season && <p className="text-gray-500 mt-1">{tournament.season}</p>}
+                <div className="flex gap-4 mt-3 text-sm text-gray-400 flex-wrap">
+                  {tournament.start_date && <span className="flex items-center gap-1"><Calendar className="w-4 h-4" />{formatDate(tournament.start_date)}{tournament.end_date ? ` — ${formatDate(tournament.end_date)}` : ''}</span>}
+                  <span className="flex items-center gap-1"><Users className="w-4 h-4" />{teams.length} equipos</span>
+                </div>
+                {tournament.description && (
+                  <p className="text-sm text-gray-600 mt-3 max-w-xl">{tournament.description}</p>
+                )}
               </div>
+              <Trophy className="w-10 h-10 text-green-600 opacity-30 flex-shrink-0" />
             </div>
-            <Trophy className="w-10 h-10 text-green-600 opacity-30 flex-shrink-0" />
           </div>
         </div>
       </div>

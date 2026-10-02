@@ -25,6 +25,7 @@ export default function CaptainPortal() {
   const [players, setPlayers]         = useState([{ ...EMPTY_PLAYER }])
   const [isLocked, setIsLocked]       = useState(false)
   const [lockReason, setLockReason]   = useState('')
+  const [maxPlayers, setMaxPlayers]   = useState(20)
   const [uploadingLogo, setUploadingLogo] = useState(false)
   const [logoError, setLogoError]     = useState(false)
 
@@ -32,12 +33,13 @@ export default function CaptainPortal() {
   useEffect(() => {
     fetch(`${EDGE_URL}?token=${token}`)
       .then(r => r.json())
-      .then(({ team, players: pl, is_locked, lock_reason, error }) => {
+      .then(({ team, players: pl, is_locked, lock_reason, max_players, error }) => {
         if (error || !team) { setStatus('invalid'); return }
         setTeam(team)
         setLogoUrl(team.logo_url || '')
         setIsLocked(is_locked ?? false)
         setLockReason(lock_reason ?? '')
+        setMaxPlayers(max_players ?? 20)
         setPlayers(pl.length > 0 ? pl.map(p => ({ name: p.name, number: p.number ?? '', position: p.position ?? '' })) : [{ ...EMPTY_PLAYER }])
         setStatus('ready')
       })
@@ -59,10 +61,6 @@ export default function CaptainPortal() {
   async function handleLogoUpload(e) {
     const file = e.target.files?.[0]
     if (!file) return
-    if (!file.type.startsWith('image/')) {
-      alert('Solo se permiten imágenes (JPG, PNG, WebP, etc.).')
-      return
-    }
     if (file.size > 5 * 1024 * 1024) {
       alert('La imagen no puede pesar más de 5 MB.')
       return
@@ -190,6 +188,7 @@ export default function CaptainPortal() {
                   ref={fileInputRef}
                   type="file"
                   accept="image/*"
+                  capture="environment"
                   className="hidden"
                   onChange={handleLogoUpload}
                   disabled={isLocked || uploadingLogo}
@@ -229,19 +228,31 @@ export default function CaptainPortal() {
 
         {/* Jugadores */}
         <section className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="font-semibold text-gray-900 text-sm">
-              Jugadores <span className="text-gray-400 font-normal">({players.filter(p => p.name.trim()).length})</span>
-            </h2>
-            {!isLocked && (
-              <button
-                onClick={addPlayer}
-                className="flex items-center gap-1.5 text-xs text-green-700 font-medium hover:text-green-800 transition-colors"
-              >
-                <Plus className="w-3.5 h-3.5" /> Agregar
-              </button>
-            )}
-          </div>
+          {(() => {
+            const playerCount = players.filter(p => p.name.trim()).length
+            const overLimit = playerCount > maxPlayers
+            return (
+              <div className="flex items-center justify-between">
+                <h2 className="font-semibold text-gray-900 text-sm">
+                  Jugadores{' '}
+                  <span className={`font-normal ${overLimit ? 'text-red-600' : 'text-gray-400'}`}>
+                    ({playerCount} / {maxPlayers})
+                  </span>
+                  {overLimit && (
+                    <span className="ml-2 text-xs font-medium text-red-600">¡Límite superado!</span>
+                  )}
+                </h2>
+                {!isLocked && (
+                  <button
+                    onClick={addPlayer}
+                    className="flex items-center gap-1.5 text-xs text-green-700 font-medium hover:text-green-800 transition-colors"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Agregar
+                  </button>
+                )}
+              </div>
+            )
+          })()}
 
           <div className="space-y-3">
             {players.map((p, i) => (
@@ -295,28 +306,48 @@ export default function CaptainPortal() {
         </section>
 
         {/* Botón guardar — oculto si la plantilla está bloqueada */}
-        {!isLocked && (
-          <button
-            onClick={handleSave}
-            disabled={isBusy}
-            className={`w-full flex items-center justify-center gap-2 py-3 rounded-xl font-semibold text-sm transition-all ${
-              status === 'saved'
-                ? 'bg-green-100 text-green-700'
-                : status === 'error'
-                ? 'bg-red-100 text-red-700'
-                : 'bg-[#14532d] hover:bg-green-900 text-white disabled:opacity-60'
-            }`}
-          >
-            {status === 'saving' && <Loader className="w-4 h-4 animate-spin" />}
-            {status === 'saved'  && <CheckCircle className="w-4 h-4" />}
-            {status === 'error'  && <AlertCircle className="w-4 h-4" />}
-            {status === 'ready'  && <Save className="w-4 h-4" />}
-            {status === 'saving' ? 'Guardando...'
-              : status === 'saved'  ? '¡Guardado correctamente!'
-              : status === 'error'  ? 'Error al guardar — intenta de nuevo'
-              : 'Guardar información'}
-          </button>
-        )}
+        {!isLocked && (() => {
+          const playerCount = players.filter(p => p.name.trim()).length
+          const overLimit = playerCount > maxPlayers
+          return (
+            <>
+              {overLimit && (
+                <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-start gap-3">
+                  <AlertCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-sm font-semibold text-red-800">Límite de jugadores superado</p>
+                    <p className="text-sm text-red-700 mt-0.5">
+                      Tienes {playerCount} jugadores pero el máximo es {maxPlayers}. Elimina {playerCount - maxPlayers} antes de guardar.
+                    </p>
+                  </div>
+                </div>
+              )}
+              <button
+                onClick={handleSave}
+                disabled={isBusy || overLimit}
+                className={`w-full flex items-center justify-center gap-2 py-3 rounded-xl font-semibold text-sm transition-all ${
+                  overLimit
+                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                    : status === 'saved'
+                    ? 'bg-green-100 text-green-700'
+                    : status === 'error'
+                    ? 'bg-red-100 text-red-700'
+                    : 'bg-[#14532d] hover:bg-green-900 text-white disabled:opacity-60'
+                }`}
+              >
+                {status === 'saving' && <Loader className="w-4 h-4 animate-spin" />}
+                {status === 'saved'  && <CheckCircle className="w-4 h-4" />}
+                {status === 'error'  && <AlertCircle className="w-4 h-4" />}
+                {(status === 'ready' && !overLimit) && <Save className="w-4 h-4" />}
+                {status === 'saving' ? 'Guardando...'
+                  : status === 'saved'  ? '¡Guardado correctamente!'
+                  : status === 'error'  ? 'Error al guardar — intenta de nuevo'
+                  : overLimit           ? `Elimina ${playerCount - maxPlayers} jugador${playerCount - maxPlayers > 1 ? 'es' : ''} para continuar`
+                  : 'Guardar información'}
+              </button>
+            </>
+          )
+        })()}
 
         <p className="text-center text-xs text-gray-400">
           Guarda el enlace de esta página para volver cuando necesites actualizar tu plantilla.
