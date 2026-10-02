@@ -480,13 +480,16 @@ export default function AdminTournamentDetail() {
       const list = teams.length % 2 === 0 ? [...teams] : [...teams, null] // ghost si impar
       const size = list.length
       const rounds = size - 1
+      const fieldsConfig = tournament?.fields_config || []
       const newMatches = []
 
       for (let r = 0; r < rounds; r++) {
+        let matchInRound = 0
         for (let i = 0; i < size / 2; i++) {
           const home = list[i]
           const away = list[size - 1 - i]
           if (home !== null && away !== null) {
+            const slot = fieldsConfig.length > 0 ? fieldsConfig[matchInRound % fieldsConfig.length] : null
             newMatches.push({
               tournament_id: id,
               category_id: null,
@@ -496,14 +499,15 @@ export default function AdminTournamentDetail() {
               away_team_id: away.id,
               home_team_name: home.name,
               away_team_name: away.name,
-              field: null,
+              field: slot?.name || null,
               match_date: null,
-              match_time: null,
+              match_time: slot?.time || null,
               status: 'scheduled',
               home_goals: null,
               away_goals: null,
               forfait_team_id: null,
             })
+            matchInRound++
           }
         }
         // Rotar: fijar list[0], rotar el resto en sentido horario
@@ -697,10 +701,12 @@ export default function AdminTournamentDetail() {
         remaining.push(...leftover)
       }
 
+      const fieldsConfig = tournament?.fields_config || []
       const startDay = maxRealMatchday + 1
       const newMatches = []
       rounds.forEach((round, ri) => {
-        round.forEach(pair => {
+        round.forEach((pair, pi) => {
+          const slot = fieldsConfig.length > 0 ? fieldsConfig[pi % fieldsConfig.length] : null
           newMatches.push({
             tournament_id: id,
             category_id: null,
@@ -710,9 +716,9 @@ export default function AdminTournamentDetail() {
             away_team_id: pair.away.id,
             home_team_name: pair.home.name,
             away_team_name: pair.away.name,
-            field: null,
+            field: slot?.name || null,
             match_date: null,
-            match_time: null,
+            match_time: slot?.time || null,
             status: 'scheduled',
             home_goals: null,
             away_goals: null,
