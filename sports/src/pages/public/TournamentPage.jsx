@@ -36,13 +36,17 @@ export default function TournamentPage() {
     enabled: !!id,
   })
 
-  const activeCategory = selectedCategory || (categories[0]?.id ?? null)
+  // Only set an active category once categories have loaded and there are some.
+  // While categories is empty (loading or genuinely none), activeCategory stays null
+  // and queries must NOT filter by category_id (or they'd return 0 rows).
+  const categoriesLoaded = categories.length > 0
+  const activeCategory = categoriesLoaded ? (selectedCategory || categories[0].id) : null
 
   const { data: groups = [] } = useQuery({
     queryKey: ['groups', id, activeCategory],
     queryFn: async () => {
       let q = supabase.from('groups').select('*').eq('tournament_id', id)
-      if (activeCategory) q = q.eq('category_id', activeCategory)
+      if (categoriesLoaded && activeCategory) q = q.eq('category_id', activeCategory)
       const { data, error } = await q.order('order', { ascending: true, nullsFirst: false })
       if (error) throw error
       return data
@@ -54,7 +58,7 @@ export default function TournamentPage() {
     queryKey: ['teams', id, activeCategory],
     queryFn: async () => {
       let q = supabase.from('teams').select('*').eq('tournament_id', id).eq('status', 'active')
-      if (activeCategory) q = q.eq('category_id', activeCategory)
+      if (categoriesLoaded && activeCategory) q = q.eq('category_id', activeCategory)
       const { data, error } = await q.order('name')
       if (error) throw error
       return data
@@ -66,7 +70,7 @@ export default function TournamentPage() {
     queryKey: ['matches', id, activeCategory],
     queryFn: async () => {
       let q = supabase.from('matches').select('*, home_team:home_team_id(name,color,logo_url), away_team:away_team_id(name,color,logo_url)').eq('tournament_id', id)
-      if (activeCategory) q = q.eq('category_id', activeCategory)
+      if (categoriesLoaded && activeCategory) q = q.eq('category_id', activeCategory)
       const { data, error } = await q.order('matchday').order('match_date', { ascending: true, nullsFirst: false })
       if (error) throw error
       return data
@@ -78,7 +82,7 @@ export default function TournamentPage() {
     queryKey: ['events', id, activeCategory],
     queryFn: async () => {
       let q = supabase.from('match_events').select('*').eq('tournament_id', id)
-      if (activeCategory) q = q.eq('category_id', activeCategory)
+      if (categoriesLoaded && activeCategory) q = q.eq('category_id', activeCategory)
       const { data, error } = await q
       if (error) throw error
       return data

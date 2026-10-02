@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../../lib/supabase'
 import { formatDate } from '../../lib/utils'
 import {
-  ArrowLeft, Plus, Pencil, Trash2, X, Users, Calendar, Zap, Link2, Trophy, AlertTriangle, CheckCircle2, XCircle, ShieldCheck
+  ArrowLeft, Plus, Pencil, Trash2, X, Users, Calendar, Zap, Link2, Trophy, AlertTriangle, CheckCircle2, XCircle, ShieldCheck, RefreshCw,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import AdminFinanzasTab from './AdminFinanzasTab'
@@ -736,6 +736,28 @@ export default function AdminTournamentDetail() {
     onSettled: () => setValidatingTeamId(null),
   })
 
+  // ── Renovar token de capitán expirado ────────────────────────────────────
+  const renewToken = useMutation({
+    mutationFn: async (teamId) => {
+      const newToken   = crypto.randomUUID()
+      // 1 year from now
+      const newExpires = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString()
+      const { error } = await supabase
+        .from('teams')
+        .update({ captain_token: newToken, captain_token_expires_at: newExpires })
+        .eq('id', teamId)
+      if (error) throw error
+      return { newToken }
+    },
+    onSuccess: ({ newToken }) => {
+      qc.invalidateQueries({ queryKey: ['admin-teams', id] })
+      const url = `${window.location.origin}/capitan/${newToken}`
+      navigator.clipboard.writeText(url).catch(() => {})
+      toast.success('Token renovado · enlace copiado al portapapeles')
+    },
+    onError: (e) => toast.error('Error al renovar token: ' + e.message),
+  })
+
   // ── Open event modal pre-filled for a specific match ────────────────────
   function openEventForMatch(m) {
     setEventForm({ ...EMPTY_EVENT, match_id: m.id })
@@ -901,18 +923,29 @@ export default function AdminTournamentDetail() {
                                 Expira pronto
                               </span>
                             )}
-                            <button
-                              onClick={() => {
-                                if (isExpired) { toast.error('Token expirado — el capitán no puede acceder con este enlace'); return }
-                                const url = `${window.location.origin}/capitan/${t.captain_token}`
-                                navigator.clipboard.writeText(url)
-                                toast.success('Enlace del capitán copiado')
-                              }}
-                              title={isExpired ? 'Token expirado — el capitán no puede acceder' : 'Copiar enlace del capitán'}
-                              className={`p-1.5 rounded-lg transition-colors ${isExpired ? 'text-gray-300 cursor-not-allowed' : 'text-gray-400 hover:text-blue-600'}`}
-                            >
-                              <Link2 className="w-4 h-4" />
-                            </button>
+                            {isExpired ? (
+                              <button
+                                onClick={() => renewToken.mutate(t.id)}
+                                disabled={renewToken.isPending}
+                                title="Renovar token del capitán"
+                                className="flex items-center gap-1 text-xs bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white px-2 py-1 rounded-lg transition-colors shrink-0"
+                              >
+                                <RefreshCw className={`w-3 h-3 ${renewToken.isPending ? 'animate-spin' : ''}`} />
+                                Renovar
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => {
+                                  const url = `${window.location.origin}/capitan/${t.captain_token}`
+                                  navigator.clipboard.writeText(url)
+                                  toast.success('Enlace del capitán copiado')
+                                }}
+                                title="Copiar enlace del capitán"
+                                className="p-1.5 rounded-lg transition-colors text-gray-400 hover:text-blue-600"
+                              >
+                                <Link2 className="w-4 h-4" />
+                              </button>
+                            )}
                           </>
                         )
                       })()}
@@ -1025,7 +1058,7 @@ export default function AdminTournamentDetail() {
                   <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
                     <ul className="divide-y divide-gray-100">
                       {matchesByDay[day].map(m => {
-                        const isPlayed = m.status === 'completed' || m.status === 'forfait'
+                        const isPlayed = m.status === 'completed' || m.status === 'forfait' || m.status === 'no_show'
                         const hWin = isPlayed && m.home_goals > m.away_goals
                         const aWin = isPlayed && m.away_goals > m.home_goals
                         const matchEvents = events.filter(ev => ev.match_id === m.id)
@@ -1062,12 +1095,14 @@ export default function AdminTournamentDetail() {
                                 m.status === 'completed' ? 'bg-green-100 text-green-700'
                                 : m.status === 'in_progress' ? 'bg-blue-100 text-blue-700'
                                 : m.status === 'forfait' || m.status === 'cancelled' ? 'bg-red-100 text-red-600'
+                                : m.status === 'no_show' ? 'bg-orange-100 text-orange-700'
                                 : 'bg-gray-100 text-gray-500'
                               }`}>
                                 {m.status === 'completed' ? 'Jugado'
                                   : m.status === 'in_progress' ? 'En curso'
                                   : m.status === 'forfait' ? 'Forfait'
                                   : m.status === 'cancelled' ? 'Cancelado'
+                                  : m.status === 'no_show' ? 'No se jugó'
                                   : 'Programado'}
                               </span>
                               <button
@@ -1399,6 +1434,7 @@ export default function AdminTournamentDetail() {
                   <option value="in_progress">En curso</option>
                   <option value="completed">Jugado</option>
                   <option value="forfait">Forfait</option>
+                  <option value="no_show">No se jugó</option>
                   <option value="cancelled">Cancelado</option>
                 </select>
               </Field>
@@ -1462,7 +1498,7 @@ export default function AdminTournamentDetail() {
                 </Field>
               </>
             )}
-            {(matchForm.status === 'completed' || matchForm.status === 'forfait') && (
+            {(matchForm.status === 'completed' || matchForm.status === 'forfait' || matchForm.status === 'no_show') && (
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Goles local">
                   <input type="number" min="0" value={matchForm.home_goals} onChange={e => setMatchForm(f => ({ ...f, home_goals: e.target.value }))} className={INPUT} />

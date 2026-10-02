@@ -4,7 +4,7 @@ import { supabase } from '../../lib/supabase'
 import { toast } from 'sonner'
 import {
   CreditCard, ArrowDownToLine, Check, X, ChevronDown, ChevronUp,
-  RefreshCw, Plus, AlertCircle, Users, Scale,
+  RefreshCw, Plus, AlertCircle, Users, Scale, Trash2, Download,
 } from 'lucide-react'
 
 const INPUT = 'w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500'
@@ -75,6 +75,7 @@ export default function AdminFinanzasTab({ tournament, teams, tournamentId, matc
   const [inscOpKey,       setInscOpKey]       = useState('')     // UUID generado al abrir modal de inscripción
   const [expandedTeam,    setExpandedTeam]    = useState(null)
   const [showRecon,       setShowRecon]       = useState(false)
+  const [confirmDeleteCharge, setConfirmDeleteCharge] = useState(null) // charge object pending delete
 
   // ── Charges — via charge_balances view (paid/balance/is_paid computed in DB) ─
   const { data: charges = [], isLoading: chargesLoading } = useQuery({
@@ -351,10 +352,49 @@ export default function AdminFinanzasTab({ tournament, teams, tournamentId, matc
     onError: (e) => toast.error('Error: ' + e.message),
   })
 
+  // Eliminar cargo (cascade elimina sus pagos por FK)
+  const deleteCharge = useMutation({
+    mutationFn: async (chargeId) => {
+      const { error } = await supabase.from('charges').delete().eq('id', chargeId)
+      if (error) throw error
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['charges', tournamentId] })
+      toast.success('Cargo eliminado')
+      setConfirmDeleteCharge(null)
+    },
+    onError: (e) => toast.error('Error al eliminar cargo: ' + e.message),
+  })
+
   function openPayment(charge) {
     // Genera un UUID fresco por cada apertura de modal — protege contra doble-submit
     setPaymentForm({ amount: charge.balance.toFixed(2), notes: '', op_key: crypto.randomUUID() })
     setPaymentModal(charge)
+  }
+
+  // Exportar cargos a CSV
+  function exportToCSV() {
+    const teamMap = Object.fromEntries(teams.map(t => [t.id, t.name]))
+    const rows = [
+      ['Equipo', 'Tipo', 'Descripción', 'Monto', 'Cobrado', 'Saldo', 'Pagado'],
+      ...charges.map(c => [
+        teamMap[c.team_id] ?? c.team_id,
+        CHARGE_TYPE_LABEL[c.type] ?? c.type,
+        c.description || '',
+        c.amount,
+        c.paid,
+        c.balance,
+        c.is_paid ? 'Sí' : 'No',
+      ]),
+    ]
+    const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n')
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' })
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement('a')
+    a.href     = url
+    a.download = `finanzas-${tournamentId}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
   }
 
   // Calcula la cuota de inscripción esperada por equipo:
@@ -549,12 +589,21 @@ export default function AdminFinanzasTab({ tournament, teams, tournamentId, matc
               </p>
             )}
           </div>
-          <button
-            onClick={() => { setChargeForm({ team_id: '', type: 'other', description: '', amount: '', op_key: crypto.randomUUID() }); setChargeModal(true) }}
-            className="flex items-center gap-1.5 text-xs border border-gray-300 text-gray-600 hover:bg-gray-50 px-3 py-1.5 rounded-lg transition-colors"
-          >
-            <Plus className="w-3.5 h-3.5" /> Cargo manual
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={exportToCSV}
+              title="Exportar a CSV"
+              className="flex items-center gap-1.5 text-xs border border-gray-300 text-gray-600 hover:bg-gray-50 px-3 py-1.5 rounded-lg transition-colors"
+            >
+              <Download className="w-3.5 h-3.5" /> CSV
+            </button>
+            <button
+              onClick={() => { setChargeForm({ team_id: '', type: 'other', description: '', amount: '', op_key: crypto.randomUUID() }); setChargeModal(true) }}
+              className="flex items-center gap-1.5 text-xs border border-gray-300 text-gray-600 hover:bg-gray-50 px-3 py-1.5 rounded-lg transition-colors"
+            >
+              <Plus className="w-3.5 h-3.5" /> Cargo manual
+            </button>
+          </div>
         </div>
 
         {validCharges.length === 0 && orphanArbCharges.length === 0 ? (
@@ -633,6 +682,14 @@ export default function AdminFinanzasTab({ tournament, teams, tournamentId, matc
                                 + Pago
                               </button>
                             )}
+                            {/* Eliminar cargo — siempre visible */}
+                            <button
+                              onClick={() => setConfirmDeleteCharge(c)}
+                              title="Eliminar cargo"
+                              className="p-1 text-gray-300 hover:text-red-500 transition-colors shrink-0"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
                           </li>
                         )
                       })}
@@ -891,6 +948,41 @@ export default function AdminFinanzasTab({ tournament, teams, tournamentId, matc
               </button>
             </div>
           </form>
+        </Modal>
+      )}
+
+      {/* Confirmar eliminación de cargo */}
+      {confirmDeleteCharge && (
+        <Modal title="Eliminar cargo" onClose={() => setConfirmDeleteCharge(null)}>
+          <div className="space-y-4">
+            <p className="text-sm text-gray-700">
+              ¿Eliminar el cargo <strong>{confirmDeleteCharge.description || CHARGE_TYPE_LABEL[confirmDeleteCharge.type]}</strong> de <strong>{fmt(confirmDeleteCharge.amount)}</strong>?
+            </p>
+            {confirmDeleteCharge.paid > 0 && (
+              <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-lg p-3">
+                <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+                <p className="text-xs text-red-800">
+                  Este cargo tiene <strong>{fmt(confirmDeleteCharge.paid)}</strong> pagado. Al eliminarlo, los pagos asociados también se borrarán (CASCADE).
+                </p>
+              </div>
+            )}
+            <div className="flex gap-3 pt-1">
+              <button
+                type="button"
+                onClick={() => setConfirmDeleteCharge(null)}
+                className="flex-1 border border-gray-300 text-gray-700 font-medium py-2 rounded-lg text-sm hover:bg-gray-50 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => deleteCharge.mutate(confirmDeleteCharge.id)}
+                disabled={deleteCharge.isPending}
+                className="flex-1 bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white font-medium py-2 rounded-lg text-sm transition-colors"
+              >
+                {deleteCharge.isPending ? 'Eliminando...' : 'Eliminar'}
+              </button>
+            </div>
+          </div>
         </Modal>
       )}
 
