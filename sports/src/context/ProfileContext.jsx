@@ -43,12 +43,21 @@ export function ProfileProvider({ children }) {
   const refreshProfile = async () => {
     const { data: { session: s } } = await supabase.auth.getSession()
     if (s) {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('id, email, full_name, role, organization_id, org_name, contact_phone')
-        .eq('id', s.user.id)
-        .single()
-      if (!error) setProfile(data ?? null)
+      setProfileError(null)
+      try {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('id, email, full_name, role, organization_id, org_name, contact_phone')
+          .eq('id', s.user.id)
+          .single()
+        if (error && error.code !== 'PGRST116') {
+          setProfileError(error)
+        } else {
+          setProfile(data ?? null)
+        }
+      } catch (err) {
+        setProfileError(err)
+      }
     }
   }
 

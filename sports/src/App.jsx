@@ -58,7 +58,7 @@ function AccessDenied() {
 // CRÍTICO-1: allowlist en lugar de deny-list — null/undefined quedan bloqueados por defecto
 const ALLOWED_ROLES = ['admin', 'editor', 'org_admin']
 
-function RequireAuth({ children, allowOnboarding = false }) {
+function RequireAuth({ children }) {
   const { profile, session, role, organizationId, isLoading, profileError } = useProfile()
 
   if (isLoading) {
@@ -89,8 +89,9 @@ function RequireAuth({ children, allowOnboarding = false }) {
     )
   }
 
-  // Nuevo usuario sin org: redirigir a onboarding (excepto rutas que no lo necesitan)
-  if (!allowOnboarding && profile && !organizationId && role === 'visitante') {
+  // Nuevo usuario sin org: siempre redirigir a onboarding (independientemente de la ruta destino)
+  // Visitante nunca debe ver AccessDenied — su camino correcto es completar el onboarding primero
+  if (profile && !organizationId && role === 'visitante') {
     return <Navigate to="/admin/onboarding" replace />
   }
 
@@ -124,10 +125,10 @@ export default function App() {
         {/* Onboarding (requiere sesión, sin org todavía) */}
         <Route path="/admin/onboarding" element={<OnboardingPage />} />
 
-        {/* Print / PDF — allowOnboarding=true: no redirige a onboarding si org aún no está */}
+        {/* Print / PDF — requiere org completa (visitante sin org va a onboarding) */}
         <Route
           path="/admin/torneo/:id/print/:type"
-          element={<RequireAuth allowOnboarding={true}><TournamentPrint /></RequireAuth>}
+          element={<RequireAuth><TournamentPrint /></RequireAuth>}
         />
 
         {/* Rutas admin protegidas */}

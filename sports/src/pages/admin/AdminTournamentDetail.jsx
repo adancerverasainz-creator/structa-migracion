@@ -8,7 +8,6 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import AdminFinanzasTab from './AdminFinanzasTab'
-import PdfExportButtons from './PdfExportButtons'
 
 const TAB_LABELS = ['Equipos', 'Partidos', 'Finanzas', 'Plantillas']
 
@@ -248,6 +247,13 @@ export default function AdminTournamentDetail() {
         throw new Error('Los partidos de bracket requieren nombre de local y visitante.')
       }
 
+      // Validar forfait_team_id para forfait y no_show — evita standings silenciosamente corruptos
+      if ((values.status === 'forfait' || values.status === 'no_show') && !values.forfait_team_id) {
+        throw new Error(
+          'Debes seleccionar qué equipo no se presentó para calcular correctamente la tabla de posiciones.'
+        )
+      }
+
       const payload = {
         tournament_id: id,
         matchday: Number(values.matchday),
@@ -327,6 +333,7 @@ export default function AdminTournamentDetail() {
   const [confirmBracket, setConfirmBracket] = useState(false)
   const [confirmIda, setConfirmIda] = useState(false)
   const [confirmCompletarIda, setConfirmCompletarIda] = useState(false)
+  const [confirmReorganizar, setConfirmReorganizar] = useState(false)
   const [pendingTeam, setPendingTeam] = useState(null) // team con partidos pendientes
   const [matchTeamsFilter, setMatchTeamsFilter] = useState(null) // [home_id, away_id] when opened from a match row
   const [expandedMatch, setExpandedMatch] = useState(null) // match id whose events are shown inline
@@ -515,6 +522,115 @@ export default function AdminTournamentDetail() {
       setConfirmIda(false)
     },
     onError: (e) => toast.error('Error al generar ida: ' + e.message),
+  })
+
+  // ── Reorganizar fixture: regenera round-robin completo preservando resultados ──
+  // Útil cuando se agregan equipos después de haber jugado partidos.
+  // Mueve los partidos jugados a la jornada que el algoritmo les asigna,
+  // borra todos los pendientes y los reemplaza con el fixture nuevo.
+  const reorganizarIda = useMutation({
+    mutationFn: async () => {
+      if (teams.length < 2) throw new Error('Se necesitan al menos 2 equipos')
+
+      // 1. Algoritmo round-robin para todos los equipos actuales
+      const list = teams.length % 2 === 0 ? [...teams] : [...teams, null]
+      const size = list.length
+      const rounds = size - 1
+      const algoMap = new Map() // pairKey → { matchday, home, away }
+
+      for (let r = 0; r < rounds; r++) {
+        for (let i = 0; i < size / 2; i++) {
+          const home = list[i]
+          const away = list[size - 1 - i]
+          if (home !== null && away !== null) {
+            const key = [home.id, away.id].sort().join('|')
+            algoMap.set(key, { matchday: r + 1, home, away })
+          }
+        }
+        const last = list[size - 1]
+        for (let i = size - 1; i > 1; i--) list[i] = list[i - 1]
+        list[1] = last
+      }
+
+      // 2. Separar jugados vs pendientes (solo partidos reales, no brackets)
+      const playedRealMatches = realMatches.filter(m =>
+        ['completed', 'forfait', 'no_show'].includes(m.status)
+      )
+      const scheduledRealIds = realMatches
+        .filter(m => m.status === 'scheduled')
+        .map(m => m.id)
+
+      // 3. Claves de partidos jugados (para no insertar duplicados)
+      const playedPairKeys = new Set(
+        playedRealMatches.map(m => [m.home_team_id, m.away_team_id].sort().join('|'))
+      )
+
+      // 4. Mover partidos jugados a su jornada según el algoritmo
+      for (const pm of playedRealMatches) {
+        const key = [pm.home_team_id, pm.away_team_id].sort().join('|')
+        const algo = algoMap.get(key)
+        if (algo && pm.matchday !== algo.matchday) {
+          const { error: updErr } = await supabase
+            .from('matches')
+            .update({ matchday: algo.matchday })
+            .eq('id', pm.id)
+          if (updErr) throw updErr
+        }
+      }
+
+      // 5. Borrar todos los partidos pendientes
+      if (scheduledRealIds.length > 0) {
+        const { error: delErr } = await supabase
+          .from('matches')
+          .delete()
+          .in('id', scheduledRealIds)
+        if (delErr) throw delErr
+      }
+
+      // 6. Insertar matches del algoritmo que no están ya jugados
+      const newMatches = []
+      for (const [key, { matchday, home, away }] of algoMap) {
+        if (!playedPairKeys.has(key)) {
+          newMatches.push({
+            tournament_id: id,
+            category_id: null,
+            group_id: null,
+            matchday,
+            home_team_id: home.id,
+            away_team_id: away.id,
+            home_team_name: home.name,
+            away_team_name: away.name,
+            field: null,
+            match_date: null,
+            match_time: null,
+            status: 'scheduled',
+            home_goals: null,
+            away_goals: null,
+            forfait_team_id: null,
+          })
+        }
+      }
+
+      if (newMatches.length > 0) {
+        const { error: insErr } = await supabase.from('matches').insert(newMatches)
+        if (insErr) throw insErr
+      }
+
+      return {
+        played: playedRealMatches.length,
+        deleted: scheduledRealIds.length,
+        inserted: newMatches.length,
+      }
+    },
+    onSuccess: ({ played, deleted, inserted }) => {
+      qc.invalidateQueries({ queryKey: ['admin-matches', id] })
+      toast.success(
+        `Fixture reorganizado: ${inserted} partidos generados, ${deleted} reemplazados. ` +
+        `${played} resultado${played !== 1 ? 's' : ''} preservado${played !== 1 ? 's' : ''}.`
+      )
+      setConfirmReorganizar(false)
+    },
+    onError: (e) => toast.error('Error al reorganizar: ' + e.message),
   })
 
   // ── Completar jornadas de ida faltantes (ida parcial) ───────────────────
@@ -830,8 +946,6 @@ export default function AdminTournamentDetail() {
         </div>
       </div>
 
-      <PdfExportButtons tournamentId={id} />
-
       {/* Tabs */}
       <div className="flex gap-1 border-b border-gray-200">
         {TAB_LABELS.map((label, i) => (
@@ -1004,13 +1118,22 @@ export default function AdminTournamentDetail() {
                   <Calendar className="w-4 h-4" /> Generar ida
                 </button>
               )}
-              {/* Completar ida: hay matches pero faltan parejas */}
-              {idaIncompleta && !hasVuelta && (
+              {/* Completar ida: hay matches pero faltan parejas (sin jugados, solo agrega) */}
+              {idaIncompleta && !hasVuelta && !realMatches.some(m => ['completed', 'forfait', 'no_show'].includes(m.status)) && (
                 <button
                   onClick={() => setConfirmCompletarIda(true)}
                   className="flex items-center gap-1.5 border border-blue-600 text-blue-700 hover:bg-blue-50 text-sm font-medium px-3 py-1.5 rounded-lg transition-colors"
                 >
                   <Calendar className="w-4 h-4" /> Completar ida
+                </button>
+              )}
+              {/* Reorganizar fixture: hay jugados + fixture incompleto (ej: se agregaron equipos después) */}
+              {idaIncompleta && !hasVuelta && realMatches.some(m => ['completed', 'forfait', 'no_show'].includes(m.status)) && (
+                <button
+                  onClick={() => setConfirmReorganizar(true)}
+                  className="flex items-center gap-1.5 border border-orange-500 text-orange-700 hover:bg-orange-50 text-sm font-medium px-3 py-1.5 rounded-lg transition-colors"
+                >
+                  <RefreshCw className="w-4 h-4" /> Reorganizar fixture
                 </button>
               )}
               {/* Motor de Idempotencia: solo mostrar si no existe vuelta */}
@@ -1512,14 +1635,22 @@ export default function AdminTournamentDetail() {
                 </Field>
               </div>
             )}
-            {matchForm.status === 'forfait' && (
+            {(matchForm.status === 'forfait' || matchForm.status === 'no_show') && (
               <Field label="Equipo que no se presentó *">
-                <select required value={matchForm.forfait_team_id} onChange={e => setMatchForm(f => ({ ...f, forfait_team_id: e.target.value }))} className={INPUT}>
-                  <option value="">Seleccionar...</option>
+                <select
+                  required
+                  value={matchForm.forfait_team_id}
+                  onChange={e => setMatchForm(f => ({ ...f, forfait_team_id: e.target.value }))}
+                  className={INPUT}
+                >
+                  <option value="">Seleccionar equipo...</option>
                   {teams.filter(t => t.id === matchForm.home_team_id || t.id === matchForm.away_team_id).map(t => (
                     <option key={t.id} value={t.id}>{t.name}</option>
                   ))}
                 </select>
+                <p className="text-xs text-amber-600 mt-1">
+                  Requerido para calcular correctamente la tabla de posiciones.
+                </p>
               </Field>
             )}
             <div className="grid grid-cols-2 gap-3">
@@ -1702,6 +1833,34 @@ export default function AdminTournamentDetail() {
           </div>
         </div>
       )}
+      {confirmReorganizar && (() => {
+        const playedCount = realMatches.filter(m => ['completed', 'forfait', 'no_show'].includes(m.status)).length
+        const scheduledCount = realMatches.filter(m => m.status === 'scheduled').length
+        const matchesPerRound = Math.floor(teams.length / 2)
+        const totalRounds = teams.length % 2 === 0 ? teams.length - 1 : teams.length
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+            <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6">
+              <h3 className="font-semibold text-gray-900 mb-2">Reorganizar fixture</h3>
+              <p className="text-sm text-gray-600 mb-3">
+                Se regenerará el fixture completo para <strong>{teams.length} equipos</strong>:{' '}
+                <strong>{totalRounds} jornadas</strong> con <strong>{matchesPerRound} partidos cada una</strong>.
+              </p>
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4 text-xs text-amber-800 space-y-1">
+                <p>✅ <strong>{playedCount} resultado{playedCount !== 1 ? 's' : ''} jugado{playedCount !== 1 ? 's' : ''}</strong> se preservan y se mueven a su jornada correcta.</p>
+                <p>🗑️ <strong>{scheduledCount} partido{scheduledCount !== 1 ? 's' : ''} pendiente{scheduledCount !== 1 ? 's' : ''}</strong> se eliminarán y se regenerarán.</p>
+                <p>📅 Las fechas y horarios asignados a partidos pendientes se perderán.</p>
+              </div>
+              <div className="flex gap-3">
+                <button onClick={() => setConfirmReorganizar(false)} className="flex-1 border border-gray-300 text-gray-700 font-medium py-2 rounded-lg text-sm hover:bg-gray-50 transition-colors">Cancelar</button>
+                <button onClick={() => reorganizarIda.mutate()} disabled={reorganizarIda.isPending} className="flex-1 bg-orange-600 hover:bg-orange-700 disabled:opacity-60 text-white font-medium py-2 rounded-lg text-sm transition-colors">
+                  {reorganizarIda.isPending ? 'Reorganizando...' : 'Reorganizar'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
       {pendingTeam && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6">
