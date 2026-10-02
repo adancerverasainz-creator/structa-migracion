@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { formatDate } from '../../lib/utils'
-import { Trophy, Plus, Pencil, Trash2, ChevronRight, X, Calendar, Users } from 'lucide-react'
+import { Trophy, Plus, Pencil, Trash2, ChevronRight, X, Calendar, Users, Columns2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 const STATUS_LABEL = { active: 'En curso', draft: 'Próximo', finished: 'Finalizado' }
@@ -26,6 +26,8 @@ const EMPTY_FORM = {
   points_draw: 1,
   yellows_for_suspension: 3,
   playoff_format: 'none',
+  matches_per_matchday: '',
+  fields_config: [],
 }
 
 const PLAYOFF_FORMAT_LABEL = {
@@ -102,6 +104,8 @@ export default function AdminTournaments() {
       points_draw: t.points_draw ?? 1,
       yellows_for_suspension: t.yellows_for_suspension ?? 3,
       playoff_format: t.playoff_format || 'none',
+      matches_per_matchday: t.matches_per_matchday ?? '',
+      fields_config: t.fields_config || [],
     })
     setModal(t)
   }
@@ -117,6 +121,8 @@ export default function AdminTournaments() {
       banner_url: form.banner_url || null,
       season: form.season || null,
       max_players_per_team: Number(form.max_players_per_team) || 20,
+      matches_per_matchday: form.matches_per_matchday !== '' ? Number(form.matches_per_matchday) : null,
+      fields_config: form.fields_config.filter(f => f.name.trim() !== ''),
     }
     saveMutation.mutate(clean)
   }
@@ -330,6 +336,76 @@ export default function AdminTournaments() {
                     {' — se generan automáticamente con el botón "Generar bracket"'}
                   </p>
                 )}
+              </div>
+
+              {/* Configuración de fixture */}
+              <div className="border border-gray-200 rounded-lg p-4 space-y-3">
+                <div className="flex items-center gap-2">
+                  <Columns2 className="w-4 h-4 text-gray-500" />
+                  <span className="text-sm font-medium text-gray-700">Configuración de fixture</span>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Partidos por jornada</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="20"
+                    value={form.matches_per_matchday}
+                    onChange={e => setForm(f => ({ ...f, matches_per_matchday: e.target.value }))}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                    placeholder="Automatico"
+                  />
+                  <p className="text-xs text-gray-400 mt-1">Deja vacio para que el sistema calcule automaticamente (equipos / 2)</p>
+                </div>
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-sm font-medium text-gray-700">Canchas disponibles</label>
+                    <button
+                      type="button"
+                      onClick={() => setForm(f => ({ ...f, fields_config: [...f.fields_config, { name: '', time: '' }] }))}
+                      className="text-xs text-green-600 hover:text-green-700 font-medium flex items-center gap-1"
+                    >
+                      <Plus className="w-3 h-3" /> Agregar cancha
+                    </button>
+                  </div>
+                  {form.fields_config.length === 0 ? (
+                    <p className="text-xs text-gray-400 italic">Sin canchas configuradas - el fixture no asignara cancha ni hora automaticamente</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {form.fields_config.map((slot, i) => (
+                        <div key={i} className="flex gap-2 items-center">
+                          <input
+                            value={slot.name}
+                            onChange={e => setForm(f => {
+                              const fc = [...f.fields_config]
+                              fc[i] = { ...fc[i], name: e.target.value }
+                              return { ...f, fields_config: fc }
+                            })}
+                            className="flex-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                            placeholder="Cancha 1"
+                          />
+                          <input
+                            type="time"
+                            value={slot.time}
+                            onChange={e => setForm(f => {
+                              const fc = [...f.fields_config]
+                              fc[i] = { ...fc[i], time: e.target.value }
+                              return { ...f, fields_config: fc }
+                            })}
+                            className="w-28 rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setForm(f => ({ ...f, fields_config: f.fields_config.filter((_, j) => j !== i) }))}
+                            className="text-gray-400 hover:text-red-500 p-1"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="grid grid-cols-3 gap-3">
