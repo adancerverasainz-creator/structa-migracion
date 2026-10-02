@@ -565,42 +565,39 @@ export default function AdminTournamentDetail() {
         if (delErr) throw delErr
       }
 
-      // 5. Generar todos los C(n,2) pares excluyendo los ya bloqueados/jugados
-      const allPairs = []
+      // 5. Algoritmo Berger (circle method) sobre todos los equipos para asignar
+      //    cada par a una ronda óptima — garantiza máx. equipos/2 por ronda
+      const bergerList = teams.length % 2 === 0 ? [...teams] : [...teams, null]
+      const bergerSize = bergerList.length
+      const bergerRounds = bergerSize - 1
+      const bergerMap = new Map() // pairKey → roundIndex (0-based)
+      const bergerListCopy = [...bergerList]
+      for (let r = 0; r < bergerRounds; r++) {
+        for (let i = 0; i < bergerSize / 2; i++) {
+          const home = bergerListCopy[i]
+          const away = bergerListCopy[bergerSize - 1 - i]
+          if (home !== null && away !== null) {
+            const key = [home.id, away.id].sort().join('|')
+            bergerMap.set(key, r)
+          }
+        }
+        const last = bergerListCopy[bergerSize - 1]
+        for (let i = bergerSize - 1; i > 1; i--) bergerListCopy[i] = bergerListCopy[i - 1]
+        bergerListCopy[1] = last
+      }
+
+      // 6. Distribuir los pares no bloqueados/jugados en sus rondas Berger
+      const roundBuckets = Array.from({ length: bergerRounds }, () => [])
       for (let i = 0; i < teams.length; i++) {
         for (let j = i + 1; j < teams.length; j++) {
           const key = [teams[i].id, teams[j].id].sort().join('|')
           if (!lockedPairKeys.has(key) && !playedOtherPairKeys.has(key)) {
-            allPairs.push({ home: teams[i], away: teams[j] })
+            const r = bergerMap.get(key)
+            if (r !== undefined) roundBuckets[r].push({ home: teams[i], away: teams[j] })
           }
         }
       }
-
-      // 6. Distribución greedy: max mpj partidos por jornada, cada equipo juega max 1 vez
-      const mpj = tournament?.matches_per_matchday ?? Math.floor(teams.length / 2)
-      const rounds = []
-      const remaining = [...allPairs]
-      while (remaining.length > 0) {
-        const round = []
-        const usedTeams = new Set()
-        const leftover = []
-        for (const pair of remaining) {
-          if (
-            round.length < mpj &&
-            !usedTeams.has(pair.home.id) &&
-            !usedTeams.has(pair.away.id)
-          ) {
-            round.push(pair)
-            usedTeams.add(pair.home.id)
-            usedTeams.add(pair.away.id)
-          } else {
-            leftover.push(pair)
-          }
-        }
-        rounds.push(round)
-        remaining.length = 0
-        remaining.push(...leftover)
-      }
+      const rounds = roundBuckets.filter(b => b.length > 0)
 
       // 7. Insertar nuevos partidos a partir de lockedMatchday + 1
       const startDay = lockedMatchday + 1
