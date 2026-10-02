@@ -110,7 +110,7 @@ export default function AdminTournaments() {
     e.preventDefault()
     const clean = {
       ...form,
-      organization_id: '00000000-0000-0000-0000-000000000001',
+      // organization_id is set automatically by the set_org_id_on_insert trigger
       start_date: form.start_date || null,
       end_date: form.end_date || null,
       description: form.description || null,

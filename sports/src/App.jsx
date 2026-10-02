@@ -1,7 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
-import { useEffect, useState } from 'react'
 import { ShieldOff } from 'lucide-react'
 import { supabase } from './lib/supabase'
+import { ProfileProvider, useProfile } from './context/ProfileContext'
 
 // Public pages
 import PublicLayout from './pages/public/PublicLayout'
@@ -18,6 +18,13 @@ import AdminTournaments from './pages/admin/AdminTournaments'
 import AdminTournamentDetail from './pages/admin/AdminTournamentDetail'
 import ProfilePage from './pages/admin/ProfilePage'
 import AdminUsers from './pages/admin/AdminUsers'
+
+// Self-service pages
+import RegistroPage from './pages/public/RegistroPage'
+import OnboardingPage from './pages/admin/OnboardingPage'
+
+// Print / PDF pages
+import TournamentPrint from './pages/admin/TournamentPrint'
 
 function AccessDenied() {
   async function handleLogout() {
@@ -49,30 +56,9 @@ function AccessDenied() {
 }
 
 function RequireAuth({ children }) {
-  const [session, setSession] = useState(undefined)
-  const [role, setRole] = useState(undefined)
+  const { profile, session, role, organizationId, isLoading } = useProfile()
 
-  useEffect(() => {
-    async function loadSession(s) {
-      setSession(s)
-      if (s) {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('role, organization_id')
-          .eq('id', s.user.id)
-          .single()
-        setRole(profile?.role ?? 'visitante')
-      } else {
-        setRole(null)
-      }
-    }
-
-    supabase.auth.getSession().then(({ data }) => loadSession(data.session))
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => loadSession(s))
-    return () => subscription.unsubscribe()
-  }, [])
-
-  if (session === undefined || (session && role === undefined)) {
+  if (isLoading) {
     return (
       <div className="fixed inset-0 flex items-center justify-center bg-gray-50">
         <div className="w-8 h-8 border-4 border-green-200 border-t-green-600 rounded-full animate-spin" />
@@ -81,6 +67,11 @@ function RequireAuth({ children }) {
   }
 
   if (!session) return <Navigate to="/admin/login" replace />
+
+  // New user with no org: send to onboarding
+  if (profile && !organizationId && role === 'visitante') {
+    return <Navigate to="/admin/onboarding" replace />
+  }
 
   // Roles sin acceso al panel admin
   const BLOCKED_ROLES = ['user', 'visitante']
@@ -92,31 +83,42 @@ function RequireAuth({ children }) {
 
 export default function App() {
   return (
-    <Routes>
-      {/* Rutas públicas */}
-      <Route element={<PublicLayout />}>
-        <Route path="/" element={<HomePage />} />
-        <Route path="/torneo/:id" element={<TournamentPage />} />
-      </Route>
+    <ProfileProvider>
+      <Routes>
+        {/* Rutas públicas */}
+        <Route element={<PublicLayout />}>
+          <Route path="/" element={<HomePage />} />
+          <Route path="/torneo/:id" element={<TournamentPage />} />
+        </Route>
 
-      {/* Portal del capitán (público, sin auth) */}
-      <Route path="/capitan/:token" element={<CaptainPortal />} />
+        {/* Registro self-service */}
+        <Route path="/registro" element={<RegistroPage />} />
 
-      {/* Login admin */}
-      <Route path="/admin/login" element={<LoginPage />} />
-      <Route path="/admin/forgot-password" element={<ForgotPassword />} />
-      <Route path="/admin/reset-password" element={<ResetPassword />} />
+        {/* Portal del capitán (público, sin auth) */}
+        <Route path="/capitan/:token" element={<CaptainPortal />} />
 
-      {/* Rutas admin protegidas */}
-      <Route path="/admin" element={<RequireAuth><AdminLayout /></RequireAuth>}>
-        <Route index element={<Navigate to="/admin/torneos" replace />} />
-        <Route path="torneos" element={<AdminTournaments />} />
-        <Route path="torneo/:id" element={<AdminTournamentDetail />} />
-        <Route path="perfil" element={<ProfilePage />} />
-        <Route path="usuarios" element={<AdminUsers />} />
-      </Route>
+        {/* Login admin */}
+        <Route path="/admin/login" element={<LoginPage />} />
+        <Route path="/admin/forgot-password" element={<ForgotPassword />} />
+        <Route path="/admin/reset-password" element={<ResetPassword />} />
 
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+        {/* Onboarding (requiere sesión, sin org todavía) */}
+        <Route path="/admin/onboarding" element={<OnboardingPage />} />
+
+        {/* Print / PDF (protegidas pero sin AdminLayout) */}
+        <Route path="/admin/torneo/:id/print/:type" element={<RequireAuth><TournamentPrint /></RequireAuth>} />
+
+        {/* Rutas admin protegidas */}
+        <Route path="/admin" element={<RequireAuth><AdminLayout /></RequireAuth>}>
+          <Route index element={<Navigate to="/admin/torneos" replace />} />
+          <Route path="torneos" element={<AdminTournaments />} />
+          <Route path="torneo/:id" element={<AdminTournamentDetail />} />
+          <Route path="perfil" element={<ProfilePage />} />
+          <Route path="usuarios" element={<AdminUsers />} />
+        </Route>
+
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </ProfileProvider>
   )
 }
