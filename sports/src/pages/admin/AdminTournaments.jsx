@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
+import { useProfile } from '../../context/ProfileContext'
 import { formatDate } from '../../lib/utils'
 import { Trophy, Plus, Pencil, Trash2, ChevronRight, X, Calendar, Users, Columns2 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -38,6 +39,7 @@ const PLAYOFF_FORMAT_LABEL = {
 
 export default function AdminTournaments() {
   const qc = useQueryClient()
+  const { organizationId } = useProfile()
   const [modal, setModal] = useState(null) // null | 'create' | { id, ...tournament }
   const [deleting, setDeleting] = useState(null)
   const [form, setForm] = useState(EMPTY_FORM)
@@ -48,6 +50,7 @@ export default function AdminTournaments() {
       const { data, error } = await supabase
         .from('tournaments')
         .select('*, teams(count)')
+        .eq('organization_id', organizationId)
         .order('created_at', { ascending: false })
       if (error) throw error
       return data
@@ -114,7 +117,7 @@ export default function AdminTournaments() {
     e.preventDefault()
     const clean = {
       ...form,
-      organization_id: '00000000-0000-0000-0000-000000000001',
+      organization_id: organizationId,
       start_date: form.start_date || null,
       end_date: form.end_date || null,
       description: form.description || null,
