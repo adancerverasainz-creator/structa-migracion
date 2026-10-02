@@ -3,7 +3,7 @@
  * Route: /admin/torneo/:id/print/:type
  * type = standings | fixture | credenciales | estado-cuenta
  *
- * Opens in a new tab and calls window.print() automatically.
+ * Opens in a new tab and calls window.print() automatically once all data is loaded.
  */
 import { useEffect } from 'react'
 import { useParams } from 'react-router-dom'
@@ -25,7 +25,7 @@ export default function TournamentPrint() {
     },
   })
 
-  const { data: teams = [] } = useQuery({
+  const { data: teams = [], isFetching: teamsFetching } = useQuery({
     queryKey: ['print-teams', id],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -36,9 +36,10 @@ export default function TournamentPrint() {
       if (error) throw error
       return data
     },
+    enabled: type === 'credenciales',
   })
 
-  const { data: matches = [] } = useQuery({
+  const { data: matches = [], isFetching: matchesFetching } = useQuery({
     queryKey: ['print-matches', id],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -51,9 +52,10 @@ export default function TournamentPrint() {
       if (error) throw error
       return data
     },
+    enabled: type === 'fixture',
   })
 
-  const { data: standings = [] } = useQuery({
+  const { data: standings = [], isFetching: standingsFetching } = useQuery({
     queryKey: ['print-standings', id],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -67,9 +69,10 @@ export default function TournamentPrint() {
       if (error) throw error
       return data
     },
+    enabled: type === 'standings',
   })
 
-  const { data: charges = [] } = useQuery({
+  const { data: charges = [], isFetching: chargesFetching } = useQuery({
     queryKey: ['print-charges', id],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -80,18 +83,22 @@ export default function TournamentPrint() {
       if (error) throw error
       return data
     },
+    enabled: type === 'estado-cuenta',
   })
 
-  const isReady = tournament && (
-    (type === 'standings' && standings.length >= 0) ||
-    (type === 'fixture' && matches.length >= 0) ||
-    (type === 'credenciales' && teams.length >= 0) ||
-    (type === 'estado-cuenta' && charges.length >= 0)
-  )
+  // BAJO: usar isFetching en lugar de timer fijo — disparar print solo cuando los datos del
+  // tipo activo hayan terminado de cargar
+  const typeIsFetching =
+    (type === 'standings' && standingsFetching) ||
+    (type === 'fixture' && matchesFetching) ||
+    (type === 'credenciales' && teamsFetching) ||
+    (type === 'estado-cuenta' && chargesFetching)
+
+  const isReady = !!tournament && !typeIsFetching
 
   useEffect(() => {
     if (isReady) {
-      const timer = setTimeout(() => window.print(), 800)
+      const timer = setTimeout(() => window.print(), 400)
       return () => clearTimeout(timer)
     }
   }, [isReady])
@@ -133,6 +140,7 @@ export default function TournamentPrint() {
         .cred-card .team { font-size: 11px; color: #6b7280; margin: 0 0 8px; }
         .cred-player { font-size: 11px; margin: 2px 0; }
         .print-hint { background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px; padding: 12px 16px; margin-bottom: 20px; font-size: 13px; color: #166534; }
+        .empty-state { color: #9ca3af; font-size: 13px; padding: 20px 0; }
       `}</style>
 
       <div style={{ maxWidth: 900, margin: '0 auto', padding: '24px 20px' }}>
@@ -156,6 +164,14 @@ export default function TournamentPrint() {
 
         {/* ── STANDINGS ─────────────────────────────────────────────────── */}
         {type === 'standings' && (() => {
+          // CRÍTICO-3 guard: mostrar mensaje si no hay partidos completados
+          if (standings.length === 0) {
+            return (
+              <p className="empty-state">
+                Sin datos de posiciones — no hay partidos finalizados en este torneo.
+              </p>
+            )
+          }
           const byCategory = standings.reduce((acc, row) => {
             const key = row.category_name || 'General'
             if (!acc[key]) acc[key] = []
@@ -203,6 +219,9 @@ export default function TournamentPrint() {
 
         {/* ── FIXTURE ───────────────────────────────────────────────────── */}
         {type === 'fixture' && (() => {
+          if (matches.length === 0) {
+            return <p className="empty-state">No hay partidos programados en este torneo.</p>
+          }
           const byMatchday = matches.reduce((acc, m) => {
             const key = m.matchday ?? 'Sin jornada'
             if (!acc[key]) acc[key] = []
@@ -249,30 +268,37 @@ export default function TournamentPrint() {
 
         {/* ── CREDENCIALES ──────────────────────────────────────────────── */}
         {type === 'credenciales' && (
-          <div className="cred-grid">
-            {teams.map(team => (
-              <div key={team.id} className="cred-card" style={{ borderTop: `4px solid ${team.color || '#14532d'}` }}>
-                <h3>{team.name}</h3>
-                {team.captain_name && <p className="team">Capitán: {team.captain_name}</p>}
-                {(team.players || []).sort((a,b) => (a.number||99) - (b.number||99)).map(p => (
-                  <p key={p.id} className="cred-player">
-                    <span style={{fontWeight:'600', minWidth:24, display:'inline-block'}}>
-                      {p.number ? `#${p.number}` : '—'}
-                    </span>
-                    {' '}{p.name}
-                    {p.position ? <span style={{color:'#9ca3af'}}> · {p.position}</span> : ''}
-                  </p>
+          teams.length === 0
+            ? <p className="empty-state">No hay equipos registrados en este torneo.</p>
+            : (
+              <div className="cred-grid">
+                {teams.map(team => (
+                  <div key={team.id} className="cred-card" style={{ borderTop: `4px solid ${team.color || '#14532d'}` }}>
+                    <h3>{team.name}</h3>
+                    {team.captain_name && <p className="team">Capitán: {team.captain_name}</p>}
+                    {(team.players || []).sort((a,b) => (a.number||99) - (b.number||99)).map(p => (
+                      <p key={p.id} className="cred-player">
+                        <span style={{fontWeight:'600', minWidth:24, display:'inline-block'}}>
+                          {p.number ? `#${p.number}` : '—'}
+                        </span>
+                        {' '}{p.name}
+                        {p.position ? <span style={{color:'#9ca3af'}}> · {p.position}</span> : ''}
+                      </p>
+                    ))}
+                    {(!team.players || team.players.length === 0) && (
+                      <p className="cred-player" style={{color:'#9ca3af'}}>Sin jugadores registrados</p>
+                    )}
+                  </div>
                 ))}
-                {(!team.players || team.players.length === 0) && (
-                  <p className="cred-player" style={{color:'#9ca3af'}}>Sin jugadores registrados</p>
-                )}
               </div>
-            ))}
-          </div>
+            )
         )}
 
         {/* ── ESTADO DE CUENTA ──────────────────────────────────────────── */}
         {type === 'estado-cuenta' && (() => {
+          if (charges.length === 0) {
+            return <p className="empty-state">No hay cobros registrados en este torneo.</p>
+          }
           const byTeam = charges.reduce((acc, c) => {
             const key = c.teams?.name || c.team_id
             if (!acc[key]) acc[key] = []
@@ -334,7 +360,6 @@ export default function TournamentPrint() {
                   </div>
                 )
               })}
-              {charges.length === 0 && <p style={{color:'#9ca3af'}}>No hay cobros registrados.</p>}
             </>
           )
         })()}

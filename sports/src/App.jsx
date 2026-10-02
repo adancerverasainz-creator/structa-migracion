@@ -55,8 +55,11 @@ function AccessDenied() {
   )
 }
 
-function RequireAuth({ children }) {
-  const { profile, session, role, organizationId, isLoading } = useProfile()
+// CRÍTICO-1: allowlist en lugar de deny-list — null/undefined quedan bloqueados por defecto
+const ALLOWED_ROLES = ['admin', 'editor', 'org_admin']
+
+function RequireAuth({ children, allowOnboarding = false }) {
+  const { profile, session, role, organizationId, isLoading, profileError } = useProfile()
 
   if (isLoading) {
     return (
@@ -68,15 +71,31 @@ function RequireAuth({ children }) {
 
   if (!session) return <Navigate to="/admin/login" replace />
 
-  // New user with no org: send to onboarding
-  if (profile && !organizationId && role === 'visitante') {
+  // Error cargando perfil — no tratar como "sin perfil", mostrar mensaje
+  if (profileError) {
+    return (
+      <div className="fixed inset-0 flex items-center justify-center bg-gray-50">
+        <div className="bg-white rounded-2xl border border-gray-200 p-8 max-w-sm text-center space-y-3">
+          <p className="text-sm text-gray-700 font-medium">No pudimos cargar tu perfil.</p>
+          <p className="text-xs text-gray-500">Intenta recargar la página o contacta soporte.</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="w-full bg-green-700 text-white text-sm py-2 rounded-lg"
+          >
+            Recargar
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // Nuevo usuario sin org: redirigir a onboarding (excepto rutas que no lo necesitan)
+  if (!allowOnboarding && profile && !organizationId && role === 'visitante') {
     return <Navigate to="/admin/onboarding" replace />
   }
 
-  // Roles sin acceso al panel admin
-  const BLOCKED_ROLES = ['user', 'visitante']
-  if (BLOCKED_ROLES.includes(role)) return <AccessDenied />
-  // Roles permitidos: admin, editor, org_admin
+  // Allowlist: solo roles explícitamente permitidos pasan
+  if (!ALLOWED_ROLES.includes(role)) return <AccessDenied />
 
   return children
 }
@@ -105,8 +124,11 @@ export default function App() {
         {/* Onboarding (requiere sesión, sin org todavía) */}
         <Route path="/admin/onboarding" element={<OnboardingPage />} />
 
-        {/* Print / PDF (protegidas pero sin AdminLayout) */}
-        <Route path="/admin/torneo/:id/print/:type" element={<RequireAuth><TournamentPrint /></RequireAuth>} />
+        {/* Print / PDF — allowOnboarding=true: no redirige a onboarding si org aún no está */}
+        <Route
+          path="/admin/torneo/:id/print/:type"
+          element={<RequireAuth allowOnboarding={true}><TournamentPrint /></RequireAuth>}
+        />
 
         {/* Rutas admin protegidas */}
         <Route path="/admin" element={<RequireAuth><AdminLayout /></RequireAuth>}>

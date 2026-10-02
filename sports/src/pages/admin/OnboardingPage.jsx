@@ -14,21 +14,20 @@ export default function OnboardingPage() {
   const [status, setStatus] = useState('idle') // idle | loading | error | success
   const [errorMsg, setErrorMsg] = useState('')
 
-  // Pre-fill org name from signup metadata if available
+  // MEDIO-1: Pre-fill desde public.profiles (ya no raw_user_meta_data que no existe en contexto)
   useEffect(() => {
-    const meta = profile?.raw_user_meta_data
-    if (meta?.org_name) setOrgName(meta.org_name)
-    if (meta?.contact_phone) setPhone(meta.contact_phone)
+    if (profile?.org_name) setOrgName(profile.org_name)
+    if (profile?.contact_phone) setPhone(profile.contact_phone)
   }, [profile])
 
-  // If user already has an org, redirect to admin
+  // Si el usuario ya tiene org, redirigir al panel
   useEffect(() => {
     if (!isLoading && organizationId) {
       navigate('/admin/torneos', { replace: true })
     }
   }, [isLoading, organizationId, navigate])
 
-  // If not logged in at all
+  // Si no hay sesión activa
   useEffect(() => {
     if (!isLoading && !profile) {
       navigate('/admin/login', { replace: true })

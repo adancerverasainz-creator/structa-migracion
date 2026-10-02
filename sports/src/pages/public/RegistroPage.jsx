@@ -1,14 +1,15 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
-import { Trophy, Eye, EyeOff, AlertCircle, CheckCircle } from 'lucide-react'
+import { Trophy, Eye, EyeOff, AlertCircle, CheckCircle, Mail } from 'lucide-react'
 
 export default function RegistroPage() {
   const navigate = useNavigate()
   const [form, setForm] = useState({ full_name: '', email: '', password: '', org_name: '', contact_phone: '' })
   const [showPwd, setShowPwd] = useState(false)
-  const [status, setStatus] = useState('idle') // idle | loading | error | success
+  const [status, setStatus] = useState('idle') // idle | loading | error | success | confirm_email
   const [errorMsg, setErrorMsg] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false) // BAJO: prevenir doble submit
 
   function set(field, value) {
     setForm(prev => ({ ...prev, [field]: value }))
@@ -16,36 +17,76 @@ export default function RegistroPage() {
 
   async function handleSubmit(e) {
     e.preventDefault()
+    if (isSubmitting) return
+    setIsSubmitting(true)
     setStatus('loading')
     setErrorMsg('')
 
-    const { error } = await supabase.auth.signUp({
-      email: form.email.trim(),
-      password: form.password,
-      options: {
-        data: {
-          full_name: form.full_name.trim(),
-          org_name: form.org_name.trim(),
-          contact_phone: form.contact_phone.trim(),
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email: form.email.trim(),
+        password: form.password,
+        options: {
+          data: {
+            full_name: form.full_name.trim(),
+            org_name: form.org_name.trim(),
+            contact_phone: form.contact_phone.trim(),
+          },
         },
-      },
-    })
+      })
 
-    if (error) {
-      setStatus('error')
-      if (error.message.includes('already registered')) {
-        setErrorMsg('Este correo ya tiene una cuenta. ¿Quieres iniciar sesión?')
-      } else if (error.message.includes('Password')) {
-        setErrorMsg('La contraseña debe tener al menos 6 caracteres.')
-      } else {
-        setErrorMsg(error.message)
+      if (error) {
+        setStatus('error')
+        if (error.message.includes('already registered')) {
+          setErrorMsg('Este correo ya tiene una cuenta. ¿Quieres iniciar sesión?')
+        } else if (error.message.includes('Password')) {
+          setErrorMsg('La contraseña debe tener al menos 6 caracteres.')
+        } else {
+          setErrorMsg(error.message)
+        }
+        return
       }
-      return
-    }
 
-    setStatus('success')
-    // After signup, the user needs to confirm email (or if auto-confirm is on, go to onboarding)
-    setTimeout(() => navigate('/admin/onboarding'), 1500)
+      // CRÍTICO-2: detectar si Supabase requiere confirmación de email
+      // Si session es null, el proyecto tiene "Confirm email" activado
+      if (!data.session) {
+        setStatus('confirm_email')
+        return
+      }
+
+      // Auto-confirm activo: hay sesión, ir directo a onboarding
+      setStatus('success')
+      setTimeout(() => navigate('/admin/onboarding'), 1200)
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  // Estado: esperando confirmación de email
+  if (status === 'confirm_email') {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-10 max-w-sm w-full text-center space-y-4">
+          <div className="w-14 h-14 rounded-full bg-blue-50 flex items-center justify-center mx-auto">
+            <Mail className="w-8 h-8 text-blue-600" />
+          </div>
+          <h2 className="text-xl font-bold text-gray-900">Revisa tu correo</h2>
+          <p className="text-sm text-gray-500">
+            Te enviamos un enlace de confirmación a <strong>{form.email}</strong>.
+            Haz clic en el enlace para activar tu cuenta y configurar tu liga.
+          </p>
+          <p className="text-xs text-gray-400">
+            ¿No llegó? Revisa tu carpeta de spam o{' '}
+            <button
+              onClick={handleSubmit}
+              className="text-green-700 font-medium hover:underline"
+            >
+              reenviar correo
+            </button>
+          </p>
+        </div>
+      </div>
+    )
   }
 
   if (status === 'success') {
@@ -159,10 +200,10 @@ export default function RegistroPage() {
 
           <button
             type="submit"
-            disabled={status === 'loading'}
+            disabled={isSubmitting}
             className="w-full bg-[#14532d] hover:bg-green-900 text-white font-semibold py-3 rounded-xl text-sm transition-colors disabled:opacity-60"
           >
-            {status === 'loading' ? 'Creando cuenta…' : 'Crear cuenta gratis'}
+            {isSubmitting ? 'Creando cuenta…' : 'Crear cuenta gratis'}
           </button>
         </form>
 

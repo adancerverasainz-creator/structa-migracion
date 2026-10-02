@@ -67,7 +67,14 @@ export default function AdminTournaments() {
       toast.success(modal === 'create' ? 'Torneo creado' : 'Torneo actualizado')
       setModal(null)
     },
-    onError: (e) => toast.error('Error al guardar: ' + (e?.message || e?.details || e?.hint || String(e))),
+    onError: (e) => {
+      // MEDIO: código 23502 = NOT NULL violation, probablemente trigger set_org_id_on_insert ausente
+      if (e?.code === '23502' && e?.message?.includes('organization_id')) {
+        toast.error('Error de configuración: tu cuenta no tiene organización asociada. Contacta soporte (código: ORG-NULL)')
+      } else {
+        toast.error('Error al guardar: ' + (e?.message || e?.details || e?.hint || String(e)))
+      }
+    },
   })
 
   const deleteMutation = useMutation({
