@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import AdminFinanzasTab from './AdminFinanzasTab'
+import PdfExportButtons from './PdfExportButtons'
 
 const TAB_LABELS = ['Equipos', 'Partidos', 'Finanzas', 'Plantillas']
 
@@ -828,6 +829,8 @@ export default function AdminTournamentDetail() {
           </div>
         </div>
       </div>
+
+      <PdfExportButtons tournamentId={id} />
 
       {/* Tabs */}
       <div className="flex gap-1 border-b border-gray-200">
