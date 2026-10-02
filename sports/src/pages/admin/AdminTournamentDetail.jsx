@@ -480,16 +480,13 @@ export default function AdminTournamentDetail() {
       const list = teams.length % 2 === 0 ? [...teams] : [...teams, null] // ghost si impar
       const size = list.length
       const rounds = size - 1
-      const fieldsConfig = tournament?.fields_config || []
       const newMatches = []
 
       for (let r = 0; r < rounds; r++) {
-        let matchInRound = 0
         for (let i = 0; i < size / 2; i++) {
           const home = list[i]
           const away = list[size - 1 - i]
           if (home !== null && away !== null) {
-            const slot = fieldsConfig.length > 0 ? fieldsConfig[matchInRound % fieldsConfig.length] : null
             newMatches.push({
               tournament_id: id,
               category_id: null,
@@ -499,15 +496,14 @@ export default function AdminTournamentDetail() {
               away_team_id: away.id,
               home_team_name: home.name,
               away_team_name: away.name,
-              field: slot?.name || null,
+              field: null,
               match_date: null,
-              match_time: slot?.time || null,
+              match_time: null,
               status: 'scheduled',
               home_goals: null,
               away_goals: null,
               forfait_team_id: null,
             })
-            matchInRound++
           }
         }
         // Rotar: fijar list[0], rotar el resto en sentido horario
@@ -528,109 +524,92 @@ export default function AdminTournamentDetail() {
     onError: (e) => toast.error('Error al generar ida: ' + e.message),
   })
 
-  // ── Reorganizar fixture: preserva jornada mínima (jugada + programada con fecha),
-  // borra solo los pendientes de jornadas superiores y redistribuye
-  // greedy todas las parejas restantes desde la siguiente jornada.
+  // ── Reorganizar fixture: regenera round-robin completo preservando resultados ──
+  // Útil cuando se agregan equipos después de haber jugado partidos.
+  // Mueve los partidos jugados a la jornada que el algoritmo les asigna,
+  // borra todos los pendientes y los reemplaza con el fixture nuevo.
   const reorganizarIda = useMutation({
     mutationFn: async () => {
       if (teams.length < 2) throw new Error('Se necesitan al menos 2 equipos')
 
-      // 1. Determinar la jornada bloqueada: la jornada más baja existente
-      const minMatchday = realMatches.length > 0
-        ? Math.min(...realMatches.map(m => m.matchday ?? Infinity))
-        : 1
-      const lockedMatchday = isFinite(minMatchday) ? minMatchday : 1
+      // 1. Algoritmo round-robin para todos los equipos actuales
+      const list = teams.length % 2 === 0 ? [...teams] : [...teams, null]
+      const size = list.length
+      const rounds = size - 1
+      const algoMap = new Map() // pairKey → { matchday, home, away }
 
-      // 2. Todos los partidos de la jornada bloqueada se preservan intactos
-      const lockedMatches = realMatches.filter(m => m.matchday === lockedMatchday)
-      const lockedPairKeys = new Set(
-        lockedMatches.map(m => [m.home_team_id, m.away_team_id].sort().join('|'))
+      for (let r = 0; r < rounds; r++) {
+        for (let i = 0; i < size / 2; i++) {
+          const home = list[i]
+          const away = list[size - 1 - i]
+          if (home !== null && away !== null) {
+            const key = [home.id, away.id].sort().join('|')
+            algoMap.set(key, { matchday: r + 1, home, away })
+          }
+        }
+        const last = list[size - 1]
+        for (let i = size - 1; i > 1; i--) list[i] = list[i - 1]
+        list[1] = last
+      }
+
+      // 2. Separar jugados vs pendientes (solo partidos reales, no brackets)
+      const playedRealMatches = realMatches.filter(m =>
+        ['completed', 'forfait', 'no_show'].includes(m.status)
       )
-
-      // 3. Partidos jugados en jornadas NO bloqueadas (conservar par, no reinsertar)
-      const playedOtherPairKeys = new Set(
-        realMatches
-          .filter(m =>
-            m.matchday !== lockedMatchday &&
-            ['completed', 'forfait', 'no_show'].includes(m.status)
-          )
-          .map(m => [m.home_team_id, m.away_team_id].sort().join('|'))
-      )
-
-      // 4. Borrar SOLO los pendientes de jornadas > lockedMatchday
-      const toDeleteIds = realMatches
-        .filter(m => m.matchday !== lockedMatchday && m.status === 'scheduled')
+      const scheduledRealIds = realMatches
+        .filter(m => m.status === 'scheduled')
         .map(m => m.id)
-      if (toDeleteIds.length > 0) {
+
+      // 3. Claves de partidos jugados (para no insertar duplicados)
+      const playedPairKeys = new Set(
+        playedRealMatches.map(m => [m.home_team_id, m.away_team_id].sort().join('|'))
+      )
+
+      // 4. Mover partidos jugados a su jornada según el algoritmo
+      for (const pm of playedRealMatches) {
+        const key = [pm.home_team_id, pm.away_team_id].sort().join('|')
+        const algo = algoMap.get(key)
+        if (algo && pm.matchday !== algo.matchday) {
+          const { error: updErr } = await supabase
+            .from('matches')
+            .update({ matchday: algo.matchday })
+            .eq('id', pm.id)
+          if (updErr) throw updErr
+        }
+      }
+
+      // 5. Borrar todos los partidos pendientes
+      if (scheduledRealIds.length > 0) {
         const { error: delErr } = await supabase
           .from('matches')
           .delete()
-          .in('id', toDeleteIds)
+          .in('id', scheduledRealIds)
         if (delErr) throw delErr
       }
 
-      // 5. Algoritmo Berger (circle method) sobre todos los equipos para asignar
-      //    cada par a una ronda óptima — garantiza máx. equipos/2 por ronda
-      const bergerList = teams.length % 2 === 0 ? [...teams] : [...teams, null]
-      const bergerSize = bergerList.length
-      const bergerRounds = bergerSize - 1
-      const bergerMap = new Map() // pairKey → roundIndex (0-based)
-      const bergerListCopy = [...bergerList]
-      for (let r = 0; r < bergerRounds; r++) {
-        for (let i = 0; i < bergerSize / 2; i++) {
-          const home = bergerListCopy[i]
-          const away = bergerListCopy[bergerSize - 1 - i]
-          if (home !== null && away !== null) {
-            const key = [home.id, away.id].sort().join('|')
-            bergerMap.set(key, r)
-          }
-        }
-        const last = bergerListCopy[bergerSize - 1]
-        for (let i = bergerSize - 1; i > 1; i--) bergerListCopy[i] = bergerListCopy[i - 1]
-        bergerListCopy[1] = last
-      }
-
-      // 6. Distribuir los pares no bloqueados/jugados en sus rondas Berger
-      const roundBuckets = Array.from({ length: bergerRounds }, () => [])
-      for (let i = 0; i < teams.length; i++) {
-        for (let j = i + 1; j < teams.length; j++) {
-          const key = [teams[i].id, teams[j].id].sort().join('|')
-          if (!lockedPairKeys.has(key) && !playedOtherPairKeys.has(key)) {
-            const r = bergerMap.get(key)
-            if (r !== undefined) roundBuckets[r].push({ home: teams[i], away: teams[j] })
-          }
-        }
-      }
-      const rounds = roundBuckets.filter(b => b.length > 0)
-
-      // 7. Insertar nuevos partidos a partir de lockedMatchday + 1
-      const startDay = lockedMatchday + 1
-      const fieldsConfig = tournament?.fields_config || []
+      // 6. Insertar matches del algoritmo que no están ya jugados
       const newMatches = []
-      rounds.forEach((round, ri) => {
-        round.forEach((pair, pi) => {
-          const slot = fieldsConfig.length > 0
-            ? fieldsConfig[pi % fieldsConfig.length]
-            : null
+      for (const [key, { matchday, home, away }] of algoMap) {
+        if (!playedPairKeys.has(key)) {
           newMatches.push({
             tournament_id: id,
             category_id: null,
             group_id: null,
-            matchday: startDay + ri,
-            home_team_id: pair.home.id,
-            away_team_id: pair.away.id,
-            home_team_name: pair.home.name,
-            away_team_name: pair.away.name,
-            field: slot?.name || null,
+            matchday,
+            home_team_id: home.id,
+            away_team_id: away.id,
+            home_team_name: home.name,
+            away_team_name: away.name,
+            field: null,
             match_date: null,
-            match_time: slot?.time || null,
+            match_time: null,
             status: 'scheduled',
             home_goals: null,
             away_goals: null,
             forfait_team_id: null,
           })
-        })
-      })
+        }
+      }
 
       if (newMatches.length > 0) {
         const { error: insErr } = await supabase.from('matches').insert(newMatches)
@@ -638,17 +617,16 @@ export default function AdminTournamentDetail() {
       }
 
       return {
-        lockedMatchday,
-        locked: lockedMatches.length,
-        deleted: toDeleteIds.length,
+        played: playedRealMatches.length,
+        deleted: scheduledRealIds.length,
         inserted: newMatches.length,
       }
     },
-    onSuccess: ({ lockedMatchday, locked, deleted, inserted }) => {
+    onSuccess: ({ played, deleted, inserted }) => {
       qc.invalidateQueries({ queryKey: ['admin-matches', id] })
       toast.success(
         `Fixture reorganizado: ${inserted} partidos generados, ${deleted} reemplazados. ` +
-        `Jornada ${lockedMatchday} preservada (${locked} partido${locked !== 1 ? 's' : ''}).`
+        `${played} resultado${played !== 1 ? 's' : ''} preservado${played !== 1 ? 's' : ''}.`
       )
       setConfirmReorganizar(false)
     },
@@ -701,12 +679,10 @@ export default function AdminTournamentDetail() {
         remaining.push(...leftover)
       }
 
-      const fieldsConfig = tournament?.fields_config || []
       const startDay = maxRealMatchday + 1
       const newMatches = []
       rounds.forEach((round, ri) => {
-        round.forEach((pair, pi) => {
-          const slot = fieldsConfig.length > 0 ? fieldsConfig[pi % fieldsConfig.length] : null
+        round.forEach(pair => {
           newMatches.push({
             tournament_id: id,
             category_id: null,
@@ -716,9 +692,9 @@ export default function AdminTournamentDetail() {
             away_team_id: pair.away.id,
             home_team_name: pair.home.name,
             away_team_name: pair.away.name,
-            field: slot?.name || null,
+            field: null,
             match_date: null,
-            match_time: slot?.time || null,
+            match_time: null,
             status: 'scheduled',
             home_goals: null,
             away_goals: null,
