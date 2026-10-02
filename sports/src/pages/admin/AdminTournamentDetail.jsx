@@ -524,92 +524,112 @@ export default function AdminTournamentDetail() {
     onError: (e) => toast.error('Error al generar ida: ' + e.message),
   })
 
-  // ── Reorganizar fixture: regenera round-robin completo preservando resultados ──
-  // Útil cuando se agregan equipos después de haber jugado partidos.
-  // Mueve los partidos jugados a la jornada que el algoritmo les asigna,
-  // borra todos los pendientes y los reemplaza con el fixture nuevo.
+  // ── Reorganizar fixture: preserva jornada mínima (jugada + programada con fecha),
+  // borra solo los pendientes de jornadas superiores y redistribuye
+  // greedy todas las parejas restantes desde la siguiente jornada.
   const reorganizarIda = useMutation({
     mutationFn: async () => {
       if (teams.length < 2) throw new Error('Se necesitan al menos 2 equipos')
 
-      // 1. Algoritmo round-robin para todos los equipos actuales
-      const list = teams.length % 2 === 0 ? [...teams] : [...teams, null]
-      const size = list.length
-      const rounds = size - 1
-      const algoMap = new Map() // pairKey → { matchday, home, away }
+      // 1. Determinar la jornada bloqueada: la jornada más baja existente
+      const minMatchday = realMatches.length > 0
+        ? Math.min(...realMatches.map(m => m.matchday ?? Infinity))
+        : 1
+      const lockedMatchday = isFinite(minMatchday) ? minMatchday : 1
 
-      for (let r = 0; r < rounds; r++) {
-        for (let i = 0; i < size / 2; i++) {
-          const home = list[i]
-          const away = list[size - 1 - i]
-          if (home !== null && away !== null) {
-            const key = [home.id, away.id].sort().join('|')
-            algoMap.set(key, { matchday: r + 1, home, away })
-          }
-        }
-        const last = list[size - 1]
-        for (let i = size - 1; i > 1; i--) list[i] = list[i - 1]
-        list[1] = last
-      }
-
-      // 2. Separar jugados vs pendientes (solo partidos reales, no brackets)
-      const playedRealMatches = realMatches.filter(m =>
-        ['completed', 'forfait', 'no_show'].includes(m.status)
+      // 2. Todos los partidos de la jornada bloqueada se preservan intactos
+      const lockedMatches = realMatches.filter(m => m.matchday === lockedMatchday)
+      const lockedPairKeys = new Set(
+        lockedMatches.map(m => [m.home_team_id, m.away_team_id].sort().join('|'))
       )
-      const scheduledRealIds = realMatches
-        .filter(m => m.status === 'scheduled')
+
+      // 3. Partidos jugados en jornadas NO bloqueadas (conservar par, no reinsertar)
+      const playedOtherPairKeys = new Set(
+        realMatches
+          .filter(m =>
+            m.matchday !== lockedMatchday &&
+            ['completed', 'forfait', 'no_show'].includes(m.status)
+          )
+          .map(m => [m.home_team_id, m.away_team_id].sort().join('|'))
+      )
+
+      // 4. Borrar SOLO los pendientes de jornadas > lockedMatchday
+      const toDeleteIds = realMatches
+        .filter(m => m.matchday !== lockedMatchday && m.status === 'scheduled')
         .map(m => m.id)
-
-      // 3. Claves de partidos jugados (para no insertar duplicados)
-      const playedPairKeys = new Set(
-        playedRealMatches.map(m => [m.home_team_id, m.away_team_id].sort().join('|'))
-      )
-
-      // 4. Mover partidos jugados a su jornada según el algoritmo
-      for (const pm of playedRealMatches) {
-        const key = [pm.home_team_id, pm.away_team_id].sort().join('|')
-        const algo = algoMap.get(key)
-        if (algo && pm.matchday !== algo.matchday) {
-          const { error: updErr } = await supabase
-            .from('matches')
-            .update({ matchday: algo.matchday })
-            .eq('id', pm.id)
-          if (updErr) throw updErr
-        }
-      }
-
-      // 5. Borrar todos los partidos pendientes
-      if (scheduledRealIds.length > 0) {
+      if (toDeleteIds.length > 0) {
         const { error: delErr } = await supabase
           .from('matches')
           .delete()
-          .in('id', scheduledRealIds)
+          .in('id', toDeleteIds)
         if (delErr) throw delErr
       }
 
-      // 6. Insertar matches del algoritmo que no están ya jugados
+      // 5. Generar todos los C(n,2) pares excluyendo los ya bloqueados/jugados
+      const allPairs = []
+      for (let i = 0; i < teams.length; i++) {
+        for (let j = i + 1; j < teams.length; j++) {
+          const key = [teams[i].id, teams[j].id].sort().join('|')
+          if (!lockedPairKeys.has(key) && !playedOtherPairKeys.has(key)) {
+            allPairs.push({ home: teams[i], away: teams[j] })
+          }
+        }
+      }
+
+      // 6. Distribución greedy: max mpj partidos por jornada, cada equipo juega max 1 vez
+      const mpj = tournament?.matches_per_matchday ?? Math.floor(teams.length / 2)
+      const rounds = []
+      const remaining = [...allPairs]
+      while (remaining.length > 0) {
+        const round = []
+        const usedTeams = new Set()
+        const leftover = []
+        for (const pair of remaining) {
+          if (
+            round.length < mpj &&
+            !usedTeams.has(pair.home.id) &&
+            !usedTeams.has(pair.away.id)
+          ) {
+            round.push(pair)
+            usedTeams.add(pair.home.id)
+            usedTeams.add(pair.away.id)
+          } else {
+            leftover.push(pair)
+          }
+        }
+        rounds.push(round)
+        remaining.length = 0
+        remaining.push(...leftover)
+      }
+
+      // 7. Insertar nuevos partidos a partir de lockedMatchday + 1
+      const startDay = lockedMatchday + 1
+      const fieldsConfig = tournament?.fields_config || []
       const newMatches = []
-      for (const [key, { matchday, home, away }] of algoMap) {
-        if (!playedPairKeys.has(key)) {
+      rounds.forEach((round, ri) => {
+        round.forEach((pair, pi) => {
+          const slot = fieldsConfig.length > 0
+            ? fieldsConfig[pi % fieldsConfig.length]
+            : null
           newMatches.push({
             tournament_id: id,
             category_id: null,
             group_id: null,
-            matchday,
-            home_team_id: home.id,
-            away_team_id: away.id,
-            home_team_name: home.name,
-            away_team_name: away.name,
-            field: null,
+            matchday: startDay + ri,
+            home_team_id: pair.home.id,
+            away_team_id: pair.away.id,
+            home_team_name: pair.home.name,
+            away_team_name: pair.away.name,
+            field: slot?.name || null,
             match_date: null,
-            match_time: null,
+            match_time: slot?.time || null,
             status: 'scheduled',
             home_goals: null,
             away_goals: null,
             forfait_team_id: null,
           })
-        }
-      }
+        })
+      })
 
       if (newMatches.length > 0) {
         const { error: insErr } = await supabase.from('matches').insert(newMatches)
@@ -617,16 +637,17 @@ export default function AdminTournamentDetail() {
       }
 
       return {
-        played: playedRealMatches.length,
-        deleted: scheduledRealIds.length,
+        lockedMatchday,
+        locked: lockedMatches.length,
+        deleted: toDeleteIds.length,
         inserted: newMatches.length,
       }
     },
-    onSuccess: ({ played, deleted, inserted }) => {
+    onSuccess: ({ lockedMatchday, locked, deleted, inserted }) => {
       qc.invalidateQueries({ queryKey: ['admin-matches', id] })
       toast.success(
         `Fixture reorganizado: ${inserted} partidos generados, ${deleted} reemplazados. ` +
-        `${played} resultado${played !== 1 ? 's' : ''} preservado${played !== 1 ? 's' : ''}.`
+        `Jornada ${lockedMatchday} preservada (${locked} partido${locked !== 1 ? 's' : ''}).`
       )
       setConfirmReorganizar(false)
     },
@@ -1127,8 +1148,8 @@ export default function AdminTournamentDetail() {
                   <Calendar className="w-4 h-4" /> Completar ida
                 </button>
               )}
-              {/* Reorganizar fixture: hay jugados + fixture incompleto (ej: se agregaron equipos después) */}
-              {idaIncompleta && !hasVuelta && realMatches.some(m => ['completed', 'forfait', 'no_show'].includes(m.status)) && (
+              {/* Reorganizar fixture: hay jugados — redistribuye sin tocar la jornada más baja */}
+              {!hasVuelta && realMatches.some(m => ['completed', 'forfait', 'no_show'].includes(m.status)) && (
                 <button
                   onClick={() => setConfirmReorganizar(true)}
                   className="flex items-center gap-1.5 border border-orange-500 text-orange-700 hover:bg-orange-50 text-sm font-medium px-3 py-1.5 rounded-lg transition-colors"
