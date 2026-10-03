@@ -23,7 +23,7 @@ import BancosPanel from '../components/tesoreria/BancosPanel';
 import ExportContador from '../components/tesoreria/ExportContador';
 
 export default function Fondos() {
-  const { canDelete } = usePerms('fondos');
+  const { canDelete, isAdmin } = usePerms('fondos');
   const [showForm, setShowForm] = useState(false);
   const [showExpenseForm, setShowExpenseForm] = useState(false);
   const [showTraspasoModal, setShowTraspasoModal] = useState(false);
@@ -92,6 +92,34 @@ export default function Fondos() {
     },
   });
   const saldoEfectivo = Number(saldosCuentas.find(s => s.cuenta === 'Efectivo')?.saldo ?? 0);
+
+  // Cortes pendientes de entrega — el monto lo calcula el servidor (cero captura manual)
+  const { data: cortesPendientes = [] } = useQuery({
+    queryKey: ['cortesPendientes'],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('cortes_pendientes');
+      if (error) throw new Error(error.message);
+      return data || [];
+    },
+  });
+  const entregarCorteMutation = useMutation({
+    mutationFn: async (fecha) => {
+      const { data, error } = await supabase.rpc('entregar_corte', {
+        p_fecha: fecha,
+        p_op_key: (crypto.randomUUID ? crypto.randomUUID() : null),
+      });
+      if (error) throw new Error(error.message);
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['cashRegisters'] });
+      queryClient.invalidateQueries({ queryKey: ['saldosPorCuenta'] });
+      queryClient.invalidateQueries({ queryKey: ['cortesPendientes'] });
+      queryClient.invalidateQueries({ queryKey: ['allExpensesForFondos'] });
+      toast.success('Entrega registrada — la caja chica se descontó automáticamente');
+    },
+    onError: (err) => toast.error(`No se registró la entrega: ${err?.message || 'error desconocido'}`),
+  });
   const { data: cortes = [] } = useQuery({
     queryKey: ['cajaCortes'],
     queryFn: async () => {
@@ -402,6 +430,7 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
           <Button variant="outline" className="border-blue-300 text-blue-700 hover:bg-blue-50" onClick={() => setShowArqueo(true)}>
             <DollarSign className="w-4 h-4 mr-1" /> Arqueo de Caja
           </Button>
+          {isAdmin && (
           <Button
             onClick={() => {
               setEditingCashRegister(null);
@@ -419,6 +448,7 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
             <Plus className="w-4 h-4 mr-2" />
             Agregar Efectivo
           </Button>
+          )}
           <Button
             onClick={() => {
               setEditingExpense(null);
@@ -458,6 +488,71 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
           )}
 
           {cajaView === 'fondos' && (<>
+      {/* Cortes pendientes de entrega — sin captura manual de montos */}
+      <Card className="border-2 border-amber-300">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Wallet className="w-5 h-5 text-amber-600" />
+            Cortes pendientes de entrega a Fondos
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {cortesPendientes.filter((c) => !c.es_hoy && Number(c.pendiente) > 0).length === 0 && (
+            <p className="text-sm text-green-700 font-medium">Sin cortes pendientes de entrega.</p>
+          )}
+          {cortesPendientes.map((c) => {
+            const pend = Number(c.pendiente) || 0;
+            const fechaTxt = format(new Date(c.fecha + 'T12:00:00'), "dd 'de' MMMM yyyy", { locale: es });
+            if (c.es_hoy) {
+              return (
+                <div key={c.fecha} className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-lg bg-blue-50 border border-blue-200">
+                  <div className="text-sm">
+                    <span className="font-semibold">{fechaTxt}</span>
+                    <Badge className="ml-2 bg-blue-600">día en curso</Badge>
+                    <p className="text-xs text-gray-600 mt-1">
+                      Cobros {formatCurrency(Number(c.cobros))} − gastos de caja {formatCurrency(Number(c.gastos))} = <b>{formatCurrency(Number(c.neto))}</b> · se entrega mañana con el día cerrado.
+                    </p>
+                  </div>
+                </div>
+              );
+            }
+            if (pend <= 0) return null;
+            return (
+              <div key={c.fecha} className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-lg bg-amber-50 border border-amber-200">
+                <div className="text-sm">
+                  <span className="font-semibold">{fechaTxt}</span>
+                  <p className="text-xs text-gray-600 mt-1">
+                    Cobros {formatCurrency(Number(c.cobros))} − gastos de caja {formatCurrency(Number(c.gastos))} = <b>{formatCurrency(Number(c.neto))}</b>
+                    {Number(c.entregado) > 0 ? ` · ya entregado ${formatCurrency(Number(c.entregado))}` : ''}
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  className="bg-emerald-600 hover:bg-emerald-700"
+                  disabled={entregarCorteMutation.isPending}
+                  onClick={async () => {
+                    const ok = await confirmar(
+                      `Confirma la entrega de ${formatCurrency(pend)} a Caja Fondos (corte del ${fechaTxt}). El monto lo calculó el sistema — solo confirma que el efectivo va completo.`,
+                      { titulo: 'Registrar entrega de corte', confirmLabel: 'Sí, entregar' }
+                    );
+                    if (ok) entregarCorteMutation.mutate(c.fecha);
+                  }}
+                >
+                  Entregar {formatCurrency(pend)}
+                </Button>
+              </div>
+            );
+          })}
+          <p className="text-xs text-gray-500 border-t pt-2">
+            Fondo que debe quedar en caja chica: <b>{formatCurrency(
+              saldoEfectivo
+              - cortesPendientes.filter((c) => !c.es_hoy).reduce((s2, c) => s2 + Math.max(Number(c.pendiente) || 0, 0), 0)
+              - Math.max(Number(cortesPendientes.find((c) => c.es_hoy)?.neto) || 0, 0)
+            )}</b> — efectivo del sistema {formatCurrency(saldoEfectivo)} menos cortes aún no entregados.
+          </p>
+        </CardContent>
+      </Card>
+
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card className="border-2 border-green-200 bg-gradient-to-br from-green-50 to-white">
           <CardContent className="pt-6">
