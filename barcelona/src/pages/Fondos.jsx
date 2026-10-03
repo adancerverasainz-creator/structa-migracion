@@ -23,7 +23,7 @@ import BancosPanel from '../components/tesoreria/BancosPanel';
 import ExportContador from '../components/tesoreria/ExportContador';
 
 export default function Fondos() {
-  const { canDelete } = usePerms('fondos');
+  const { canDelete, isAdmin } = usePerms('fondos');
   const [showForm, setShowForm] = useState(false);
   const [showExpenseForm, setShowExpenseForm] = useState(false);
   const [showTraspasoModal, setShowTraspasoModal] = useState(false);
@@ -92,6 +92,49 @@ export default function Fondos() {
     },
   });
   const saldoEfectivo = Number(saldosCuentas.find(s => s.cuenta === 'Efectivo')?.saldo ?? 0);
+
+  // Cortes pendientes de entrega — el monto lo calcula el servidor (cero captura manual)
+  const { data: cortesPendientes = [] } = useQuery({
+    queryKey: ['cortesPendientes'],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('cortes_pendientes');
+      if (error) throw new Error(error.message);
+      return data || [];
+    },
+  });
+  const entregarCorteMutation = useMutation({
+    mutationFn: async (fecha) => {
+      const { data, error } = await supabase.rpc('entregar_corte', {
+        p_fecha: fecha,
+        p_op_key: (crypto.randomUUID ? crypto.randomUUID() : null),
+      });
+      if (error) throw new Error(error.message);
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['cashRegisters'] });
+      queryClient.invalidateQueries({ queryKey: ['saldosPorCuenta'] });
+      queryClient.invalidateQueries({ queryKey: ['cortesPendientes'] });
+      queryClient.invalidateQueries({ queryKey: ['allExpensesForFondos'] });
+      toast.success('Entrega registrada — la caja chica se descontó automáticamente');
+    },
+    onError: (err) => toast.error(`No se registró la entrega: ${err?.message || 'error desconocido'}`),
+  });
+
+  // Fase 2: entregas en tránsito (corte entregado, pendiente de "recibido" del admin)
+  const entregasTransito = (cashRegisters || []).filter((r) => r.corte_fecha && !r.recibido_at);
+  const confirmarRecepcionMutation = useMutation({
+    mutationFn: async (id) => {
+      const { error } = await supabase.rpc('confirmar_recepcion_corte', { p_cash_id: id });
+      if (error) throw new Error(error.message);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['cashRegisters'] });
+      queryClient.invalidateQueries({ queryKey: ['cortesPendientes'] });
+      toast.success('Recepción confirmada — corte cerrado con doble firma');
+    },
+    onError: (err) => toast.error(`No se confirmó la recepción: ${err?.message || 'error desconocido'}`),
+  });
   const { data: cortes = [] } = useQuery({
     queryKey: ['cajaCortes'],
     queryFn: async () => {
@@ -109,19 +152,9 @@ export default function Fondos() {
   }, {});
 
   const createMutation = useMutation({
-    // Corte ATÓMICO (RPC): ingreso a Fondos + egreso de caja chica en una sola
-    // operación. El camino viejo (CashRegister.create directo) solo acreditaba
-    // Fondos y dejaba la caja chica inflada — fuga contable corregida 02/10/2026.
-    mutationFn: async (data) => {
-      const { data: id, error } = await supabase.rpc('registrar_corte_fondos', {
-        p_monto: data.cash_amount,
-        p_fecha: data.register_date || null,
-        p_notas: data.notes || null,
-        p_op_key: (crypto.randomUUID ? crypto.randomUUID() : null),
-      });
-      if (error) throw new Error(error.message);
-      return id;
-    },
+    // El trigger trg_corte_doble_asiento (BD) crea solo el egreso gemelo que
+    // debita la caja chica al registrar el corte — NO llamar RPCs aquí.
+    mutationFn: (data) => base44.entities.CashRegister.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['cashRegisters'] });
 queryClient.invalidateQueries({ queryKey: ['saldosPorCuenta'] });
@@ -412,6 +445,7 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
           <Button variant="outline" className="border-blue-300 text-blue-700 hover:bg-blue-50" onClick={() => setShowArqueo(true)}>
             <DollarSign className="w-4 h-4 mr-1" /> Arqueo de Caja
           </Button>
+          {isAdmin && (
           <Button
             onClick={() => {
               setEditingCashRegister(null);
@@ -429,6 +463,7 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
             <Plus className="w-4 h-4 mr-2" />
             Agregar Efectivo
           </Button>
+          )}
           <Button
             onClick={() => {
               setEditingExpense(null);
@@ -468,6 +503,103 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
           )}
 
           {cajaView === 'fondos' && (<>
+      {/* Cortes pendientes de entrega — sin captura manual de montos */}
+      <Card className="border-2 border-amber-300">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Wallet className="w-5 h-5 text-amber-600" />
+            Cortes pendientes de entrega a Fondos
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {cortesPendientes.filter((c) => !c.es_hoy && Number(c.pendiente) > 0).length === 0 && (
+            <p className="text-sm text-green-700 font-medium">Sin cortes pendientes de entrega.</p>
+          )}
+          {cortesPendientes.map((c) => {
+            const pend = Number(c.pendiente) || 0;
+            const fechaTxt = format(new Date(c.fecha + 'T12:00:00'), "dd 'de' MMMM yyyy", { locale: es });
+            if (c.es_hoy) {
+              return (
+                <div key={c.fecha} className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-lg bg-blue-50 border border-blue-200">
+                  <div className="text-sm">
+                    <span className="font-semibold">{fechaTxt}</span>
+                    <Badge className="ml-2 bg-blue-600">día en curso</Badge>
+                    <p className="text-xs text-gray-600 mt-1">
+                      Cobros {formatCurrency(Number(c.cobros))} − gastos de caja {formatCurrency(Number(c.gastos))} = <b>{formatCurrency(Number(c.neto))}</b> · se entrega mañana con el día cerrado.
+                    </p>
+                  </div>
+                </div>
+              );
+            }
+            if (pend <= 0) return null;
+            return (
+              <div key={c.fecha} className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-lg bg-amber-50 border border-amber-200">
+                <div className="text-sm">
+                  <span className="font-semibold">{fechaTxt}</span>
+                  <p className="text-xs text-gray-600 mt-1">
+                    Cobros {formatCurrency(Number(c.cobros))} − gastos de caja {formatCurrency(Number(c.gastos))} = <b>{formatCurrency(Number(c.neto))}</b>
+                    {Number(c.entregado) > 0 ? ` · ya entregado ${formatCurrency(Number(c.entregado))}` : ''}
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  className="bg-emerald-600 hover:bg-emerald-700"
+                  disabled={entregarCorteMutation.isPending}
+                  onClick={async () => {
+                    const ok = await confirmar(
+                      `Confirma la entrega de ${formatCurrency(pend)} a Caja Fondos (corte del ${fechaTxt}). El monto lo calculó el sistema — solo confirma que el efectivo va completo.`,
+                      { titulo: 'Registrar entrega de corte', confirmLabel: 'Sí, entregar' }
+                    );
+                    if (ok) entregarCorteMutation.mutate(c.fecha);
+                  }}
+                >
+                  Entregar {formatCurrency(pend)}
+                </Button>
+              </div>
+            );
+          })}
+          {entregasTransito.length > 0 && (
+            <div className="space-y-2 border-t pt-3">
+              <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Entregas en tránsito — esperando confirmación de recepción</p>
+              {entregasTransito.map((r) => (
+                <div key={r.id} className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                  <div className="text-sm">
+                    <span className="font-semibold">{formatCurrency(Number(r.cash_amount) || 0)}</span>
+                    <span className="text-gray-600"> · corte del {format(new Date(r.corte_fecha + 'T12:00:00'), 'dd/MM/yyyy')}</span>
+                    <p className="text-xs text-gray-600 mt-1">Entregó: {r.created_by || '—'} el {format(new Date(r.register_date + 'T12:00:00'), 'dd/MM/yyyy')}</p>
+                  </div>
+                  {isAdmin ? (
+                    <Button
+                      size="sm"
+                      className="bg-indigo-600 hover:bg-indigo-700"
+                      disabled={confirmarRecepcionMutation.isPending}
+                      onClick={async () => {
+                        const ok = await confirmar(
+                          `Confirma que recibiste ${formatCurrency(Number(r.cash_amount) || 0)} en efectivo (corte del ${format(new Date(r.corte_fecha + 'T12:00:00'), 'dd/MM/yyyy')}). Confirma solo con el dinero contado en mano — si no cuadra, primero se reversa lo que corresponda.`,
+                          { titulo: 'Confirmar recepción del corte', confirmLabel: 'Sí, lo recibí completo' }
+                        );
+                        if (ok) confirmarRecepcionMutation.mutate(r.id);
+                      }}
+                    >
+                      Confirmar recibido
+                    </Button>
+                  ) : (
+                    <Badge variant="outline" className="border-indigo-400 text-indigo-700">En tránsito</Badge>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+          <p className="text-xs text-gray-500 border-t pt-2">
+            Fondo que debe quedar en caja chica: <b>{formatCurrency(
+              saldoEfectivo
+              - cortesPendientes.filter((c) => !c.es_hoy).reduce((s2, c) => s2 + Math.max(Number(c.pendiente) || 0, 0), 0)
+              - Math.max(Number(cortesPendientes.find((c) => c.es_hoy)?.neto) || 0, 0)
+            )}</b> — efectivo del sistema {formatCurrency(saldoEfectivo)} menos cortes aún no entregados.
+          </p>
+        </CardContent>
+      </Card>
+
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card className="border-2 border-green-200 bg-gradient-to-br from-green-50 to-white">
           <CardContent className="pt-6">
