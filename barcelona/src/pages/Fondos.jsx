@@ -512,7 +512,7 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          {cortesPendientes.filter((c) => !c.es_hoy && Number(c.pendiente) > 0).length === 0 && (
+          {cortesPendientes.filter((c) => !c.es_hoy && Number(c.pendiente) !== 0).length === 0 && (
             <p className="text-sm text-green-700 font-medium">Sin cortes pendientes de entrega.</p>
           )}
           {cortesPendientes.map((c) => {
@@ -689,7 +689,7 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
                   onChange={(e) => setFormData({ ...formData, source: e.target.value })}
                   placeholder="Ej: Corte de caja"
                 />
-                {!editingCashRegister && /corte/i.test(formData.source || '') && (
+                {!editingCashRegister && /corte/i.test(formData.source || '') && cortesPendientes.some((c) => !c.es_hoy && Number(c.pendiente) > 0) && (
                   <p className="text-xs text-amber-700 bg-amber-50 border border-amber-300 rounded-md px-2 py-1.5">
                     ⚠ Los cortes de caja se registran con el botón <b>Entregar</b> de la tarjeta
                     "Cortes pendientes" — este formulario NO liquida pendientes y puede duplicar la entrega.
