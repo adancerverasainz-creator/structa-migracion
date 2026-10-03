@@ -109,19 +109,9 @@ export default function Fondos() {
   }, {});
 
   const createMutation = useMutation({
-    // Corte ATÓMICO (RPC): ingreso a Fondos + egreso de caja chica en una sola
-    // operación. El camino viejo (CashRegister.create directo) solo acreditaba
-    // Fondos y dejaba la caja chica inflada — fuga contable corregida 02/10/2026.
-    mutationFn: async (data) => {
-      const { data: id, error } = await supabase.rpc('registrar_corte_fondos', {
-        p_monto: data.cash_amount,
-        p_fecha: data.register_date || null,
-        p_notas: data.notes || null,
-        p_op_key: (crypto.randomUUID ? crypto.randomUUID() : null),
-      });
-      if (error) throw new Error(error.message);
-      return id;
-    },
+    // El trigger trg_corte_doble_asiento (BD) crea solo el egreso gemelo que
+    // debita la caja chica al registrar el corte — NO llamar RPCs aquí.
+    mutationFn: (data) => base44.entities.CashRegister.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['cashRegisters'] });
 queryClient.invalidateQueries({ queryKey: ['saldosPorCuenta'] });
