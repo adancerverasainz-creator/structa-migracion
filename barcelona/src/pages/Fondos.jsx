@@ -120,6 +120,21 @@ export default function Fondos() {
     },
     onError: (err) => toast.error(`No se registró la entrega: ${err?.message || 'error desconocido'}`),
   });
+
+  // Fase 2: entregas en tránsito (corte entregado, pendiente de "recibido" del admin)
+  const entregasTransito = (cashRegisters || []).filter((r) => r.corte_fecha && !r.recibido_at);
+  const confirmarRecepcionMutation = useMutation({
+    mutationFn: async (id) => {
+      const { error } = await supabase.rpc('confirmar_recepcion_corte', { p_cash_id: id });
+      if (error) throw new Error(error.message);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['cashRegisters'] });
+      queryClient.invalidateQueries({ queryKey: ['cortesPendientes'] });
+      toast.success('Recepción confirmada — corte cerrado con doble firma');
+    },
+    onError: (err) => toast.error(`No se confirmó la recepción: ${err?.message || 'error desconocido'}`),
+  });
   const { data: cortes = [] } = useQuery({
     queryKey: ['cajaCortes'],
     queryFn: async () => {
@@ -543,6 +558,38 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
               </div>
             );
           })}
+          {entregasTransito.length > 0 && (
+            <div className="space-y-2 border-t pt-3">
+              <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Entregas en tránsito — esperando confirmación de recepción</p>
+              {entregasTransito.map((r) => (
+                <div key={r.id} className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                  <div className="text-sm">
+                    <span className="font-semibold">{formatCurrency(Number(r.cash_amount) || 0)}</span>
+                    <span className="text-gray-600"> · corte del {format(new Date(r.corte_fecha + 'T12:00:00'), 'dd/MM/yyyy')}</span>
+                    <p className="text-xs text-gray-600 mt-1">Entregó: {r.created_by || '—'} el {format(new Date(r.register_date + 'T12:00:00'), 'dd/MM/yyyy')}</p>
+                  </div>
+                  {isAdmin ? (
+                    <Button
+                      size="sm"
+                      className="bg-indigo-600 hover:bg-indigo-700"
+                      disabled={confirmarRecepcionMutation.isPending}
+                      onClick={async () => {
+                        const ok = await confirmar(
+                          `Confirma que recibiste ${formatCurrency(Number(r.cash_amount) || 0)} en efectivo (corte del ${format(new Date(r.corte_fecha + 'T12:00:00'), 'dd/MM/yyyy')}). Confirma solo con el dinero contado en mano — si no cuadra, primero se reversa lo que corresponda.`,
+                          { titulo: 'Confirmar recepción del corte', confirmLabel: 'Sí, lo recibí completo' }
+                        );
+                        if (ok) confirmarRecepcionMutation.mutate(r.id);
+                      }}
+                    >
+                      Confirmar recibido
+                    </Button>
+                  ) : (
+                    <Badge variant="outline" className="border-indigo-400 text-indigo-700">En tránsito</Badge>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
           <p className="text-xs text-gray-500 border-t pt-2">
             Fondo que debe quedar en caja chica: <b>{formatCurrency(
               saldoEfectivo
