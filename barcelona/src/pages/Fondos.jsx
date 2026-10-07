@@ -499,7 +499,7 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
           </div>
 
           {cajaView === 'efectivo' && (
-            <CajaEfectivoLibro payments={allPayments} expenses={allExpenses} cortes={cortes} onCorte={() => setShowCorte(true)} />
+            <CajaEfectivoLibro payments={allPayments} expenses={allExpenses} cortes={cortes} onCorte={() => setShowCorte(true)} saldoServidor={saldosCuentas.find(s => s.cuenta === 'Efectivo') || null} />
           )}
 
           {cajaView === 'fondos' && (<>
