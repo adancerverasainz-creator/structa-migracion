@@ -577,6 +577,7 @@ export default function AdminTournamentDetail() {
       // 5. Algoritmo Berger (circle method) solo sobre equipos activos
       //    Los retirados/descalificados no participan en el nuevo fixture
       const activeTeams = teams.filter(t => t.status !== 'withdrawn' && t.status !== 'disqualified')
+      if (activeTeams.length < 2) throw new Error('Se necesitan al menos 2 equipos activos para reorganizar.')
       const bergerList = activeTeams.length % 2 === 0 ? [...activeTeams] : [...activeTeams, null]
       const bergerSize = bergerList.length
       const bergerRounds = bergerSize - 1
@@ -665,26 +666,27 @@ export default function AdminTournamentDetail() {
   // ── Completar jornadas de ida faltantes (ida parcial) ───────────────────
   const generarCompletarIda = useMutation({
     mutationFn: async () => {
-      if (teams.length < 2) throw new Error('Se necesitan al menos 2 equipos')
+      const activeForCompletar = teams.filter(t => t.status !== 'withdrawn' && t.status !== 'disqualified')
+      if (activeForCompletar.length < 2) throw new Error('Se necesitan al menos 2 equipos activos')
 
       // Parejas ya programadas (independientemente del orden local/visitante)
       const scheduledPairs = new Set(
         realMatches.map(m => [m.home_team_id, m.away_team_id].sort().join('|'))
       )
 
-      // Todas las parejas posibles que aún faltan
+      // Todas las parejas posibles entre equipos activos que aún faltan
       const missingPairs = []
-      for (let i = 0; i < teams.length; i++) {
-        for (let j = i + 1; j < teams.length; j++) {
-          const key = [teams[i].id, teams[j].id].sort().join('|')
+      for (let i = 0; i < activeForCompletar.length; i++) {
+        for (let j = i + 1; j < activeForCompletar.length; j++) {
+          const key = [activeForCompletar[i].id, activeForCompletar[j].id].sort().join('|')
           if (!scheduledPairs.has(key)) {
-            missingPairs.push({ home: teams[i], away: teams[j] })
+            missingPairs.push({ home: activeForCompletar[i], away: activeForCompletar[j] })
           }
         }
       }
 
       if (missingPairs.length === 0) {
-        throw new Error('Ya están generados todos los partidos de ida. Puedes generar la vuelta.')
+        throw new Error('Ya están generados todos los partidos de ida entre equipos activos. Puedes generar la vuelta.')
       }
 
       // Distribuir en jornadas: algoritmo greedy — cada equipo aparece máx 1 vez por jornada
@@ -767,7 +769,9 @@ export default function AdminTournamentDetail() {
       if (missing.length === 0) throw new Error('Este equipo ya tiene partidos contra todos los equipos activos.')
 
       const nextMatchday = maxRealMatchday + 1
-      const rivals = teams.filter(t => missing.includes(t.id))
+      // Solo programar contra equipos activos (no retirados ni descalificados)
+      const rivals = teams.filter(t => missing.includes(t.id) && t.status !== 'withdrawn' && t.status !== 'disqualified')
+      if (rivals.length === 0) throw new Error('No quedan rivales activos para programar.')
       const newMatches = rivals.map((rival, i) => ({
         tournament_id: id,
         category_id: null,
@@ -981,7 +985,9 @@ export default function AdminTournamentDetail() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['admin-teams', id] })
       qc.invalidateQueries({ queryKey: ['admin-matches', id] })
-      toast.success('Equipo reactivado')
+      qc.invalidateQueries({ queryKey: ['admin-events', id] })
+      qc.invalidateQueries({ queryKey: ['reconciliation', id] })
+      toast.success('Equipo reactivado. Los resultados W.O. previos permanecen en tabla — edítalos manualmente si es necesario.')
     },
     onError: (e) => toast.error('Error al reactivar: ' + e.message),
   })
@@ -1009,8 +1015,9 @@ export default function AdminTournamentDetail() {
   )
   // Motor de Bracket: ya existen partidos de eliminatoria
   const hasBracket = matches.some(m => m.home_team_id === null && m.away_team_id === null)
-  // Ida incompleta: hay matches reales pero faltan parejas (N*(N-1)/2 total)
-  const totalPairs = teams.length * (teams.length - 1) / 2
+  // Ida incompleta: hay matches reales pero faltan parejas entre activos (N*(N-1)/2 total)
+  const activeTeamsForPairs = teams.filter(t => t.status !== 'withdrawn' && t.status !== 'disqualified')
+  const totalPairs = activeTeamsForPairs.length * (activeTeamsForPairs.length - 1) / 2
   const idaIncompleta = realMatches.length > 0 && realMatches.length < totalPairs
 
   // ── Grouped matches by matchday ───────────────────────────────────────────
@@ -2037,7 +2044,7 @@ export default function AdminTournamentDetail() {
         ).length
         const playedCount = matches.filter(
           m => (m.home_team_id === bajaTeam.id || m.away_team_id === bajaTeam.id) &&
-            ['completed', 'forfait', 'no_show'].includes(m.status)
+            ['completed', 'forfait', 'no_show', 'walkover'].includes(m.status)
         ).length
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
