@@ -562,7 +562,11 @@ export default function AdminTournamentDetail() {
           .map(m => [m.home_team_id, m.away_team_id].sort().join('|'))
       )
 
-      // 4. Borrar SOLO los pendientes de jornadas > lockedMatchday
+      // 4. Verificar equipos activos ANTES de borrar (guard adelantado)
+      const activeTeams = teams.filter(t => t.status !== 'withdrawn' && t.status !== 'disqualified')
+      if (activeTeams.length < 2) throw new Error('Se necesitan al menos 2 equipos activos para reorganizar.')
+
+      // 5. Borrar SOLO los pendientes de jornadas > lockedMatchday
       const toDeleteIds = realMatches
         .filter(m => m.matchday !== lockedMatchday && m.status === 'scheduled')
         .map(m => m.id)
@@ -574,10 +578,8 @@ export default function AdminTournamentDetail() {
         if (delErr) throw delErr
       }
 
-      // 5. Algoritmo Berger (circle method) solo sobre equipos activos
+      // 6 (era 5). Algoritmo Berger (circle method) solo sobre equipos activos
       //    Los retirados/descalificados no participan en el nuevo fixture
-      const activeTeams = teams.filter(t => t.status !== 'withdrawn' && t.status !== 'disqualified')
-      if (activeTeams.length < 2) throw new Error('Se necesitan al menos 2 equipos activos para reorganizar.')
       const bergerList = activeTeams.length % 2 === 0 ? [...activeTeams] : [...activeTeams, null]
       const bergerSize = bergerList.length
       const bergerRounds = bergerSize - 1
@@ -766,7 +768,7 @@ export default function AdminTournamentDetail() {
       )
 
       const missing = [...playedTeamIds].filter(tid => !alreadyHas.has(tid))
-      if (missing.length === 0) throw new Error('Este equipo ya tiene partidos contra todos los equipos activos.')
+      if (missing.length === 0) throw new Error('Este equipo ya tiene partidos contra todos los equipos.')
 
       const nextMatchday = maxRealMatchday + 1
       // Solo programar contra equipos activos (no retirados ni descalificados)
@@ -776,7 +778,7 @@ export default function AdminTournamentDetail() {
         tournament_id: id,
         category_id: null,
         group_id: null,
-        matchday: nextMatchday + Math.floor(i / Math.floor(teams.length / 2)),
+        matchday: nextMatchday + Math.floor(i / Math.max(1, Math.floor(rivals.length / 2))),
         home_team_id: lateTeam.id,
         away_team_id: rival.id,
         home_team_name: lateTeam.name,
@@ -1017,8 +1019,13 @@ export default function AdminTournamentDetail() {
   const hasBracket = matches.some(m => m.home_team_id === null && m.away_team_id === null)
   // Ida incompleta: hay matches reales pero faltan parejas entre activos (N*(N-1)/2 total)
   const activeTeamsForPairs = teams.filter(t => t.status !== 'withdrawn' && t.status !== 'disqualified')
+  const activeTeamIds = new Set(activeTeamsForPairs.map(t => t.id))
   const totalPairs = activeTeamsForPairs.length * (activeTeamsForPairs.length - 1) / 2
-  const idaIncompleta = realMatches.length > 0 && realMatches.length < totalPairs
+  // Solo contar matches entre dos equipos activos (excluye walkovers vs equipo retirado)
+  const activeRealMatchCount = realMatches.filter(
+    m => activeTeamIds.has(m.home_team_id) && activeTeamIds.has(m.away_team_id)
+  ).length
+  const idaIncompleta = activeRealMatchCount > 0 && activeRealMatchCount < totalPairs
 
   // ── Grouped matches by matchday ───────────────────────────────────────────
   const matchesByDay = matches.reduce((acc, m) => {
@@ -1273,7 +1280,7 @@ export default function AdminTournamentDetail() {
                 </button>
               )}
               {/* Completar ida: hay matches pero faltan parejas (sin jugados, solo agrega) */}
-              {idaIncompleta && !hasVuelta && !realMatches.some(m => ['completed', 'forfait', 'no_show'].includes(m.status)) && (
+              {idaIncompleta && !hasVuelta && !realMatches.some(m => ['completed', 'forfait', 'no_show', 'walkover'].includes(m.status)) && (
                 <button
                   onClick={() => setConfirmCompletarIda(true)}
                   className="flex items-center gap-1.5 border border-blue-600 text-blue-700 hover:bg-blue-50 text-sm font-medium px-3 py-1.5 rounded-lg transition-colors"
