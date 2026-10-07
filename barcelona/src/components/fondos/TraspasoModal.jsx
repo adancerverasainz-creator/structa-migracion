@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { ArrowRightLeft, Building2, Wallet, AlertCircle } from 'lucide-react';
 import { formatCurrency } from '../lib/formatCurrency';
+import { format } from 'date-fns';
 
 const BANKS = [
   { value: 'BBVA', label: 'BBVA' },
@@ -22,7 +23,7 @@ export default function TraspasoModal({ onClose, bankBalances }) {
   const [form, setForm] = useState({
     bank: '',
     amount: '',
-    date: new Date().toISOString().split('T')[0],
+    date: format(new Date(), 'yyyy-MM-dd'), // fecha LOCAL, no UTC
     reference: '',
     notes: '',
   });
