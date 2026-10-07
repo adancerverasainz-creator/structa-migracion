@@ -11,12 +11,14 @@ import { formatCurrency } from '../lib/formatCurrency';
  * todo gasto en efectivo sale de aquí. Los movimientos se administran en sus
  * módulos de origen (Pagos/Egresos); este libro es de consulta + Corte de Caja.
  */
-export default function CajaEfectivoLibro({ payments, expenses, cortes = [], onCorte }) {
+export default function CajaEfectivoLibro({ payments, expenses, cortes = [], onCorte, saldoServidor = null }) {
   // Todo registro del pool es dinero recibido (los summer no cobrados se filtran
   // antes de llegar aquí, en Tesorería) — misma regla que el RPC saldos_por_cuenta.
   const ingresos = payments.filter(p =>
     p.payment_method === 'efectivo' && (p.bank_name || '') !== 'Fondos');
-  const egresos = expenses.filter(e => e.payment_method === 'efectivo');
+  // Lo pagado desde Fondos (account='Fondos') NO sale de esta caja — misma regla
+  // que el RPC saldos_por_cuenta (antes se restaba y el saldo salía negativo).
+  const egresos = expenses.filter(e => e.payment_method === 'efectivo' && (e.account || '') !== 'Fondos');
 
   const movimientos = [
     ...ingresos.map(p => ({
@@ -44,9 +46,11 @@ export default function CajaEfectivoLibro({ payments, expenses, cortes = [], onC
     });
   }
 
-  const totalIn = ingresos.reduce((s, p) => s + (p.paid_amount ?? p.amount ?? 0), 0);
-  const totalOut = egresos.reduce((s, e) => s + (e.amount || 0), 0);
-  const saldo = totalIn - totalOut;
+  // Las tarjetas muestran el saldo OFICIAL del servidor (saldos_por_cuenta) cuando
+  // está disponible; el cálculo local solo es respaldo y alimenta el libro.
+  const totalIn = saldoServidor ? Number(saldoServidor.ingresos) : ingresos.reduce((s, p) => s + (p.paid_amount ?? p.amount ?? 0), 0);
+  const totalOut = saldoServidor ? Number(saldoServidor.egresos) : egresos.reduce((s, e) => s + (e.amount || 0), 0);
+  const saldo = saldoServidor ? Number(saldoServidor.saldo) : totalIn - totalOut;
   const visibles = movimientos.slice(0, 100);
 
   return (
