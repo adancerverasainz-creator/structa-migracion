@@ -599,7 +599,7 @@ export default function AdminTournamentDetail() {
         bergerListCopy[1] = last
       }
 
-      // 6. Distribuir los pares no bloqueados/jugados en sus rondas Berger
+      // 7. Distribuir los pares no bloqueados/jugados en sus rondas Berger
       //    Solo pares entre equipos activos
       const roundBuckets = Array.from({ length: bergerRounds }, () => [])
       for (let i = 0; i < activeTeams.length; i++) {
@@ -778,7 +778,7 @@ export default function AdminTournamentDetail() {
         tournament_id: id,
         category_id: null,
         group_id: null,
-        matchday: nextMatchday + Math.floor(i / Math.max(1, Math.floor(rivals.length / 2))),
+        matchday: nextMatchday + i,
         home_team_id: lateTeam.id,
         away_team_id: rival.id,
         home_team_name: lateTeam.name,
