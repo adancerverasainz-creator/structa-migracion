@@ -394,16 +394,18 @@ const dayBruto = dayInc - dayExp + dayRev;
 const dayDifiere = Math.abs(dayNetoReal - dayBruto) > 0.005;
 // ── Corte de caja (efectivo a entregar por quien cobra) ──
 // Cobros del día que entraron a la caja chica (efectivo vigente; lo que va
-// directo a Fondos no pasa por las manos del cajero) MENOS los gastos
-// operativos pagados A MANO desde esa caja con dinero del día. Nómina
-// (payroll_item_id), abonos CxP (cxp_payment_id), egresos de otros módulos y
-// traspasos se fondean desde Fondos: no descuentan el corte del cajero.
+// directo a Fondos no pasa por las manos del cajero) MENOS los gastos pagados
+// A MANO desde esa caja con dinero del día, incluidos los abonos CxP en
+// efectivo (el motor CxP guarda los pagados desde Fondos como transferencia/
+// Fondos, así que todo CxP 'efectivo' sale de la caja chica — fix 06/10/2026).
+// Nómina (payroll_item_id), otros módulos y traspasos se fondean desde Fondos:
+// esos no descuentan el corte del cajero.
 const cobrosCaja = allPayments.filter(p => vigente(p) && inRange(p, dayStart, dayEnd)
   && p.payment_method === 'efectivo' && p.bank_name !== 'Fondos');
 const gastosCaja = allExpenses.filter(e => vigente(e) && inRange(e, dayStart, dayEnd)
   && e.payment_method === 'efectivo' && e.account !== 'Fondos'
-  && !e.payroll_item_id && !e.cxp_payment_id
-  && (!e.source_module || e.source_module === 'egresos'));
+  && !e.payroll_item_id
+  && (!e.source_module || e.source_module === 'egresos' || e.source_module === 'cxp'));
 const corteCobros = cobrosCaja.reduce((s, p) => s + getEffectiveAmount(p), 0);
 const corteGastos = gastosCaja.reduce((s, e) => s + (e.amount || 0), 0);
 const corteEntregar = corteCobros - corteGastos;
@@ -745,9 +747,9 @@ sub="Sin reversados ni contra-movimientos — el dinero que realmente quedó" />
 )}
 </div>
 <p className="text-[11px] text-gray-400 border-t pt-2">
-Solo movimientos vigentes de la caja del día. La nómina, los abonos a cuentas por
-pagar y todo lo fondeado desde Fondos no descuentan este corte: ese dinero no sale
-de los cobros del día.
+Solo movimientos vigentes de la caja del día. Los abonos a cuentas por pagar
+pagados en efectivo de la caja SÍ se descuentan. La nómina y todo lo pagado o
+fondeado desde Fondos no descuentan este corte: ese dinero no sale de los cobros del día.
 </p>
 </CardContent>
 </Card>

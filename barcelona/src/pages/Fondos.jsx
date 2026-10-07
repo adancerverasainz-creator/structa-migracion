@@ -512,7 +512,7 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          {cortesPendientes.filter((c) => !c.es_hoy && Number(c.pendiente) > 0).length === 0 && (
+          {cortesPendientes.filter((c) => !c.es_hoy && Number(c.pendiente) !== 0).length === 0 && (
             <p className="text-sm text-green-700 font-medium">Sin cortes pendientes de entrega.</p>
           )}
           {cortesPendientes.map((c) => {
@@ -531,7 +531,22 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
                 </div>
               );
             }
-            if (pend <= 0) return null;
+            if (pend < 0) {
+              return (
+                <div key={c.fecha} className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-lg bg-red-50 border border-red-200">
+                  <div className="text-sm">
+                    <span className="font-semibold text-red-700">{fechaTxt}</span>
+                    <Badge variant="outline" className="ml-2 border-red-400 text-red-700">día en déficit</Badge>
+                    <p className="text-xs text-red-600 mt-1">
+                      {Number(c.entregado) > Number(c.neto) && Number(c.entregado) > 0
+                        ? `Se entregó ${formatCurrency(Math.abs(pend))} de más respecto al neto vigente (¿hubo un reverso después de la entrega?). Corrige antes de confirmar la recepción.`
+                        : `Los gastos de caja superaron los cobros por ${formatCurrency(Math.abs(pend))} — ese faltante salió del fondo de caja. Revisa los registros del día.`}
+                    </p>
+                  </div>
+                </div>
+              );
+            }
+            if (pend === 0) return null;
             return (
               <div key={c.fecha} className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-lg bg-amber-50 border border-amber-200">
                 <div className="text-sm">
@@ -674,6 +689,13 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
                   onChange={(e) => setFormData({ ...formData, source: e.target.value })}
                   placeholder="Ej: Corte de caja"
                 />
+                {!editingCashRegister && /corte/i.test(formData.source || '') && (cortesPendientes.some((c) => !c.es_hoy && Number(c.pendiente) > 0) || entregasTransito.length > 0) && (
+                  <p className="text-xs text-amber-700 bg-amber-50 border border-amber-300 rounded-md px-2 py-1.5">
+                    ⚠ Los cortes de caja se registran con el botón <b>Entregar</b> de la tarjeta
+                    "Cortes pendientes" — este formulario NO liquida pendientes y puede duplicar la entrega.
+                    Úsalo solo para ingresos ajenos a cortes.
+                  </p>
+                )}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="notes">Notas</Label>
