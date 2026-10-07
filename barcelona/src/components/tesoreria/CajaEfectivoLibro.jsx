@@ -20,7 +20,18 @@ export default function CajaEfectivoLibro({ payments, expenses, cortes = [], onC
   // que el RPC saldos_por_cuenta (antes se restaba y el saldo salía negativo).
   const egresos = expenses.filter(e => e.payment_method === 'efectivo' && (e.account || '') !== 'Fondos');
 
+  // Traspasos Banco → Efectivo (se guardan como egreso del banco con transfer_to='Efectivo'):
+  // también son dinero que ENTRA a esta caja — el RPC saldos_por_cuenta los suma.
+  const traspasosIn = expenses.filter(e => e.is_transfer && e.transfer_to === 'Efectivo');
+
   const movimientos = [
+    ...traspasosIn.map(e => ({
+      id: e.id, type: 'ingreso',
+      amount: e.amount || 0,
+      date: e.expense_date,
+      description: `Traspaso recibido${e.account ? ` de ${e.account}` : ''}${e.concept ? ` — ${e.concept}` : ''}`,
+      origen: 'Traspaso',
+    })),
     ...ingresos.map(p => ({
       id: p.id, type: 'ingreso',
       amount: p.paid_amount ?? p.amount ?? 0,
@@ -48,7 +59,7 @@ export default function CajaEfectivoLibro({ payments, expenses, cortes = [], onC
 
   // Las tarjetas muestran el saldo OFICIAL del servidor (saldos_por_cuenta) cuando
   // está disponible; el cálculo local solo es respaldo y alimenta el libro.
-  const totalIn = saldoServidor ? Number(saldoServidor.ingresos) : ingresos.reduce((s, p) => s + (p.paid_amount ?? p.amount ?? 0), 0);
+  const totalIn = saldoServidor ? Number(saldoServidor.ingresos) : ingresos.reduce((s, p) => s + (p.paid_amount ?? p.amount ?? 0), 0) + traspasosIn.reduce((s, e) => s + (e.amount || 0), 0);
   const totalOut = saldoServidor ? Number(saldoServidor.egresos) : egresos.reduce((s, e) => s + (e.amount || 0), 0);
   const saldo = saldoServidor ? Number(saldoServidor.saldo) : totalIn - totalOut;
   const visibles = movimientos.slice(0, 100);
