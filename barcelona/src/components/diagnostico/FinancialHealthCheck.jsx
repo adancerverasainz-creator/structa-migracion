@@ -37,7 +37,7 @@ export default function FinancialHealthCheck() {
   ];
 
   const issues = [];
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayStr = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 
   // ── Check 1: saldos negativos por cuenta ──
   const CUENTAS = ['BBVA', 'MP', 'NU', 'OpenBank', 'MercadoPagoBIA'];
