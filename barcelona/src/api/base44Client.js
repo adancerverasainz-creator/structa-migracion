@@ -92,21 +92,46 @@ function makeEntity(name) {
   if (!table) throw new Error(`Entidad desconocida: ${name}`);
 
   const runQuery = async (filterObj, sort, limit) => {
-    let q = supabase.from(table).select('*');
-    if (filterObj) {
-      for (const [k, v] of Object.entries(filterObj)) {
-        if (v === undefined) continue;
-        if (v && typeof v === 'object' && '$in' in v) q = q.in(k, v.$in);
-        else if (v === null) q = q.is(k, null);
-        else q = q.eq(k, v);
-      }
-    }
     const s = parseSort(sort);
-    if (s) q = q.order(s.column, { ascending: s.ascending });
-    q = q.limit(limit && limit > 0 ? limit : 10000);
-    const { data, error } = await q;
-    if (error) throw new Error(`${name}.list: ${error.message}`);
-    return (data || []).map(fromDb);
+    const max = limit && limit > 0 ? limit : 10000;
+    const build = () => {
+      let q = supabase.from(table).select('*');
+      if (filterObj) {
+        for (const [k, v] of Object.entries(filterObj)) {
+          if (v === undefined) continue;
+          if (v && typeof v === 'object' && '$in' in v) q = q.in(k, v.$in);
+          else if (v === null) q = q.is(k, null);
+          else q = q.eq(k, v);
+        }
+      }
+      return q;
+    };
+    // Primera página con el comportamiento de siempre (tablas chicas: sin cambios).
+    let q1 = build();
+    if (s) q1 = q1.order(s.column, { ascending: s.ascending });
+    const PAGE = 1000;
+    const { data: d1, error: e1 } = await q1.range(0, Math.min(PAGE, max) - 1);
+    if (e1) throw new Error(`${name}.list: ${e1.message}`);
+    const first = d1 || [];
+    if (first.length < PAGE || max <= PAGE) return first.map(fromDb);
+    // PostgREST recorta cada respuesta a 1000 filas (max-rows) aunque se pida
+    // .limit(10000): con >1000 registros las listas quedaban SIN los más nuevos
+    // y los reportes salían bajos (caso 05/10/2026: payments tenía 1,075).
+    // Si la primera página vino llena se re-pagina con .range sobre un orden
+    // estable (columna pedida, created_at, id).
+    const rows = [];
+    for (let from = 0; from < max; from += PAGE) {
+      let q = build();
+      if (s) q = q.order(s.column, { ascending: s.ascending });
+      q = q.order('created_at', { ascending: true }).order('id', { ascending: true });
+      const to = Math.min(from + PAGE, max) - 1;
+      const { data, error } = await q.range(from, to);
+      if (error) throw new Error(`${name}.list: ${error.message}`);
+      const got = data || [];
+      rows.push(...got);
+      if (got.length < to - from + 1) break;
+    }
+    return rows.map(fromDb);
   };
 
   return {
