@@ -30,7 +30,7 @@ export default function Players() {
   // ── Pausas por lesión/permiso (suspensión de cuota estilo SAP) ──
   const [pausePlayer, setPausePlayer] = useState(null);
   const [pauseForm, setPauseForm] = useState({ pause_type: 'lesion', start_date: '', end_date: '', notes: '' });
-  const [bajaDate, setBajaDate] = useState(new Date().toISOString().slice(0, 10));
+  const [bajaDate, setBajaDate] = useState(new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10));
   const { data: playerPauses = [] } = useQuery({
     queryKey: ['playerPauses'],
     queryFn: () => base44.entities.PlayerPause.list(null, 10000),
@@ -49,7 +49,7 @@ export default function Players() {
     onError: (err) => toast.error(`No se pudo registrar la pausa: ${err?.message || 'error'}`),
   });
   const pauseEnd = useMutation({
-    mutationFn: (pp) => base44.entities.PlayerPause.update(pp.id, { end_date: new Date().toISOString().slice(0, 10) }),
+    mutationFn: (pp) => base44.entities.PlayerPause.update(pp.id, { end_date: new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10) }),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['playerPauses'] }); toast.success('Pausa finalizada hoy'); },
     onError: (err) => toast.error(`No se pudo finalizar: ${err?.message || 'error'}`),
   });

@@ -13,7 +13,7 @@ export default function PlayerForm({ player, onSubmit, onCancel, isLoading }) {
   // (También reforzada con un trigger en la base de datos.)
   const { data: currentUser } = useQuery({ queryKey: ['currentUser'], queryFn: () => base44.auth.me() });
   const isAdmin = currentUser?.role === 'admin';
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 
   // Cuotas desde Configuración (club_settings → fees.mensualidad_montos); fallback local.
   // Si el jugador ya tiene una cuota fuera del catálogo (p.ej. beca 50%), se agrega para no perderla.
@@ -34,7 +34,7 @@ export default function PlayerForm({ player, onSubmit, onCancel, isLoading }) {
     return {
       full_name: '',
       birth_date: '',
-      join_date: new Date().toISOString().split('T')[0],
+      join_date: new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10),
       category: '',
       parent_name: '',
       parent_phone: '',
@@ -66,7 +66,7 @@ export default function PlayerForm({ player, onSubmit, onCancel, isLoading }) {
     // Fecha de baja: obligatoria si el estatus no es activo (congela la deuda en ese mes);
     // si vuelve a activo, se limpia.
     if (submitData.status === 'activo') submitData.baja_date = null;
-    else if (!submitData.baja_date) submitData.baja_date = new Date().toISOString().split('T')[0];
+    else if (!submitData.baja_date) submitData.baja_date = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
     if (submitData.baja_date) submitData.baja_date = String(submitData.baja_date).split('T')[0];
     if (submitData.join_date) {
       submitData.join_date = submitData.join_date.split('T')[0];
