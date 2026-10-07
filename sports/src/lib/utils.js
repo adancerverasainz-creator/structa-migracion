@@ -22,7 +22,9 @@ export function calcStandings(teams, matches, tournament = {}) {
   })
 
   matches.forEach(m => {
-    if (m.status !== 'completed' && m.status !== 'forfait') return
+    // walkover counts as a resolved match (goals already stored as 3-0 for the winner)
+    // annulled / cancelled are excluded from standings
+    if (!['completed', 'forfait', 'walkover'].includes(m.status)) return
     const h = m.home_team_id
     const a = m.away_team_id
     if (!table[h] || !table[a]) return
@@ -38,6 +40,7 @@ export function calcStandings(teams, matches, tournament = {}) {
       return
     }
 
+    // completed or walkover: score-based
     table[h].pj++; table[a].pj++
     table[h].gf += hg; table[h].gc += ag
     table[a].gf += ag; table[a].gc += hg
@@ -54,6 +57,10 @@ export function calcStandings(teams, matches, tournament = {}) {
 
   return Object.values(table).sort((a, b) => {
     if (b.pts !== a.pts) return b.pts - a.pts
+    // PPG tiebreaker: favors team with same pts but fewer games played (fairer when games are unequal)
+    const ppgA = a.pj > 0 ? a.pts / a.pj : 0
+    const ppgB = b.pj > 0 ? b.pts / b.pj : 0
+    if (Math.abs(ppgB - ppgA) > 0.0001) return ppgB - ppgA
     const gdA = a.gf - a.gc
     const gdB = b.gf - b.gc
     if (gdB !== gdA) return gdB - gdA
