@@ -568,7 +568,7 @@ export default function Nomina() {
   const bajaColaborador = (c) => {
     confirmar(`¿Dar de baja a ${c.name}? Conserva todo su historial de nóminas.`).then(async ok => {
       if (!ok) return;
-      const { error } = await supabase.from('collaborators').update({ active: false, end_date: new Date().toISOString().split('T')[0] }).eq('id', c.id);
+      const { error } = await supabase.from('collaborators').update({ active: false, end_date: new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10) }).eq('id', c.id);
       if (error) return toast.error(error.message);
       queryClient.invalidateQueries({ queryKey: ['collaborators'] });
     });
