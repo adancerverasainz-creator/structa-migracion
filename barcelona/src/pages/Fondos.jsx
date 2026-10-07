@@ -34,7 +34,7 @@ export default function Fondos() {
   const [showCorte, setShowCorte] = useState(false);
   const [formData, setFormData] = useState({
     cash_amount: '',
-    register_date: new Date().toISOString().split('T')[0],
+    register_date: format(new Date(), 'yyyy-MM-dd'), // fecha LOCAL, no UTC
     notes: '',
     source: 'Corte de caja'
   });
@@ -162,7 +162,7 @@ queryClient.invalidateQueries({ queryKey: ['saldosPorCuenta'] });
       setEditingCashRegister(null);
       setFormData({
         cash_amount: '',
-        register_date: new Date().toISOString().split('T')[0],
+        register_date: format(new Date(), 'yyyy-MM-dd'), // fecha LOCAL, no UTC
         notes: '',
         source: 'Corte de caja'
       });
@@ -179,7 +179,7 @@ queryClient.invalidateQueries({ queryKey: ['saldosPorCuenta'] });
       setEditingCashRegister(null);
       setFormData({
         cash_amount: '',
-        register_date: new Date().toISOString().split('T')[0],
+        register_date: format(new Date(), 'yyyy-MM-dd'), // fecha LOCAL, no UTC
         notes: '',
         source: 'Corte de caja'
       });
@@ -451,7 +451,7 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
               setEditingCashRegister(null);
               setFormData({
                 cash_amount: '',
-                register_date: new Date().toISOString().split('T')[0],
+                register_date: format(new Date(), 'yyyy-MM-dd'), // fecha LOCAL, no UTC
                 notes: '',
                 source: 'Corte de caja'
               });

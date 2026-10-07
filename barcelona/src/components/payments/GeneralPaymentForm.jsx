@@ -6,12 +6,13 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { DollarSign } from 'lucide-react';
+import { format } from 'date-fns';
 
 export default function GeneralPaymentForm({ payment, onSubmit, onCancel, isLoading }) {
   const [formData, setFormData] = useState(payment || {
     concept: '',
     amount: '',
-    payment_date: new Date().toISOString().split('T')[0],
+    payment_date: format(new Date(), 'yyyy-MM-dd'), // fecha LOCAL (toISOString da la de UTC: después de las 19:00 en Cancún caía en el día siguiente)
     payment_method: 'efectivo',
     bank_name: '',
     reference_number: '',
