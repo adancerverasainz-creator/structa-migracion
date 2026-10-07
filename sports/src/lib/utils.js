@@ -41,6 +41,8 @@ export function calcStandings(teams, matches, tournament = {}) {
     }
 
     // completed or walkover: score-based
+    // Guard: walkover con goals null/0-0 indica dato corrupto — se omite de standings
+    if (m.status === 'walkover' && m.home_goals == null && m.away_goals == null) return
     table[h].pj++; table[a].pj++
     table[h].gf += hg; table[h].gc += ag
     table[a].gf += ag; table[a].gc += hg

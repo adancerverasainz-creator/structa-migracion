@@ -136,6 +136,8 @@ export default function AdminTournamentDetail() {
   const [teamModal, setTeamModal] = useState(null)
   const [teamForm, setTeamForm] = useState(EMPTY_TEAM)
   const [deletingTeam, setDeletingTeam] = useState(null)
+  const [bajaTeam, setBajaTeam] = useState(null)
+  const [bajaReason, setBajaReason] = useState('')
   const [validatingTeamId, setValidatingTeamId] = useState(null)
 
   const saveTeam = useMutation({
@@ -480,8 +482,8 @@ export default function AdminTournamentDetail() {
       const list = teams.length % 2 === 0 ? [...teams] : [...teams, null] // ghost si impar
       const size = list.length
       const rounds = size - 1
+      const fieldsConfig = tournament?.fields_config || []
       const newMatches = []
-      const fieldsConfig = Array.isArray(tournament?.fields_config) ? tournament.fields_config : []
 
       for (let r = 0; r < rounds; r++) {
         let matchInRound = 0
@@ -489,7 +491,7 @@ export default function AdminTournamentDetail() {
           const home = list[i]
           const away = list[size - 1 - i]
           if (home !== null && away !== null) {
-            const fc = fieldsConfig.length > 0 ? fieldsConfig[matchInRound % fieldsConfig.length] : null
+            const slot = fieldsConfig.length > 0 ? fieldsConfig[matchInRound % fieldsConfig.length] : null
             newMatches.push({
               tournament_id: id,
               category_id: null,
@@ -499,9 +501,9 @@ export default function AdminTournamentDetail() {
               away_team_id: away.id,
               home_team_name: home.name,
               away_team_name: away.name,
-              field: fc?.name ?? null,
+              field: slot?.name || null,
               match_date: null,
-              match_time: fc?.time ?? null,
+              match_time: slot?.time || null,
               status: 'scheduled',
               home_goals: null,
               away_goals: null,
@@ -528,92 +530,114 @@ export default function AdminTournamentDetail() {
     onError: (e) => toast.error('Error al generar ida: ' + e.message),
   })
 
-  // ── Reorganizar fixture: regenera round-robin completo preservando resultados ──
-  // Útil cuando se agregan equipos después de haber jugado partidos.
-  // Mueve los partidos jugados a la jornada que el algoritmo les asigna,
-  // borra todos los pendientes y los reemplaza con el fixture nuevo.
+  // ── Reorganizar fixture: preserva jornada mínima (jugada + programada con fecha),
+  // borra solo los pendientes de jornadas superiores y redistribuye
+  // greedy todas las parejas restantes desde la siguiente jornada.
   const reorganizarIda = useMutation({
     mutationFn: async () => {
       if (teams.length < 2) throw new Error('Se necesitan al menos 2 equipos')
 
-      // 1. Algoritmo round-robin para todos los equipos actuales
-      const list = teams.length % 2 === 0 ? [...teams] : [...teams, null]
-      const size = list.length
-      const rounds = size - 1
-      const algoMap = new Map() // pairKey → { matchday, home, away }
+      // 1. Determinar la jornada bloqueada: la más baja que tenga al menos un partido jugado.
+      //    Solo jornadas con resultados se bloquean — las que solo tienen scheduled no lo son.
+      const playedMatchdays = realMatches
+        .filter(m => ['completed', 'forfait', 'no_show', 'walkover'].includes(m.status))
+        .map(m => m.matchday)
+      if (playedMatchdays.length === 0) throw new Error('No hay jornadas jugadas para reorganizar')
+      const lockedMatchday = Math.min(...playedMatchdays)
 
-      for (let r = 0; r < rounds; r++) {
-        for (let i = 0; i < size / 2; i++) {
-          const home = list[i]
-          const away = list[size - 1 - i]
-          if (home !== null && away !== null) {
-            const key = [home.id, away.id].sort().join('|')
-            algoMap.set(key, { matchday: r + 1, home, away })
-          }
-        }
-        const last = list[size - 1]
-        for (let i = size - 1; i > 1; i--) list[i] = list[i - 1]
-        list[1] = last
-      }
-
-      // 2. Separar jugados vs pendientes (solo partidos reales, no brackets)
-      const playedRealMatches = realMatches.filter(m =>
-        ['completed', 'forfait', 'no_show'].includes(m.status)
+      // 2. Todos los partidos de la jornada bloqueada se preservan intactos
+      const lockedMatches = realMatches.filter(m => m.matchday === lockedMatchday)
+      const lockedPairKeys = new Set(
+        lockedMatches.map(m => [m.home_team_id, m.away_team_id].sort().join('|'))
       )
-      const scheduledRealIds = realMatches
-        .filter(m => m.status === 'scheduled')
+
+      // 3. Partidos jugados en jornadas NO bloqueadas (conservar par, no reinsertar)
+      //    Incluye walkover — el par ya está resuelto y no debe regenerarse
+      const playedOtherPairKeys = new Set(
+        realMatches
+          .filter(m =>
+            m.matchday !== lockedMatchday &&
+            ['completed', 'forfait', 'no_show', 'walkover'].includes(m.status)
+          )
+          .map(m => [m.home_team_id, m.away_team_id].sort().join('|'))
+      )
+
+      // 4. Borrar SOLO los pendientes de jornadas > lockedMatchday
+      const toDeleteIds = realMatches
+        .filter(m => m.matchday !== lockedMatchday && m.status === 'scheduled')
         .map(m => m.id)
-
-      // 3. Claves de partidos jugados (para no insertar duplicados)
-      const playedPairKeys = new Set(
-        playedRealMatches.map(m => [m.home_team_id, m.away_team_id].sort().join('|'))
-      )
-
-      // 4. Mover partidos jugados a su jornada según el algoritmo
-      for (const pm of playedRealMatches) {
-        const key = [pm.home_team_id, pm.away_team_id].sort().join('|')
-        const algo = algoMap.get(key)
-        if (algo && pm.matchday !== algo.matchday) {
-          const { error: updErr } = await supabase
-            .from('matches')
-            .update({ matchday: algo.matchday })
-            .eq('id', pm.id)
-          if (updErr) throw updErr
-        }
-      }
-
-      // 5. Borrar todos los partidos pendientes
-      if (scheduledRealIds.length > 0) {
+      if (toDeleteIds.length > 0) {
         const { error: delErr } = await supabase
           .from('matches')
           .delete()
-          .in('id', scheduledRealIds)
+          .in('id', toDeleteIds)
         if (delErr) throw delErr
       }
 
-      // 6. Insertar matches del algoritmo que no están ya jugados
+      // 5. Algoritmo Berger (circle method) solo sobre equipos activos
+      //    Los retirados/descalificados no participan en el nuevo fixture
+      const activeTeams = teams.filter(t => t.status !== 'withdrawn' && t.status !== 'disqualified')
+      const bergerList = activeTeams.length % 2 === 0 ? [...activeTeams] : [...activeTeams, null]
+      const bergerSize = bergerList.length
+      const bergerRounds = bergerSize - 1
+      const bergerMap = new Map() // pairKey → roundIndex (0-based)
+      const bergerListCopy = [...bergerList]
+      for (let r = 0; r < bergerRounds; r++) {
+        for (let i = 0; i < bergerSize / 2; i++) {
+          const home = bergerListCopy[i]
+          const away = bergerListCopy[bergerSize - 1 - i]
+          if (home !== null && away !== null) {
+            const key = [home.id, away.id].sort().join('|')
+            bergerMap.set(key, r)
+          }
+        }
+        const last = bergerListCopy[bergerSize - 1]
+        for (let i = bergerSize - 1; i > 1; i--) bergerListCopy[i] = bergerListCopy[i - 1]
+        bergerListCopy[1] = last
+      }
+
+      // 6. Distribuir los pares no bloqueados/jugados en sus rondas Berger
+      //    Solo pares entre equipos activos
+      const roundBuckets = Array.from({ length: bergerRounds }, () => [])
+      for (let i = 0; i < activeTeams.length; i++) {
+        for (let j = i + 1; j < activeTeams.length; j++) {
+          const key = [activeTeams[i].id, activeTeams[j].id].sort().join('|')
+          if (!lockedPairKeys.has(key) && !playedOtherPairKeys.has(key)) {
+            const r = bergerMap.get(key)
+            if (r !== undefined) roundBuckets[r].push({ home: activeTeams[i], away: activeTeams[j] })
+          }
+        }
+      }
+      const rounds = roundBuckets.filter(b => b.length > 0)
+
+      // 7. Insertar nuevos partidos a partir de lockedMatchday + 1
+      const startDay = lockedMatchday + 1
+      const fieldsConfig = tournament?.fields_config || []
       const newMatches = []
-      for (const [key, { matchday, home, away }] of algoMap) {
-        if (!playedPairKeys.has(key)) {
+      rounds.forEach((round, ri) => {
+        round.forEach((pair, pi) => {
+          const slot = fieldsConfig.length > 0
+            ? fieldsConfig[pi % fieldsConfig.length]
+            : null
           newMatches.push({
             tournament_id: id,
             category_id: null,
             group_id: null,
-            matchday,
-            home_team_id: home.id,
-            away_team_id: away.id,
-            home_team_name: home.name,
-            away_team_name: away.name,
-            field: null,
+            matchday: startDay + ri,
+            home_team_id: pair.home.id,
+            away_team_id: pair.away.id,
+            home_team_name: pair.home.name,
+            away_team_name: pair.away.name,
+            field: slot?.name || null,
             match_date: null,
-            match_time: null,
+            match_time: slot?.time || null,
             status: 'scheduled',
             home_goals: null,
             away_goals: null,
             forfait_team_id: null,
           })
-        }
-      }
+        })
+      })
 
       if (newMatches.length > 0) {
         const { error: insErr } = await supabase.from('matches').insert(newMatches)
@@ -621,16 +645,17 @@ export default function AdminTournamentDetail() {
       }
 
       return {
-        played: playedRealMatches.length,
-        deleted: scheduledRealIds.length,
+        lockedMatchday,
+        locked: lockedMatches.length,
+        deleted: toDeleteIds.length,
         inserted: newMatches.length,
       }
     },
-    onSuccess: ({ played, deleted, inserted }) => {
+    onSuccess: ({ lockedMatchday, locked, deleted, inserted }) => {
       qc.invalidateQueries({ queryKey: ['admin-matches', id] })
       toast.success(
         `Fixture reorganizado: ${inserted} partidos generados, ${deleted} reemplazados. ` +
-        `${played} resultado${played !== 1 ? 's' : ''} preservado${played !== 1 ? 's' : ''}.`
+        `Jornada ${lockedMatchday} preservada (${locked} partido${locked !== 1 ? 's' : ''}).`
       )
       setConfirmReorganizar(false)
     },
@@ -683,12 +708,12 @@ export default function AdminTournamentDetail() {
         remaining.push(...leftover)
       }
 
+      const fieldsConfig = tournament?.fields_config || []
       const startDay = maxRealMatchday + 1
       const newMatches = []
-      const fieldsConfigC = Array.isArray(tournament?.fields_config) ? tournament.fields_config : []
       rounds.forEach((round, ri) => {
-        round.forEach((pair, mi) => {
-          const fc = fieldsConfigC.length > 0 ? fieldsConfigC[mi % fieldsConfigC.length] : null
+        round.forEach((pair, pi) => {
+          const slot = fieldsConfig.length > 0 ? fieldsConfig[pi % fieldsConfig.length] : null
           newMatches.push({
             tournament_id: id,
             category_id: null,
@@ -698,9 +723,9 @@ export default function AdminTournamentDetail() {
             away_team_id: pair.away.id,
             home_team_name: pair.home.name,
             away_team_name: pair.away.name,
-            field: fc?.name ?? null,
+            field: slot?.name || null,
             match_date: null,
-            match_time: fc?.time ?? null,
+            match_time: slot?.time || null,
             status: 'scheduled',
             home_goals: null,
             away_goals: null,
@@ -881,6 +906,86 @@ export default function AdminTournamentDetail() {
     onError: (e) => toast.error('Error al renovar token: ' + e.message),
   })
 
+  // ── Dar de baja a un equipo (Model B — Walkover automático) ─────────────
+  // Convierte todos sus partidos pendientes en victoria W.O. 3-0 para el rival.
+  // Los partidos ya jugados quedan intactos.
+  const darBajaEquipo = useMutation({
+    mutationFn: async ({ team, reason }) => {
+      const pendingMatches = matches.filter(
+        m => (m.home_team_id === team.id || m.away_team_id === team.id) && m.status === 'scheduled'
+      )
+
+      // Convertir partidos pendientes en walkover 3-0 para el rival — batch por local/visitante
+      // .eq('status','scheduled') actúa de guard: no sobreescribe matches que hayan cambiado
+      // de estado desde que se abrió el modal (concurrencia entre admins).
+      const homeIds = pendingMatches.filter(m => m.home_team_id === team.id).map(m => m.id)
+      const awayIds = pendingMatches.filter(m => m.away_team_id === team.id).map(m => m.id)
+
+      if (homeIds.length > 0) {
+        const { error } = await supabase
+          .from('matches')
+          .update({ status: 'walkover', home_goals: 0, away_goals: 3 })
+          .in('id', homeIds)
+          .eq('status', 'scheduled')
+        if (error) throw error
+      }
+      if (awayIds.length > 0) {
+        const { error } = await supabase
+          .from('matches')
+          .update({ status: 'walkover', home_goals: 3, away_goals: 0 })
+          .in('id', awayIds)
+          .eq('status', 'scheduled')
+        if (error) throw error
+      }
+
+      // Jornada más temprana afectada (para referencia)
+      const firstJornada = pendingMatches.length > 0
+        ? Math.min(...pendingMatches.map(m => m.matchday))
+        : null
+
+      // Marcar equipo como retirado
+      const { error: teamErr } = await supabase
+        .from('teams')
+        .update({
+          status: 'withdrawn',
+          withdrawn_from_jornada: firstJornada,
+          withdrawal_reason: reason || null,
+        })
+        .eq('id', team.id)
+      if (teamErr) throw teamErr
+
+      return { count: pendingMatches.length, teamName: team.name }
+    },
+    onSuccess: ({ count, teamName }) => {
+      qc.invalidateQueries({ queryKey: ['admin-teams', id] })
+      qc.invalidateQueries({ queryKey: ['admin-matches', id] })
+      qc.invalidateQueries({ queryKey: ['admin-events', id] })
+      qc.invalidateQueries({ queryKey: ['reconciliation', id] })
+      toast.success(
+        `${teamName} dado de baja. ${count} partido${count !== 1 ? 's' : ''} convertido${count !== 1 ? 's' : ''} en W.O.`
+      )
+      setBajaTeam(null)
+      setBajaReason('')
+    },
+    onError: (e) => toast.error('Error al dar de baja: ' + e.message),
+  })
+
+  const reactivarEquipo = useMutation({
+    mutationFn: async (teamId) => {
+      const { error } = await supabase
+        .from('teams')
+        .update({ status: 'active', withdrawn_from_jornada: null, withdrawal_reason: null })
+        .eq('id', teamId)
+      if (error) throw error
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin-teams', id] })
+      qc.invalidateQueries({ queryKey: ['admin-matches', id] })
+      toast.success('Equipo reactivado')
+    },
+    onError: (e) => toast.error('Error al reactivar: ' + e.message),
+  })
+
   // ── Open event modal pre-filled for a specific match ────────────────────
   function openEventForMatch(m) {
     setEventForm({ ...EMPTY_EVENT, match_id: m.id })
@@ -1019,8 +1124,16 @@ export default function AdminTournamentDetail() {
                           {groupName && <span className="ml-2">{groupName}</span>}
                         </p>
                       </div>
-                      <span className={`text-xs px-2 py-0.5 rounded-full ${t.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
-                        {t.status === 'active' ? 'Activo' : 'Inactivo'}
+                      <span className={`text-xs px-2 py-0.5 rounded-full ${
+                        t.status === 'active' ? 'bg-green-100 text-green-700'
+                        : t.status === 'withdrawn' ? 'bg-red-100 text-red-600'
+                        : t.status === 'disqualified' ? 'bg-red-100 text-red-600'
+                        : 'bg-gray-100 text-gray-500'
+                      }`}>
+                        {t.status === 'active' ? 'Activo'
+                          : t.status === 'withdrawn' ? `Retirado${t.withdrawn_from_jornada ? ` · J${t.withdrawn_from_jornada}` : ''}`
+                          : t.status === 'disqualified' ? 'Descalificado'
+                          : 'Inactivo'}
                       </span>
                       {!t.pays_arbitrage && (
                         <span className="text-xs bg-purple-50 text-purple-600 px-2 py-0.5 rounded-full">Sin arbitraje</span>
@@ -1097,9 +1210,37 @@ export default function AdminTournamentDetail() {
                       <button onClick={() => { setTeamForm({ name: t.name, captain_name: t.captain_name || '', color: t.color || '#16a34a', logo_url: t.logo_url || '', status: t.status || 'active', group_id: t.group_id || '', category_id: t.category_id || '', pays_arbitrage: t.pays_arbitrage ?? true, inscription_discount_pct: t.inscription_discount_pct ?? 0, inscription_amount: 0 }); setTeamModal(t) }} className="p-1.5 text-gray-400 hover:text-green-600 rounded-lg transition-colors">
                         <Pencil className="w-4 h-4" />
                       </button>
-                      <button onClick={() => setDeletingTeam(t)} className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg transition-colors">
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      {/* Botones de acción según estado del equipo */}
+                      {t.status === 'withdrawn' ? (
+                        // Equipo retirado → botón Reactivar
+                        <button
+                          onClick={() => reactivarEquipo.mutate(t.id)}
+                          disabled={reactivarEquipo.isPending}
+                          title="Reactivar equipo (deshacer baja)"
+                          className="p-1.5 text-gray-400 hover:text-green-600 rounded-lg transition-colors disabled:opacity-40"
+                        >
+                          <RefreshCw className="w-4 h-4" />
+                        </button>
+                      ) : matches.some(m =>
+                        (m.home_team_id === t.id || m.away_team_id === t.id) &&
+                        ['completed', 'forfait', 'no_show', 'walkover'].includes(m.status)
+                      ) ? (
+                        // Tiene historial y no está retirado → Dar de baja
+                        t.status !== 'disqualified' ? (
+                          <button
+                            onClick={() => { setBajaTeam(t); setBajaReason('') }}
+                            title="Dar de baja al equipo (convierte partidos pendientes en W.O.)"
+                            className="p-1.5 text-gray-400 hover:text-orange-600 rounded-lg transition-colors"
+                          >
+                            <XCircle className="w-4 h-4" />
+                          </button>
+                        ) : null
+                      ) : (
+                        // Sin historial → Eliminar
+                        <button onClick={() => setDeletingTeam(t)} className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg transition-colors">
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
                     </li>
                   )
                 })}
@@ -1133,8 +1274,8 @@ export default function AdminTournamentDetail() {
                   <Calendar className="w-4 h-4" /> Completar ida
                 </button>
               )}
-              {/* Reorganizar fixture: hay jugados — redistribuye sin tocar la jornada más baja */}
-              {!hasVuelta && realMatches.some(m => ['completed', 'forfait', 'no_show'].includes(m.status)) && (
+              {/* Reorganizar fixture: hay jugados o walkovers — redistribuye sin tocar la jornada más baja */}
+              {!hasVuelta && realMatches.some(m => ['completed', 'forfait', 'no_show', 'walkover'].includes(m.status)) && (
                 <button
                   onClick={() => setConfirmReorganizar(true)}
                   className="flex items-center gap-1.5 border border-orange-500 text-orange-700 hover:bg-orange-50 text-sm font-medium px-3 py-1.5 rounded-lg transition-colors"
@@ -1191,7 +1332,7 @@ export default function AdminTournamentDetail() {
                   <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
                     <ul className="divide-y divide-gray-100">
                       {matchesByDay[day].map(m => {
-                        const isPlayed = m.status === 'completed' || m.status === 'forfait' || m.status === 'no_show'
+                        const isPlayed = m.status === 'completed' || m.status === 'forfait' || m.status === 'no_show' || m.status === 'walkover'
                         const hWin = isPlayed && m.home_goals > m.away_goals
                         const aWin = isPlayed && m.away_goals > m.home_goals
                         const matchEvents = events.filter(ev => ev.match_id === m.id)
@@ -1227,15 +1368,18 @@ export default function AdminTournamentDetail() {
                               <span className={`text-xs px-2 py-0.5 rounded-full shrink-0 ${
                                 m.status === 'completed' ? 'bg-green-100 text-green-700'
                                 : m.status === 'in_progress' ? 'bg-blue-100 text-blue-700'
-                                : m.status === 'forfait' || m.status === 'cancelled' ? 'bg-red-100 text-red-600'
+                                : m.status === 'forfait' || m.status === 'cancelled' || m.status === 'annulled' ? 'bg-red-100 text-red-600'
                                 : m.status === 'no_show' ? 'bg-orange-100 text-orange-700'
+                                : m.status === 'walkover' ? 'bg-purple-100 text-purple-700'
                                 : 'bg-gray-100 text-gray-500'
                               }`}>
                                 {m.status === 'completed' ? 'Jugado'
                                   : m.status === 'in_progress' ? 'En curso'
                                   : m.status === 'forfait' ? 'Forfait'
                                   : m.status === 'cancelled' ? 'Cancelado'
+                                  : m.status === 'annulled' ? 'Anulado'
                                   : m.status === 'no_show' ? 'No se jugó'
+                                  : m.status === 'walkover' ? 'W.O.'
                                   : 'Programado'}
                               </span>
                               <button
@@ -1840,20 +1984,22 @@ export default function AdminTournamentDetail() {
         </div>
       )}
       {confirmReorganizar && (() => {
-        const playedCount = realMatches.filter(m => ['completed', 'forfait', 'no_show'].includes(m.status)).length
+        const playedCount = realMatches.filter(m => ['completed', 'forfait', 'no_show', 'walkover'].includes(m.status)).length
         const scheduledCount = realMatches.filter(m => m.status === 'scheduled').length
-        const matchesPerRound = Math.floor(teams.length / 2)
-        const totalRounds = teams.length % 2 === 0 ? teams.length - 1 : teams.length
+        const activeCount = teams.filter(t => t.status !== 'withdrawn' && t.status !== 'disqualified').length
+        const matchesPerRound = Math.floor(activeCount / 2)
+        const totalRounds = activeCount % 2 === 0 ? activeCount - 1 : activeCount
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
             <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6">
               <h3 className="font-semibold text-gray-900 mb-2">Reorganizar fixture</h3>
               <p className="text-sm text-gray-600 mb-3">
-                Se regenerará el fixture completo para <strong>{teams.length} equipos</strong>:{' '}
+                Se regenerará el fixture para <strong>{activeCount} equipos activos</strong>:{' '}
                 <strong>{totalRounds} jornadas</strong> con <strong>{matchesPerRound} partidos cada una</strong>.
+                {teams.length > activeCount && <span className="text-orange-600"> ({teams.length - activeCount} equipo{teams.length - activeCount !== 1 ? 's' : ''} retirado{teams.length - activeCount !== 1 ? 's' : ''} excluido{teams.length - activeCount !== 1 ? 's' : ''})</span>}
               </p>
               <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4 text-xs text-amber-800 space-y-1">
-                <p>✅ <strong>{playedCount} resultado{playedCount !== 1 ? 's' : ''} jugado{playedCount !== 1 ? 's' : ''}</strong> se preservan y se mueven a su jornada correcta.</p>
+                <p>✅ <strong>{playedCount} resultado{playedCount !== 1 ? 's' : ''} jugado{playedCount !== 1 ? 's' : ''}</strong> (incluyendo W.O.) se preservan.</p>
                 <p>🗑️ <strong>{scheduledCount} partido{scheduledCount !== 1 ? 's' : ''} pendiente{scheduledCount !== 1 ? 's' : ''}</strong> se eliminarán y se regenerarán.</p>
                 <p>📅 Las fechas y horarios asignados a partidos pendientes se perderán.</p>
               </div>
@@ -1884,6 +2030,60 @@ export default function AdminTournamentDetail() {
           </div>
         </div>
       )}
+      {/* ── DAR DE BAJA MODAL ──────────────────────────────────────────────── */}
+      {bajaTeam && (() => {
+        const walkoverCount = matches.filter(
+          m => (m.home_team_id === bajaTeam.id || m.away_team_id === bajaTeam.id) && m.status === 'scheduled'
+        ).length
+        const playedCount = matches.filter(
+          m => (m.home_team_id === bajaTeam.id || m.away_team_id === bajaTeam.id) &&
+            ['completed', 'forfait', 'no_show'].includes(m.status)
+        ).length
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+            <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6">
+              <h3 className="font-semibold text-gray-900 mb-2">Dar de baja — {bajaTeam.name}</h3>
+              <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 mb-4 text-xs text-orange-800 space-y-1">
+                {walkoverCount > 0 && (
+                  <p>⚽ <strong>{walkoverCount} partido{walkoverCount !== 1 ? 's' : ''} pendiente{walkoverCount !== 1 ? 's' : ''}</strong> se convertirán en victoria W.O. 3-0 para los rivales.</p>
+                )}
+                {playedCount > 0 && (
+                  <p>✅ <strong>{playedCount} partido{playedCount !== 1 ? 's' : ''} jugado{playedCount !== 1 ? 's' : ''}</strong> quedan intactos en la tabla.</p>
+                )}
+                {walkoverCount === 0 && (
+                  <p>ℹ️ Este equipo no tiene partidos pendientes. Solo se marcará como retirado.</p>
+                )}
+                <p>🚫 El equipo quedará marcado como <strong>Retirado</strong> y no participará en nuevas jornadas.</p>
+              </div>
+              <div className="mb-5">
+                <label className="block text-xs font-medium text-gray-700 mb-1">Motivo de baja (opcional)</label>
+                <input
+                  type="text"
+                  value={bajaReason}
+                  onChange={e => setBajaReason(e.target.value)}
+                  placeholder="Ej. Problemas internos del equipo"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
+                />
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => { setBajaTeam(null); setBajaReason('') }}
+                  className="flex-1 border border-gray-300 text-gray-700 font-medium py-2 rounded-lg text-sm hover:bg-gray-50 transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={() => darBajaEquipo.mutate({ team: bajaTeam, reason: bajaReason })}
+                  disabled={darBajaEquipo.isPending}
+                  className="flex-1 bg-orange-600 hover:bg-orange-700 disabled:opacity-60 text-white font-medium py-2 rounded-lg text-sm transition-colors"
+                >
+                  {darBajaEquipo.isPending ? 'Procesando...' : 'Confirmar baja'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
     </div>
   )
 }
