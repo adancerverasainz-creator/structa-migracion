@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { DollarSign, Calendar, Edit, Trash2, Plus, ChevronDown, ChevronUp, Building2 } from 'lucide-react';
+import { DollarSign, Calendar, Edit, Trash2, Plus, ChevronDown, ChevronUp, Building2, Printer } from 'lucide-react';
 import { format, parseISO, isPast } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { formatCurrency } from '../lib/formatCurrency';
@@ -20,7 +20,7 @@ const STATUS_CONFIG = {
   pagado: { label: 'Pagado', className: 'bg-green-100 text-green-700 border-green-300' },
 };
 
-export default function AccountPayableCard({ account, payments, onEdit, onDelete, onAbono, isAdmin }) {
+export default function AccountPayableCard({ account, payments, onEdit, onDelete, onAbono, onPrint, folioDeAbono, isAdmin }) {
   const [expanded, setExpanded] = React.useState(false);
 
   const totalPaid = payments.reduce((sum, p) => sum + (p.amount || 0), 0);
@@ -113,9 +113,18 @@ export default function AccountPayableCard({ account, payments, onEdit, onDelete
                       <span className="text-gray-400 mx-2">•</span>
                       <span className="text-gray-500">{p.payment_method}{p.bank_name && ` - ${p.bank_name}`}</span>
                       {p.reference_number && <span className="text-gray-400 ml-2 text-xs">Ref: {p.reference_number}</span>}
+                      {folioDeAbono && folioDeAbono(p) && <span className="text-gray-400 ml-2 text-xs">Vale {folioDeAbono(p)}</span>}
                       {p.notes && <p className="text-xs text-gray-400 mt-0.5">{p.notes}</p>}
                     </div>
-                    <span className="font-bold text-green-600">{formatCurrency(p.amount)}</span>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <span className="font-bold text-green-600">{formatCurrency(p.amount)}</span>
+                      {onPrint && (
+                        <Button size="sm" variant="outline" className="h-7 w-7 p-0 text-gray-600 hover:text-gray-800"
+                          title="Imprimir vale de egreso (térmica 80mm)" onClick={() => onPrint(p, account)}>
+                          <Printer className="w-3.5 h-3.5" />
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
