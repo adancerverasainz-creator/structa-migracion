@@ -13,6 +13,14 @@ import { formatCurrency } from '@/components/lib/formatCurrency';
 import AccountPayableCard from '@/components/cuentas/AccountPayableCard';
 import AccountPayableForm from '@/components/cuentas/AccountPayableForm';
 import AbonoForm from '@/components/cuentas/AbonoForm';
+import { imprimirVale, folioVale, folioDesdeId, cuentaLegible } from '@/components/print/PrintVale';
+
+const CATEGORY_LABELS = {
+  nomina: 'Nómina', proveedor: 'Proveedor', arbitros: 'Árbitros',
+  renta: 'Renta', equipamiento: 'Equipamiento', torneo: 'Torneo',
+  viaticos: 'Viáticos', hospedaje: 'Hospedaje', transporte: 'Transporte',
+  intereses: 'Intereses', otros: 'Otros',
+};
 
 export default function CuentasPorPagar() {
   const { canDelete } = usePerms('cxp');
@@ -39,6 +47,37 @@ export default function CuentasPorPagar() {
     queryKey: ['accountPayablePayments'],
     queryFn: () => base44.entities.AccountPayablePayment.list('-payment_date'),
   });
+
+  // Egresos gemelos que el motor CxP (fn_cxp_crear_egreso) crea por cada abono:
+  // son el movimiento con folio oficial de caja y el que verifica el QR del vale.
+  const { data: egresosCxp = [] } = useQuery({
+    queryKey: ['expenses', 'cxp'],
+    queryFn: () => base44.entities.Expense.filter({ source_module: 'cxp' }, '-created_date'),
+  });
+  const egresoDeAbono = (p) => egresosCxp.find(e => e.cxp_payment_id === p.id) || null;
+  const folioDeAbono = (p) => { const e = egresoDeAbono(p); return e ? folioVale(e) : null; };
+
+  // Vale EGRESO térmico 80mm de un abono. Si existe el egreso gemelo se imprime
+  // con su folio oficial y QR de verificación; si no (abonos previos al motor),
+  // sale con folio derivado del abono y sin QR.
+  const valeDeAbono = (p, account, egreso = egresoDeAbono(p)) => ({
+    tipoVale: 'EGRESO',
+    id: egreso?.id,
+    folio: egreso ? folioVale(egreso) : folioDesdeId(p.id),
+    fecha: p.payment_date,
+    concepto: `Abono CxP: ${account?.concept || ''}`,
+    monto: p.amount,
+    cuenta_nombre: cuentaLegible(egreso || {
+      payment_method: p.payment_method,
+      account: p.payment_method === 'efectivo' ? (p.caja === 'caja_principal' ? 'Fondos' : '') : p.bank_name,
+    }),
+    forma_pago: egreso?.payment_method || p.payment_method,
+    referencia: p.reference_number,
+    categoria_nombre: CATEGORY_LABELS[account?.category] || account?.category,
+    proveedor_nombre: account?.supplier,
+    autorizado_por: p.created_by || currentUser?.email || '',
+  });
+  const handlePrint = (p, account) => imprimirVale(valeDeAbono(p, account));
 
   const createMutation = useMutation({
     mutationFn: (data) => base44.entities.AccountPayable.create(data),
@@ -77,12 +116,24 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
       if (error) throw new Error(error.message);
       return paymentId;
     },
-    onSuccess: () => {
+    onSuccess: async (paymentId, data) => {
       queryClient.invalidateQueries({ queryKey: ['accountPayablePayments'] });
       queryClient.invalidateQueries({ queryKey: ['accountsPayable'] });
       queryClient.invalidateQueries({ queryKey: ['expenses'] });
       queryClient.invalidateQueries({ queryKey: ['saldosPorCuenta'] });
+      const account = abonoAccount;
       setAbonoAccount(null);
+      // Impresión automática del vale SOLO al crear (igual que Egresos/Pagos).
+      // El egreso gemelo ya existe (lo creó el trigger en la misma transacción):
+      // se lee para imprimir con folio oficial y QR; si no se alcanza, sale sin QR.
+      let egreso = null;
+      try {
+        if (paymentId) {
+          const { data: e } = await supabase.from('expenses').select('*').eq('cxp_payment_id', paymentId).maybeSingle();
+          egreso = e || null;
+        }
+      } catch { egreso = null; }
+      imprimirVale(valeDeAbono({ ...data, id: paymentId, caja: data.cash_register, created_by: currentUser?.email }, account, egreso));
     },
 onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desconocido'}`),
 });
@@ -281,6 +332,8 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
               onEdit={handleEdit}
               onDelete={canDelete ? handleDelete : null}
               onAbono={handleAbono}
+              onPrint={handlePrint}
+              folioDeAbono={folioDeAbono}
               isAdmin={currentUser?.role === 'admin'}
             />
           ))}
