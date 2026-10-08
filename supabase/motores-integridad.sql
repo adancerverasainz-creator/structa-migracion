@@ -19,6 +19,8 @@
 -- 10. verificar_movimiento — verificación pública de vales por QR (único RPC anon)
 -- 11. Motor de cortes de caja: entrega calculada por el sistema + confirmación
 --     de recepción (doble firma inmutable) + gemelo automático Efectivo→Fondos
+-- 12. Reversos (storno) por capturista/admin, motor CxP, verificar_movimiento v4,
+--     política de fecha de ingreso y regla de hora local (America/Cancun, no UTC)
 --
 -- REGLAS AL EXTENDER (no negociables):
 --  · Toda operación de negocio con >=2 escrituras = RPC/trigger, jamás cliente.
@@ -471,6 +473,303 @@ grant execute on function cortes_pendientes() to authenticated;
 grant execute on function entregar_corte(date, uuid) to authenticated;
 grant execute on function confirmar_recepcion_corte(uuid) to authenticated;
 grant execute on function corte_de_caja(numeric, numeric, numeric, text, text, uuid) to authenticated;
+
+-- 12) Motores de reversos (storno), CxP, vales y política de fecha ----------
+-- Zona horaria: TODA fecha "de hoy" que asienta la BD usa
+--   (now() at time zone 'America/Cancun')::date
+-- JAMÁS current_date (la BD corre en UTC: después de las 19:00 en Cancún
+-- current_date ya es el día siguiente y corre reversos/altas al día equivocado).
+-- Ajustar la zona si el club no está en Cancún.
+--
+-- Reversos (storno): el pasado no se reescribe; el contra-movimiento (monto en
+-- negativo, reversal_of = id original) se asienta HOY. El índice único
+-- *_reversal_of_uq impide reversar dos veces. Permiso: admin o QUIEN CAPTURÓ el
+-- movimiento. Motivo obligatorio (>=5 caracteres).
+create or replace function es_mismo_dia_local(ts timestamptz) returns boolean
+language sql stable set search_path to 'public' as $function$
+  select (ts at time zone 'America/Cancun')::date = (now() at time zone 'America/Cancun')::date
+$function$;
+
+create or replace function reversar_pago(p_payment_id uuid, p_motivo text) returns uuid
+language plpgsql security definer set search_path to 'public' as $function$
+declare v_orig payments%rowtype; v_new_id uuid; v_email text;
+begin
+  select email into v_email from profiles where id = auth.uid();
+  if p_motivo is null or length(trim(p_motivo)) < 5 then
+    raise exception 'El motivo del reverso es obligatorio (mínimo 5 caracteres)';
+  end if;
+  select * into v_orig from payments where id = p_payment_id for update;
+  if not found then raise exception 'Pago no encontrado'; end if;
+  if get_my_role() <> 'admin' and coalesce(v_orig.created_by,'') <> coalesce(v_email,'??') then
+    raise exception 'Solo un administrador o quien capturó el movimiento puede reversarlo';
+  end if;
+  if v_orig.reversal_of is not null then raise exception 'Este movimiento ya es un reverso: no se puede reversar un reverso'; end if;
+  if exists (select 1 from payments where reversal_of = p_payment_id) then raise exception 'Este pago ya fue reversado'; end if;
+  insert into payments (player_id, payment_type, amount, surcharge, payment_date, month,
+    payment_method, bank_name, reference_number, notes, status, created_by, reversal_of)
+  values (v_orig.player_id, v_orig.payment_type, -v_orig.amount, -coalesce(v_orig.surcharge,0),
+    (now() at time zone 'America/Cancun')::date, v_orig.month, v_orig.payment_method, v_orig.bank_name, v_orig.reference_number,
+    'REVERSO — ' || trim(p_motivo), 'pagado', v_email, p_payment_id)
+  returning id into v_new_id;
+  return v_new_id;
+end; $function$;
+
+create or replace function reversar_pago_general(p_id uuid, p_motivo text) returns uuid
+language plpgsql security definer set search_path to 'public' as $function$
+declare v_o general_payments%rowtype; v_new uuid; v_email text;
+begin
+  select email into v_email from profiles where id = auth.uid();
+  if p_motivo is null or length(trim(p_motivo)) < 5 then raise exception 'El motivo del reverso es obligatorio (mínimo 5 caracteres)'; end if;
+  select * into v_o from general_payments where id = p_id for update;
+  if not found then raise exception 'Pago no encontrado'; end if;
+  if get_my_role() <> 'admin' and coalesce(v_o.created_by,'') <> coalesce(v_email,'??') then
+    raise exception 'Solo un administrador o quien capturó el movimiento puede reversarlo';
+  end if;
+  if v_o.reversal_of is not null then raise exception 'Este movimiento ya es un reverso'; end if;
+  if exists (select 1 from general_payments where reversal_of = p_id) then raise exception 'Este pago ya fue reversado'; end if;
+  insert into general_payments (concept, amount, payment_date, payment_method, bank_name, reference_number,
+    category, notes, created_by, reversal_of)
+  values ('REVERSO: ' || v_o.concept, -coalesce(v_o.amount,0), (now() at time zone 'America/Cancun')::date, v_o.payment_method, v_o.bank_name,
+    v_o.reference_number, v_o.category, 'REVERSO — ' || trim(p_motivo), v_email, p_id)
+  returning id into v_new;
+  return v_new;
+end; $function$;
+
+create or replace function reversar_pago_summer(p_id uuid, p_motivo text) returns uuid
+language plpgsql security definer set search_path to 'public' as $function$
+declare v_o summer_camp_payments%rowtype; v_new uuid; v_email text;
+begin
+  select email into v_email from profiles where id = auth.uid();
+  if p_motivo is null or length(trim(p_motivo)) < 5 then raise exception 'El motivo del reverso es obligatorio (mínimo 5 caracteres)'; end if;
+  select * into v_o from summer_camp_payments where id = p_id for update;
+  if not found then raise exception 'Pago no encontrado'; end if;
+  if get_my_role() <> 'admin' and coalesce(v_o.created_by,'') <> coalesce(v_email,'??') then
+    raise exception 'Solo un administrador o quien capturó el movimiento puede reversarlo';
+  end if;
+  if v_o.reversal_of is not null then raise exception 'Este movimiento ya es un reverso'; end if;
+  if exists (select 1 from summer_camp_payments where reversal_of = p_id) then raise exception 'Este pago ya fue reversado'; end if;
+  insert into summer_camp_payments (player_id, external_player_id, player_name, payment_type, week_number,
+    base_amount, discount, discount_reason, amount, payment_date, payment_method, bank_name, reference_number,
+    status, notes, created_by, reversal_of)
+  values (v_o.player_id, v_o.external_player_id, v_o.player_name, v_o.payment_type, v_o.week_number,
+    -coalesce(v_o.base_amount,0), 0, null, -coalesce(v_o.amount,0), (now() at time zone 'America/Cancun')::date, v_o.payment_method, v_o.bank_name,
+    v_o.reference_number, 'pagado', 'REVERSO — ' || trim(p_motivo), v_email, p_id)
+  returning id into v_new;
+  return v_new;
+end; $function$;
+
+create or replace function reversar_pago_torneo(p_id uuid, p_motivo text) returns uuid
+language plpgsql security definer set search_path to 'public' as $function$
+declare v_o tournament_payments%rowtype; v_new uuid; v_email text;
+begin
+  select email into v_email from profiles where id = auth.uid();
+  if p_motivo is null or length(trim(p_motivo)) < 5 then raise exception 'El motivo del reverso es obligatorio (mínimo 5 caracteres)'; end if;
+  select * into v_o from tournament_payments where id = p_id for update;
+  if not found then raise exception 'Pago no encontrado'; end if;
+  if get_my_role() <> 'admin' and coalesce(v_o.created_by,'') <> coalesce(v_email,'??') then
+    raise exception 'Solo un administrador o quien capturó el movimiento puede reversarlo';
+  end if;
+  if v_o.reversal_of is not null then raise exception 'Este movimiento ya es un reverso'; end if;
+  if exists (select 1 from tournament_payments where reversal_of = p_id) then raise exception 'Este pago ya fue reversado'; end if;
+  insert into tournament_payments (player_id, external_attendee_id, external_name, tournament_id, amount, paid_amount,
+    payment_date, payment_method, bank_name, reference_number, notes, status, created_by, reversal_of)
+  values (v_o.player_id, v_o.external_attendee_id, v_o.external_name, v_o.tournament_id, -coalesce(v_o.amount,0),
+    -coalesce(v_o.paid_amount, v_o.amount, 0), (now() at time zone 'America/Cancun')::date, v_o.payment_method, v_o.bank_name, v_o.reference_number,
+    'REVERSO — ' || trim(p_motivo), 'pagado', v_email, p_id)
+  returning id into v_new;
+  return v_new;
+end; $function$;
+
+-- Egresos: solo los capturados a mano (source_module null/'egresos'). Los de
+-- Nómina, CxP, traspasos y otros módulos se corrigen en su módulo de origen.
+create or replace function reversar_egreso(p_id uuid, p_motivo text) returns uuid
+language plpgsql security definer set search_path to 'public' as $function$
+declare v_o expenses%rowtype; v_new uuid; v_email text;
+begin
+  select email into v_email from profiles where id = auth.uid();
+  if p_motivo is null or length(trim(p_motivo)) < 5 then raise exception 'El motivo del reverso es obligatorio (mínimo 5 caracteres)'; end if;
+  select * into v_o from expenses where id = p_id for update;
+  if not found then raise exception 'Egreso no encontrado'; end if;
+  if get_my_role() <> 'admin' and coalesce(v_o.created_by,'') <> coalesce(v_email,'??') then
+    raise exception 'Solo un administrador o quien capturó el egreso puede reversarlo';
+  end if;
+  if v_o.payroll_item_id is not null then raise exception 'Este egreso lo generó Nómina: se corrige desde el módulo de Nómina'; end if;
+  if v_o.cxp_payment_id is not null then raise exception 'Este egreso lo generó Cuentas por Pagar: el abono se reversa desde CxP'; end if;
+  if v_o.is_transfer then raise exception 'Los traspasos se revierten desde Tesorería (botón Revertir)'; end if;
+  if v_o.source_module is not null and v_o.source_module <> 'egresos' then raise exception 'Este egreso lo generó otro módulo (%): se corrige ahí', v_o.source_module; end if;
+  if v_o.reversal_of is not null then raise exception 'Este movimiento ya es un reverso'; end if;
+  if exists (select 1 from expenses where reversal_of = p_id) then raise exception 'Este egreso ya fue reversado'; end if;
+  insert into expenses (concept, amount, expense_date, category, payment_method, account,
+    notes, created_by, reversal_of, source_module)
+  values ('REVERSO — ' || v_o.concept, -coalesce(v_o.amount,0), (now() at time zone 'America/Cancun')::date, v_o.category, v_o.payment_method,
+    v_o.account, 'REVERSO — ' || trim(p_motivo), v_email, p_id, 'egresos')
+  returning id into v_new;
+  return v_new;
+end; $function$;
+
+-- Motor CxP: el abono tiene candado de sobregiro; el egreso lo crea el trigger.
+-- Un abono en EFECTIVO desde caja_principal se guarda como transferencia/'Fondos'
+-- (sale de Fondos); cualquier otro abono en efectivo sale de la caja chica y SÍ
+-- descuenta el corte (corte_neto_por_dia incluye source_module 'cxp').
+create or replace function abonar_cxp(p_account_id uuid, p_monto numeric, p_metodo text,
+  p_banco text default null, p_referencia text default null, p_fecha date default null,
+  p_notas text default null, p_caja text default null, p_op_key uuid default null)
+returns uuid
+language plpgsql security definer set search_path to 'public' as $function$
+declare v_email text; v_payment_id uuid; v_total numeric; v_pagado numeric; v_pendiente numeric;
+begin
+  if not has_perm('cxp','create') then
+    raise exception 'No tienes permiso para registrar abonos en Cuentas por Pagar';
+  end if;
+  if p_monto is null or p_monto <= 0 then raise exception 'El monto del abono debe ser mayor a cero'; end if;
+  if p_metodo is null or p_metodo not in ('efectivo','tarjeta','transferencia') then
+    raise exception 'Método de pago inválido';
+  end if;
+  select total_amount into v_total from accounts_payable where id = p_account_id for update;
+  if not found then raise exception 'Cuenta por pagar no encontrada'; end if;
+  if p_op_key is not null then
+    select id into v_payment_id from account_payable_payments where op_key = p_op_key;
+    if found then return v_payment_id; end if;
+  end if;
+  select coalesce(sum(amount),0) into v_pagado from account_payable_payments where account_payable_id = p_account_id;
+  v_pendiente := coalesce(v_total,0) - v_pagado;
+  if p_monto > v_pendiente + 0.005 then
+    raise exception 'El abono ($%) excede el pendiente de esta cuenta ($%). Si pagaste de más a este proveedor, el excedente se registra como abono en OTRA cuenta por pagar del mismo proveedor.', p_monto, v_pendiente;
+  end if;
+  select email into v_email from profiles where id = auth.uid();
+  insert into account_payable_payments (account_payable_id, amount, payment_date, payment_method,
+                                        bank_name, reference_number, notes, caja, created_by, op_key)
+  values (p_account_id, p_monto, coalesce(p_fecha, (now() at time zone 'America/Cancun')::date),
+          p_metodo, p_banco, p_referencia, p_notas, p_caja, v_email, p_op_key)
+  returning id into v_payment_id;
+  return v_payment_id;
+end $function$;
+
+create or replace function fn_cxp_crear_egreso() returns trigger
+language plpgsql security definer set search_path to 'public' as $function$
+declare
+  v_ap accounts_payable%rowtype;
+begin
+  select * into v_ap from accounts_payable where id = new.account_payable_id;
+  insert into expenses (concept, amount, expense_date, category, payment_method, account,
+                        notes, source_module, is_transfer, created_by, cxp_payment_id)
+  values (
+    'Abono CxP: ' || coalesce(trim(v_ap.concept),'') || coalesce(' - ' || nullif(trim(v_ap.supplier),''), ''),
+    new.amount,
+    coalesce(new.payment_date, (now() at time zone 'America/Cancun')::date),
+    coalesce(v_ap.category,'otros'),
+    case when new.payment_method = 'efectivo' and new.caja = 'caja_principal' then 'transferencia' else new.payment_method end,
+    case when new.payment_method = 'efectivo' and new.caja = 'caja_principal' then 'Fondos'
+         when new.payment_method = 'transferencia' then new.bank_name else null end,
+    'Egreso automático (motor de integridad CxP)'
+      || coalesce(' | Ref: ' || nullif(new.reference_number,''), '')
+      || coalesce(' | ' || nullif(new.notes,''), ''),
+    'cxp', false, new.created_by, new.id
+  )
+  on conflict (cxp_payment_id) where cxp_payment_id is not null do nothing;
+  return null;
+end;
+$function$;
+
+-- Política de fecha de ingreso de jugadores: solo admin puede dar altas o mover
+-- la fecha a un día pasado. "Hoy" se mide en hora de Cancún, NO current_date UTC
+-- (con UTC, Carmen quedaba bloqueada después de las 19:00 — incidente 07/10/2026).
+create or replace function enforce_join_date_policy() returns trigger
+language plpgsql security definer set search_path to 'public' as $function$
+declare
+  v_hoy date := (now() at time zone 'America/Cancun')::date;
+begin
+  if auth.uid() is null then return new; end if;
+  if tg_op = 'INSERT' then
+    if new.join_date is not null and new.join_date < v_hoy and not is_admin() then
+      raise exception 'Solo un administrador puede dar de alta jugadores con fecha de ingreso retroactiva';
+    end if;
+  elsif tg_op = 'UPDATE' then
+    if new.join_date is distinct from old.join_date
+       and new.join_date is not null and new.join_date < v_hoy and not is_admin() then
+      raise exception 'Solo un administrador puede modificar la fecha de ingreso a una fecha retroactiva';
+    end if;
+  end if;
+  return new;
+end;
+$function$;
+drop trigger if exists trg_join_date_policy on players;
+create trigger trg_join_date_policy before insert or update on players
+  for each row execute function enforce_join_date_policy();
+
+-- verificar_movimiento v4: verificación PÚBLICA de vales por QR (único RPC con
+-- grant a anon). Contrato: devuelve SOLO {encontrado,tipo,folio,fecha,monto,
+-- concepto,metodo,estado,club} — jamás datos personales. Un movimiento con
+-- reverso se muestra como 'REVERSADO'.
+create or replace function verificar_movimiento(p_id uuid) returns jsonb
+language plpgsql stable security definer set search_path to 'public' as $function$
+declare r jsonb; b jsonb;
+begin
+  select value into b from club_settings where key = 'branding';
+  b := coalesce(b, '{}'::jsonb);
+
+  select jsonb_build_object('encontrado', true, 'tipo', 'INGRESO',
+    'folio', case when folio is not null then 'V-' || lpad(folio::text, 6, '0') end,
+    'fecha', payment_date::date, 'monto', amount,
+    'concepto', initcap(coalesce(payment_type,'pago')) || coalesce(' ' || month, ''),
+    'metodo', payment_method,
+    'estado', case when exists (select 1 from payments rev where rev.reversal_of = p_id) then 'REVERSADO' else 'VIGENTE' end)
+  into r from payments where id = p_id and reversal_of is null;
+  if r is not null then return r || jsonb_build_object('club', b); end if;
+
+  select jsonb_build_object('encontrado', true, 'tipo', 'INGRESO',
+    'folio', case when folio is not null then 'V-' || lpad(folio::text, 6, '0') end,
+    'fecha', payment_date::date, 'monto', amount,
+    'concepto', coalesce(concept, 'Pago general'), 'metodo', payment_method,
+    'estado', case when exists (select 1 from general_payments rev where rev.reversal_of = p_id) then 'REVERSADO' else 'VIGENTE' end)
+  into r from general_payments where id = p_id and reversal_of is null;
+  if r is not null then return r || jsonb_build_object('club', b); end if;
+
+  select jsonb_build_object('encontrado', true, 'tipo', 'INGRESO',
+    'folio', case when folio is not null then 'V-' || lpad(folio::text, 6, '0') end,
+    'fecha', payment_date::date, 'monto', coalesce(paid_amount, amount),
+    'concepto', 'Pago de torneo', 'metodo', payment_method,
+    'estado', case when exists (select 1 from tournament_payments rev where rev.reversal_of = p_id) then 'REVERSADO' else 'VIGENTE' end)
+  into r from tournament_payments where id = p_id and reversal_of is null;
+  if r is not null then return r || jsonb_build_object('club', b); end if;
+
+  select jsonb_build_object('encontrado', true, 'tipo', 'INGRESO',
+    'folio', case when folio is not null then 'V-' || lpad(folio::text, 6, '0') end,
+    'fecha', payment_date::date, 'monto', amount,
+    'concepto', 'Summer Camp', 'metodo', payment_method,
+    'estado', case when exists (select 1 from summer_camp_payments rev where rev.reversal_of = p_id) then 'REVERSADO' else 'VIGENTE' end)
+  into r from summer_camp_payments where id = p_id and status = 'pagado' and reversal_of is null;
+  if r is not null then return r || jsonb_build_object('club', b); end if;
+
+  select jsonb_build_object('encontrado', true, 'tipo', 'EGRESO',
+    'folio', case when folio is not null then 'V-' || lpad(folio::text, 6, '0') end,
+    'fecha', expense_date, 'monto', amount,
+    'concepto', coalesce(concept, 'Gasto'), 'metodo', payment_method,
+    'estado', case when exists (select 1 from expenses rev where rev.reversal_of = p_id) then 'REVERSADO' else 'VIGENTE' end)
+  into r from expenses where id = p_id and reversal_of is null;
+  if r is not null then return r || jsonb_build_object('club', b); end if;
+
+  return jsonb_build_object('encontrado', false, 'club', b);
+end $function$;
+
+-- Permisos de este bloque: REVOKE FROM PUBLIC en todo; clientes autenticados
+-- ejecutan los RPC; los trigger-functions quedan sin grant; verificar_movimiento
+-- conserva su grant a anon (excepción documentada al final del archivo).
+revoke execute on function reversar_pago(uuid, text) from public;
+revoke execute on function reversar_pago_general(uuid, text) from public;
+revoke execute on function reversar_pago_summer(uuid, text) from public;
+revoke execute on function reversar_pago_torneo(uuid, text) from public;
+revoke execute on function reversar_egreso(uuid, text) from public;
+revoke execute on function abonar_cxp(uuid, numeric, text, text, text, date, text, text, uuid) from public;
+revoke execute on function fn_cxp_crear_egreso() from public;
+revoke execute on function enforce_join_date_policy() from public;
+grant execute on function reversar_pago(uuid, text) to authenticated;
+grant execute on function reversar_pago_general(uuid, text) to authenticated;
+grant execute on function reversar_pago_summer(uuid, text) to authenticated;
+grant execute on function reversar_pago_torneo(uuid, text) to authenticated;
+grant execute on function reversar_egreso(uuid, text) to authenticated;
+grant execute on function abonar_cxp(uuid, numeric, text, text, text, date, text, text, uuid) to authenticated;
+grant execute on function verificar_movimiento(uuid) to anon, authenticated;
 
 -- Seguridad (aplicar SIEMPRE al final del provisionamiento):
 -- revoke execute a anon/public de TODOS los RPCs financieros y grant a authenticated.
