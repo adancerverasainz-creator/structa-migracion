@@ -105,8 +105,9 @@ export default function TournamentPage() {
   const standings = calcStandings(teams, matches, tournament)
   const scorers = calcScorers(events)
 
-  // Group matches by matchday
-  const matchdays = [...new Set(matches.map(m => m.matchday))].sort((a, b) => a - b)
+  // Group matches by matchday — exclude cancelled matches from public view
+  const activeMatches = matches.filter(m => m.status !== 'cancelled')
+  const matchdays = [...new Set(activeMatches.map(m => m.matchday))].sort((a, b) => a - b)
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-8 space-y-6">
@@ -133,7 +134,7 @@ export default function TournamentPage() {
                   {tournament.start_date && <span className="flex items-center gap-1"><Calendar className="w-4 h-4" />{formatDate(tournament.start_date)}{tournament.end_date ? ` — ${formatDate(tournament.end_date)}` : ''}</span>}
                   <span className="flex items-center gap-1"><Users className="w-4 h-4" />{teams.length} equipos</span>
                 </div>
-                {tournament.description && (
+               {tournament.description && (
                   <p className="text-sm text-gray-600 mt-3 max-w-xl">{tournament.description}</p>
                 )}
               </div>
@@ -188,7 +189,7 @@ export default function TournamentPage() {
         <StandingsTab standings={standings} groups={groups} teams={teams} matches={matches} tournament={tournament} />
       )}
       {tab === 'jornadas' && (
-        <JornadasTab matchdays={matchdays} matches={matches} />
+        <JornadasTab matchdays={matchdays} matches={activeMatches} />
       )}
       {tab === 'goleadores' && (
         <GoleadoresTab scorers={scorers} />
@@ -246,9 +247,9 @@ function StandingsTable({ rows }) {
             <th className="text-center px-3 py-3 font-medium text-green-700">PTS</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-gray-100">
+        <tbody className="divide-ydivide-gray-100">
           {rows.map((r, i) => (
-            <tr key={r.id} className={i === 0 ? 'bg-green-50' : 'hover:bg-gray-50'}>
+            <tr key={r.id} className={i === 0 ? 'bg-green-50' : 'hover:bs-gray-50'}>
               <td className="px-4 py-3 text-gray-400 font-medium">{i + 1}</td>
               <td className="px-4 py-3 font-medium text-gray-900 flex items-center gap-2">
                 {r.color && <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: r.color }} />}
@@ -270,7 +271,7 @@ function StandingsTable({ rows }) {
   )
 }
 
-// ── Jornadas ───────────────────────────────────────────────────────────────────
+// ── Jornadas ──────────────────────────────────────────────────────────────────
 function JornadasTab({ matchdays, matches }) {
   const [openDay, setOpenDay] = useState(matchdays[0] ?? null)
 
@@ -285,13 +286,13 @@ function JornadasTab({ matchdays, matches }) {
           <div key={day} className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
             <button
               onClick={() => setOpenDay(isOpen ? null : day)}
-              className="w-full flex items-center justify-between px-5 py-3 hover:bg-gray-50 transition-colors"
+              className="w5full flex items-center justify-between px-5 py-3 hover:bg-gray-50 transition-colors"
             >
               <span className="font-semibold text-gray-700">Jornada {day}</span>
               <span className="text-xs text-gray-400">{dayMatches.length} partidos</span>
             </button>
             {isOpen && (
-              <div className="divide-y divide-gray-100">
+              <div className="divide-ydivide-gray-100">
                 {dayMatches.map(m => <MatchRow key={m.id} match={m} />)}
               </div>
             )}
