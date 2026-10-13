@@ -21,6 +21,7 @@ import CorteCajaModal from '../components/tesoreria/CorteCajaModal';
 import CajaEfectivoLibro from '../components/tesoreria/CajaEfectivoLibro';
 import BancosPanel from '../components/tesoreria/BancosPanel';
 import ExportContador from '../components/tesoreria/ExportContador';
+import CierrePeriodo from '../components/tesoreria/CierrePeriodo';
 
 export default function Fondos() {
   const { canDelete, isAdmin } = usePerms('fondos');
@@ -848,7 +849,8 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
           <BancosPanel saldos={saldosCuentas} payments={allPayments} expenses={allExpenses} />
         </TabsContent>
 
-        <TabsContent value="contador" className="mt-4">
+        <TabsContent value="contador" className="mt-4 space-y-6">
+          <CierrePeriodo />
           <ExportContador payments={allPayments} expenses={allExpenses} />
         </TabsContent>
       </Tabs>
