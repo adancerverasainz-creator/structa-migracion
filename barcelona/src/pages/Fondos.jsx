@@ -490,7 +490,7 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
         <TabsList>
           <TabsTrigger value="cajas">Cajas</TabsTrigger>
           <TabsTrigger value="bancos">Bancos</TabsTrigger>
-          <TabsTrigger value="contador">Para el contador</TabsTrigger>
+          <TabsTrigger value="contador">Cierre mensual</TabsTrigger>
         </TabsList>
 
         <TabsContent value="cajas" className="mt-4 space-y-6">
