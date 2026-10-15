@@ -22,27 +22,41 @@ export function calcStandings(teams, matches, tournament = {}) {
   })
 
   matches.forEach(m => {
-    // walkover counts as a resolved match (goals already stored as 3-0 for the winner)
-    // annulled / cancelled are excluded from standings
-    if (!['completed', 'forfait', 'walkover'].includes(m.status)) return
+    if (m.status !== 'completed' && m.status !== 'forfait') return
     const h = m.home_team_id
     const a = m.away_team_id
+
+    if (m.status === 'forfait') {
+      // Forfait: one team may be null (deleted/withdrawn team with no valid ID).
+      // Determine winner/loser: the team that IS in the table wins; the absent one loses.
+      // If forfait_team_id is set, use it directly; otherwise infer from which ID is null/missing.
+      let winner, loser
+      if (m.forfait_team_id) {
+        loser  = m.forfait_team_id
+        winner = m.forfait_team_id === h ? a : h
+      } else if (!table[a]) {
+        // Away team missing (null or deleted) → away forfeited, home wins
+        winner = h
+        loser  = a
+      } else if (!table[h]) {
+        // Home team missing (null or deleted) → home forfeited, away wins
+        winner = a
+        loser  = h
+      } else {
+        // Both teams present but forfait_team_id is null — skip (ambiguous)
+        return
+      }
+      if (table[winner]) { table[winner].pg++; table[winner].pts += PTS_WIN;  table[winner].pj++ }
+      if (table[loser])  { table[loser].pp++;  table[loser].pts  += PTS_LOSS; table[loser].pj++ }
+      return
+    }
+
+    // Completed match — skip if either team is not in the standings table
     if (!table[h] || !table[a]) return
 
     const hg = m.home_goals ?? 0
     const ag = m.away_goals ?? 0
 
-    if (m.status === 'forfait') {
-      const winner = m.forfait_team_id === h ? a : h
-      const loser = m.forfait_team_id
-      if (table[winner]) { table[winner].pg++; table[winner].pts += PTS_WIN; table[winner].pj++ }
-      if (table[loser])  { table[loser].pp  += 1; table[loser].pts += PTS_LOSS; table[loser].pj++ }
-      return
-    }
-
-    // completed or walkover: score-based
-    // Guard: walkover con cualquier goal null indica dato corrupto — se omite de standings
-    if (m.status === 'walkover' && (m.home_goals == null || m.away_goals == null)) return
     table[h].pj++; table[a].pj++
     table[h].gf += hg; table[h].gc += ag
     table[a].gf += ag; table[a].gc += hg
@@ -59,10 +73,6 @@ export function calcStandings(teams, matches, tournament = {}) {
 
   return Object.values(table).sort((a, b) => {
     if (b.pts !== a.pts) return b.pts - a.pts
-    // PPG tiebreaker: favors team with same pts but fewer games played (fairer when games are unequal)
-    const ppgA = a.pj > 0 ? a.pts / a.pj : 0
-    const ppgB = b.pj > 0 ? b.pts / b.pj : 0
-    if (Math.abs(ppgB - ppgA) > 0.0001) return ppgB - ppgA
     const gdA = a.gf - a.gc
     const gdB = b.gf - b.gc
     if (gdB !== gdA) return gdB - gdA
