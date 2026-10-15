@@ -1845,9 +1845,16 @@ export default function AdminTournamentDetail() {
       {/* ── EVENT MODAL ──────────────────────────────────────────────────── */}
       {eventModal !== null && (() => {
         const selectedMatch = matches.find(m => m.id === eventForm.match_id)
-        const availableTeams = selectedMatch
-          ? teams.filter(t => t.id === selectedMatch.home_team_id || t.id === selectedMatch.away_team_id)
-          : teams
+        const availableTeams = (() => {
+          if (!selectedMatch) return teams
+          const filtered = teams.filter(t =>
+            t.id === selectedMatch.home_team_id ||
+            t.id === selectedMatch.away_team_id
+          )
+          // If the match references deleted/null teams, fall back to all teams
+          // so the admin can still register events without being locked out.
+          return filtered.length > 0 ? filtered : teams
+        })()
         function closeEventModal() {
           setEventModal(null)
           setMatchTeamsFilter(null)
