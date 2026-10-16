@@ -1903,7 +1903,7 @@ export default function AdminTournamentDetail() {
               </Field>
 
               <Field label="Equipo">
-                <select value={eventForm.team_id} onChange={e => setEventForm(f => ({ ...f, team_id: e.target.value }))} className={INPUT}>
+                <select value={eventForm.team_id} onChange={e => setEventForm(f => ({ ...f, team_id: e.target.value, player_name: '' }))} className={INPUT}>
                   <option value="">Seleccionar...</option>
                   {availableTeams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                 </select>
@@ -1911,7 +1911,35 @@ export default function AdminTournamentDetail() {
 
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Nombre del jugador">
-                  <input value={eventForm.player_name} onChange={e => setEventForm(f => ({ ...f, player_name: e.target.value }))} className={INPUT} placeholder="Ej. J. García" />
+                  {(() => {
+                    const teamPlayers = players
+                      .filter(p => p.team_id === eventForm.team_id)
+                      .sort((a, b) => (a.number ?? 999) - (b.number ?? 999))
+                    if (teamPlayers.length > 0) {
+                      return (
+                        <select
+                          value={eventForm.player_name}
+                          onChange={e => setEventForm(f => ({ ...f, player_name: e.target.value }))}
+                          className={INPUT}
+                        >
+                          <option value="">Seleccionar jugador...</option>
+                          {teamPlayers.map(p => (
+                            <option key={p.id} value={p.name}>
+                              {p.number != null ? `#${p.number} – ` : ''}{p.name}
+                            </option>
+                          ))}
+                        </select>
+                      )
+                    }
+                    return (
+                      <input
+                        value={eventForm.player_name}
+                        onChange={e => setEventForm(f => ({ ...f, player_name: e.target.value }))}
+                        className={INPUT}
+                        placeholder="Ej. J. García"
+                      />
+                    )
+                  })()}
                 </Field>
                 <Field label="Minuto">
                   <input type="number" min="1" max="120" value={eventForm.minute} onChange={e => setEventForm(f => ({ ...f, minute: e.target.value }))} className={INPUT} placeholder="45" />
