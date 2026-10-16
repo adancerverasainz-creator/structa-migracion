@@ -1903,7 +1903,17 @@ export default function AdminTournamentDetail() {
               </Field>
 
               <Field label="Equipo">
-                <select value={eventForm.team_id} onChange={e => setEventForm(f => ({ ...f, team_id: e.target.value, player_name: '' }))} className={INPUT}>
+                <select
+                  value={eventForm.team_id}
+                  onChange={e => setEventForm(f => ({
+                    ...f,
+                    team_id: e.target.value,
+                    // En modo creación limpiar el jugador al cambiar equipo;
+                    // en modo edición conservarlo para no borrar datos existentes
+                    player_name: eventModal === 'create' ? '' : f.player_name,
+                  }))}
+                  className={INPUT}
+                >
                   <option value="">Seleccionar...</option>
                   {availableTeams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                 </select>
@@ -1916,6 +1926,10 @@ export default function AdminTournamentDetail() {
                       .filter(p => p.team_id === eventForm.team_id)
                       .sort((a, b) => (a.number ?? 999) - (b.number ?? 999))
                     if (teamPlayers.length > 0) {
+                      // Si el valor actual no coincide con ningún jugador del catálogo
+                      // (ej. evento creado con texto libre antes de tener plantilla)
+                      // lo añadimos como opción para que no se pierda al guardar.
+                      const currentMatchesCatalog = teamPlayers.some(p => p.name === eventForm.player_name)
                       return (
                         <select
                           value={eventForm.player_name}
@@ -1923,6 +1937,9 @@ export default function AdminTournamentDetail() {
                           className={INPUT}
                         >
                           <option value="">Seleccionar jugador...</option>
+                          {!currentMatchesCatalog && eventForm.player_name && (
+                            <option value={eventForm.player_name}>{eventForm.player_name} (texto libre)</option>
+                          )}
                           {teamPlayers.map(p => (
                             <option key={p.id} value={p.name}>
                               {p.number != null ? `#${p.number} – ` : ''}{p.name}
