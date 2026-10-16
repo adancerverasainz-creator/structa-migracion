@@ -1002,6 +1002,20 @@ export default function AdminTournamentDetail() {
     setEventModal('create')
   }
 
+  // ── Open event modal to edit an existing event ───────────────────────────
+  function openEditEvent(ev, m) {
+    setEventForm({
+      match_id: ev.match_id,
+      team_id: ev.team_id || '',
+      player_name: ev.player_name || '',
+      minute: ev.minute != null ? String(ev.minute) : '',
+      event_type: ev.event_type || 'goal',
+    })
+    setEventOpKey(null) // no aplica op_key en edición
+    setMatchTeamsFilter(m ? [m.home_team_id, m.away_team_id] : null)
+    setEventModal(ev) // eventModal = objeto del evento → modo edición
+  }
+
   // ── Motor de Integridad: valores derivados ────────────────────────────────
   const realMatches = matches.filter(m => m.home_team_id !== null && m.away_team_id !== null)
   const maxRealMatchday = realMatches.length > 0
@@ -1453,8 +1467,15 @@ export default function AdminTournamentDetail() {
                                     {ev.minute && <span className="text-gray-400">{ev.minute}'</span>}
                                     {ev.team_name && <span className="text-gray-400">· {ev.team_name}</span>}
                                     <button
+                                      onClick={() => openEditEvent(ev, m)}
+                                      className="ml-auto p-0.5 text-gray-300 hover:text-blue-500 transition-colors"
+                                      title="Editar evento"
+                                    >
+                                      <Pencil className="w-3 h-3" />
+                                    </button>
+                                    <button
                                       onClick={() => setDeletingEvent(ev)}
-                                      className="ml-auto p-0.5 text-gray-300 hover:text-red-500 transition-colors"
+                                      className="p-0.5 text-gray-300 hover:text-red-500 transition-colors"
                                       title="Eliminar evento"
                                     >
                                       <Trash2 className="w-3 h-3" />
@@ -1869,7 +1890,7 @@ export default function AdminTournamentDetail() {
                     J{selectedMatch.matchday}: {fmtBracket(selectedMatch.home_team_name)} vs {fmtBracket(selectedMatch.away_team_name)}
                   </div>
                 ) : (
-                  <select required value={eventForm.match_id} onChange={e => setEventForm(f => ({ ...f, match_id: e.target.value, team_id: '' }))} className={INPUT}>
+                  <select required value={eventForm.match_id} onChange={e => setEventForm(f => ({ ...f, match_id: e.target.value, team_id: '', player_name: '' }))} className={INPUT}>
                     <option value="">Seleccionar...</option>
                     {matches.map(m => (
                       <option key={m.id} value={m.id}>J{m.matchday}: {fmtBracket(m.home_team_name)} vs {fmtBracket(m.away_team_name)}</option>
