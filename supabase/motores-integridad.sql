@@ -240,7 +240,9 @@ with rev_pay as (
   union select reversal_of from summer_camp_payments where reversal_of is not null
 ),
 cobros as (
-  select payment_date d, amount + coalesce(surcharge,0) as m from payments
+  -- amount YA incluye el recargo (PaymentForm guarda monto+surcharge; surcharge es informativo):
+  -- sumar surcharge duplicaba el recargo en el corte (fix 16/10/2026).
+  select payment_date d, amount as m from payments
     where payment_method='efectivo' and coalesce(bank_name,'')<>'Fondos' and reversal_of is null
       and id not in (select id from rev_pay)
   union all
