@@ -452,7 +452,10 @@ export default function PlayerUnifiedDebt({
     if (item.isTournament) {
       onAbonarTorneo?.({ player, tournamentId: item.tournament_id, tournamentName: item.tournament_name, registrationFee: item.registration_fee, totalPaid: item.paid, tournament: { id: item.tournament_id, name: item.tournament_name }, debt: item.pending, fee: item.registration_fee });
     } else {
-      onAbonar?.({ player, pendingAmount: item.pending, payment_type: item.payment_type, month: item.month, existingPaymentId: item.existingPaymentId });
+      // item.pending YA incluye el moratorio: se separa para que el modal lo muestre
+      // UNA sola vez como recargo (antes Carmen volvía a sumar $100 → recargo doble).
+      const moratorio = Number(item.moratorio) || 0;
+      onAbonar?.({ player, pendingAmount: Math.max(0, (Number(item.pending) || 0) - moratorio), moratorio, payment_type: item.payment_type, month: item.month, existingPaymentId: item.existingPaymentId });
     }
   };
 
