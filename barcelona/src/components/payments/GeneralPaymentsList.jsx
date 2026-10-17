@@ -3,19 +3,18 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Edit, Trash2, Search, DollarSign, Undo2, Printer } from 'lucide-react';
+import { Search, DollarSign, Undo2, Printer } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { formatCurrency } from '../lib/formatCurrency';
 import { imprimirVale, folioVale, cuentaLegible } from '../print/PrintVale';
 
 export default function GeneralPaymentsList({ payments, isLoading, onEdit, onDelete, onReverse, currentUserEmail, isAdmin }) {
-  // #80 Storno fase 2: ventana de corrección (mismo día) + reverso admin
-  const hoyStr = new Date().toDateString();
-  const esMismoDia = (p) => p.created_date && new Date(p.created_date).toDateString() === hoyStr;
+  // Documento emitido: un cobro con vale impreso NO se edita ni se borra (lo
+  // bloquea la BD: fn_cobro_inmutable). Corrección = REVERSO + nueva captura.
   const reversedIds = new Set(payments.filter(p => p.reversal_of).map(p => p.reversal_of));
-  const puedeCorregir = (p) => !p.reversal_of && !reversedIds.has(p.id)
-    && esMismoDia(p) && (isAdmin || (p.created_by && p.created_by === currentUserEmail));
+  const puedeReversar = (p) => !p.reversal_of && !reversedIds.has(p.id) && onReverse
+    && (isAdmin || (p.created_by && p.created_by === currentUserEmail));
   const [searchTerm, setSearchTerm] = useState('');
 
   // El shim guarda '' como null: un pago sin concepto NO debe desaparecer de la lista.
@@ -129,25 +128,12 @@ export default function GeneralPaymentsList({ payments, isLoading, onEdit, onDel
                     <Printer className="w-4 h-4" />
                   </Button>
                   )}
-                  {puedeCorregir(payment) ? (
-                    <>
-                      <Button size="sm" variant="outline" onClick={() => onEdit(payment)}
-                        className="text-blue-600 hover:text-blue-700 hover:bg-blue-50" title="Ventana de corrección: solo el mismo día">
-                        <Edit className="w-4 h-4" />
-                      </Button>
-                      {onDelete && isAdmin && (
-                        <Button size="sm" variant="outline" onClick={() => onDelete(payment)}
-                          className="text-red-600 hover:text-red-700 hover:bg-red-50">
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      )}
-                    </>
-                  ) : (!payment.reversal_of && !reversedIds.has(payment.id) && onReverse && (isAdmin || payment.created_by === currentUserEmail)) ? (
+                  {puedeReversar(payment) && (
                     <Button size="sm" variant="outline" onClick={() => onReverse(payment)}
-                      className="text-amber-700 hover:text-amber-800 hover:bg-amber-50" title="Storno: contra-movimiento que anula el pago">
+                      className="text-amber-700 hover:text-amber-800 hover:bg-amber-50" title="Reversar: anula este cobro con un contra-movimiento (el vale queda REVERSADO). Para corregir, reversa y captura de nuevo.">
                       <Undo2 className="w-4 h-4" />
                     </Button>
-                  ) : null}
+                  )}
                 </div>
               </div>
             ))}
