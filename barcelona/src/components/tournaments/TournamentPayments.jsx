@@ -70,8 +70,9 @@ export default function TournamentPayments({ tournament, players, payments: allP
 
   const payments = tournamentPayments;
   const reversedIds = new Set(payments.filter(p => p.reversal_of).map(p => p.reversal_of));
-  const puedeCorregir = (p) => !p.reversal_of && !reversedIds.has(p.id)
-    && esMismoDia(p) && (isAdmin || (p.created_by && p.created_by === currentUser?.email));
+  // Documento emitido: el cobro no se edita ni se borra (BD: fn_cobro_inmutable);
+  // la corrección es REVERSO + nueva captura. puedeCorregir queda siempre falso.
+  const puedeCorregir = () => false;
   const activePlayers = players.filter(p => p.status === 'activo');
 
   // Jugadores internos asistentes (para el selector de jugadores en formularios)
@@ -710,7 +711,7 @@ export default function TournamentPayments({ tournament, players, payments: allP
                       </>
                     ) : (!payment.reversal_of && !reversedIds.has(payment.id) && (isAdmin || payment.created_by === currentUser?.email)) ? (
                       <Button variant="outline" size="sm" className="text-amber-700 hover:bg-amber-50"
-                        title="Storno: contra-movimiento que anula el pago" onClick={() => { setReversarInfo(payment); setMotivoReverso(''); }}>
+                        title="Reversar: anula este cobro con un contra-movimiento (el vale queda REVERSADO). Para corregir, reversa y captura de nuevo." onClick={() => { setReversarInfo(payment); setMotivoReverso(''); }}>
                         <Undo2 className="w-4 h-4" />
                       </Button>
                     ) : null}
