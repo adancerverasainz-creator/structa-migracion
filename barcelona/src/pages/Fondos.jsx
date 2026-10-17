@@ -22,6 +22,7 @@ import CajaEfectivoLibro from '../components/tesoreria/CajaEfectivoLibro';
 import BancosPanel from '../components/tesoreria/BancosPanel';
 import ExportContador from '../components/tesoreria/ExportContador';
 import CierrePeriodo from '../components/tesoreria/CierrePeriodo';
+import ReversosRecientes from '../components/tesoreria/ReversosRecientes';
 
 export default function Fondos() {
   const { canDelete, isAdmin } = usePerms('fondos');
@@ -504,6 +505,8 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
           )}
 
           {cajaView === 'fondos' && (<>
+      {/* Control por excepción: reversos de cobros vs. recaptura (solo aparece si hubo reversos) */}
+      <ReversosRecientes />
       {/* Cortes pendientes de entrega — sin captura manual de montos */}
       <Card className="border-2 border-amber-300">
         <CardHeader className="pb-2">
