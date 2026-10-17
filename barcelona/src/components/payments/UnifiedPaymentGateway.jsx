@@ -64,6 +64,10 @@ export default function UnifiedPaymentGateway({ config, onSubmit, onCancel, isLo
   const { type, player, debtInfo } = config;
   const {
     pendingAmount = 0,
+    // Recargo por atraso YA calculado por la regla del club (Deuda Unificada / Morosos).
+    // Llega separado del saldo para cobrarse UNA sola vez (antes venía sumado en
+    // pendingAmount y el sugerido automático lo volvía a agregar → recargo doble).
+    moratorio = 0,
     month = '',
     existingPaymentId = null,
     tournamentId = null,
@@ -75,7 +79,7 @@ export default function UnifiedPaymentGateway({ config, onSubmit, onCancel, isLo
 
   // ── State ──
   const [amount, setAmount] = useState(pendingAmount || '');
-  const [surcharge, setSurcharge] = useState(0);
+  const [surcharge, setSurcharge] = useState(Number(moratorio) || 0);
   const [paymentDate, setPaymentDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [paymentMethod, setPaymentMethod] = useState('efectivo');
   const [bankName, setBankName] = useState('');
@@ -121,8 +125,9 @@ export default function UnifiedPaymentGateway({ config, onSubmit, onCancel, isLo
   useEffect(() => {
     if ((type || itemPaymentType) === 'mensualidad' && month) {
       const { suggestedSurcharge, isLate, monthsLate } = calculateSuggestedSurcharge(month, paymentDate, lateFeeSettings);
-      // Only auto-set if surcharge hasn't been manually changed
-      if (isLate && surcharge === 0) {
+      // Only auto-set if surcharge hasn't been manually changed (y nunca si el
+      // recargo ya vino calculado desde la lista de deuda)
+      if (isLate && surcharge === 0 && !(Number(moratorio) > 0)) {
         setSurcharge(suggestedSurcharge);
       }
     }
