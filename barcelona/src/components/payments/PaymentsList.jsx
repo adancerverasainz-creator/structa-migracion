@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Edit, Trash2, Search, CreditCard, Calendar, User, Undo2, Printer } from 'lucide-react';
+import { Search, CreditCard, Calendar, User, Undo2, Printer } from 'lucide-react';
 import { format } from 'date-fns';
 import { formatCurrency } from '../lib/formatCurrency';
 import { imprimirVale, folioVale, cuentaLegible } from '../print/PrintVale';
@@ -14,16 +14,15 @@ export default function PaymentsList({ payments, players, isLoading, onEdit, onD
   const [searchTerm, setSearchTerm] = useState('');
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
-  // #80 Storno: ventana de corrección (mismo día, quien capturó o admin);
-  // después, solo reverso por admin. Los reversos y reversados no se tocan.
-  const hoyStr = new Date().toDateString();
-  const esMismoDia = (p) => p.created_date && new Date(p.created_date).toDateString() === hoyStr;
+  // Documento emitido: un cobro con vale impreso NO se edita ni se borra (lo
+  // bloquea la BD: fn_cobro_inmutable). La única corrección es el REVERSO
+  // (quien capturó o admin) + nueva captura. Los reversos y reversados no se tocan.
   const reversedIds = React.useMemo(
     () => new Set(payments.filter(p => p.reversal_of).map(p => p.reversal_of)),
     [payments]
   );
-  const puedeCorregir = (p) => !p.reversal_of && !reversedIds.has(p.id)
-    && esMismoDia(p) && (isAdmin || (p.created_by && p.created_by === currentUserEmail));
+  const puedeReversar = (p) => !p.reversal_of && !reversedIds.has(p.id) && onReverse
+    && (isAdmin || (p.created_by && p.created_by === currentUserEmail));
 
   // Índice O(1): evita players.find() por cada una de las ~10k filas
   const playerById = React.useMemo(() => new Map(players.map(p => [p.id, p])), [players]);
@@ -192,42 +191,18 @@ export default function PaymentsList({ payments, players, isLoading, onEdit, onD
                       <span className="md:hidden">Imprimir</span>
                     </Button>
                     )}
-                    {puedeCorregir(payment) ? (
-                      <>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => onEdit(payment)}
-                          className="flex-1 md:flex-none"
-                          title="Ventana de corrección: solo el mismo día"
-                        >
-                          <Edit className="w-4 h-4 md:mr-0 mr-1" />
-                          <span className="md:hidden">Editar</span>
-                        </Button>
-                        {onDelete && isAdmin && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="text-red-600 hover:text-red-700 hover:bg-red-50 flex-1 md:flex-none"
-                            onClick={() => onDelete(payment)}
-                          >
-                            <Trash2 className="w-4 h-4 md:mr-0 mr-1" />
-                            <span className="md:hidden">Eliminar</span>
-                          </Button>
-                        )}
-                      </>
-                    ) : (!payment.reversal_of && !reversedIds.has(payment.id) && onReverse && (isAdmin || payment.created_by === currentUserEmail)) ? (
+                    {puedeReversar(payment) && (
                       <Button
                         variant="outline"
                         size="sm"
                         className="text-amber-700 hover:text-amber-800 hover:bg-amber-50 flex-1 md:flex-none"
                         onClick={() => onReverse(payment)}
-                        title="Storno: contra-movimiento que anula el pago sin modificarlo"
+                        title="Reversar: anula este cobro con un contra-movimiento (el vale queda REVERSADO). Para corregir, reversa y captura de nuevo."
                       >
                         <Undo2 className="w-4 h-4 md:mr-0 mr-1" />
                         <span className="md:hidden">Reversar</span>
                       </Button>
-                    ) : null}
+                    )}
                   </div>
                 </div>
               </CardContent>
