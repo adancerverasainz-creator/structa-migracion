@@ -604,7 +604,7 @@ export default function DebtorsList({ players, payments, isLoading, tournamentPa
                         <Button
                           size="sm"
                           className="bg-green-600 hover:bg-green-700 gap-2"
-                          onClick={() => onAbonar({ player, month: selectedMonth, pendingAmount: player.pendingAmount, payment_type: 'mensualidad' })}
+                          onClick={() => onAbonar({ player, month: selectedMonth, pendingAmount: Math.max(0, (player.pendingAmount || 0) - (player.recargo || 0)), moratorio: player.recargo || 0, payment_type: 'mensualidad' })}
                         >
                           <PlusCircle className="w-4 h-4" />
                           Abonar
