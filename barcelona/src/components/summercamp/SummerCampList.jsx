@@ -21,8 +21,9 @@ export default function SummerCampList({ payments, players, isLoading, onEdit, o
   const hoyStr = new Date().toDateString();
   const esMismoDia = (p) => p.created_date && new Date(p.created_date).toDateString() === hoyStr;
   const reversedIds = new Set(payments.filter(p => p.reversal_of).map(p => p.reversal_of));
-  const puedeCorregir = (p) => !p.reversal_of && !reversedIds.has(p.id)
-    && esMismoDia(p) && (isAdmin || (p.created_by && p.created_by === currentUserEmail));
+  // Documento emitido: el cobro no se edita ni se borra (BD: fn_cobro_inmutable);
+  // la corrección es REVERSO + nueva captura. puedeCorregir queda siempre falso.
+  const puedeCorregir = () => false;
 
   const getPlayerName = (p) => {
     if (p.player_name) return p.player_name;
