@@ -1,8 +1,11 @@
-import React from 'react';
-import { useQuery } from '@tanstack/react-query';
+import React, { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { usePerms } from '@/lib/usePerms';
+import { toast } from 'sonner';
 import { supabase } from '@/api/base44Client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Undo2, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { formatCurrency } from '../lib/formatCurrency';
@@ -28,6 +31,28 @@ export default function ReversosRecientes() {
     },
   });
 
+  // Reversos que el admin ya revisó (tabla reversos_revisados): no cuentan como alerta
+  const { data: revisados = [] } = useQuery({
+    queryKey: ['reversosRevisados'],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('reversos_revisados').select('reverso_id, revisado_por, revisado_at');
+      if (error) throw new Error(error.message);
+      return data || [];
+    },
+  });
+  const revisadoDe = new Map(revisados.map(r => [r.reverso_id, r]));
+  const { isAdmin } = usePerms('fondos');
+  const queryClient = useQueryClient();
+  const [verRevisados, setVerRevisados] = useState(false);
+  const marcar = useMutation({
+    mutationFn: async (id) => {
+      const { error } = await supabase.rpc('marcar_reverso_revisado', { p_reverso_id: id });
+      if (error) throw new Error(error.message);
+    },
+    onSuccess: () => { toast.success('Reverso marcado como revisado'); queryClient.invalidateQueries({ queryKey: ['reversosRevisados'] }); },
+    onError: (e) => toast.error(e.message),
+  });
+
   if (rows.length === 0) return null;
 
   const estado = (r) => {
@@ -43,7 +68,10 @@ export default function ReversosRecientes() {
     blue: 'border-blue-300 bg-blue-50 text-blue-800',
     green: 'border-green-300 bg-green-50 text-green-800',
   };
-  const alertas = rows.filter(r => !r.recaptura_id || Number(r.diferencia) < 0).length;
+  const esAlerta = (r) => (!r.recaptura_id || Number(r.diferencia) < 0) && !revisadoDe.has(r.reverso_id);
+  const alertas = rows.filter(esAlerta).length;
+  const visibles = rows.filter(r => verRevisados || !revisadoDe.has(r.reverso_id));
+  const ocultos = rows.length - visibles.length;
 
   return (
     <Card className={`border-2 ${alertas > 0 ? 'border-red-300' : 'border-gray-200'}`}>
@@ -62,10 +90,11 @@ export default function ReversosRecientes() {
           Un cobro con vale impreso no se edita: se reversa y se captura de nuevo. Aquí se compara cada reverso con su
           recaptura. Si un reverso queda sin recaptura, el jugador aparece como deudor de ese mes y conserva su vale original (QR = REVERSADO).
         </p>
-        {rows.map((r) => {
+        {visibles.map((r) => {
           const e = estado(r);
+          const rev = revisadoDe.get(r.reverso_id);
           return (
-            <div key={r.reverso_id} className={`rounded-lg border p-3 text-sm ${tonos[e.tono]}`}>
+            <div key={r.reverso_id} className={`rounded-lg border p-3 text-sm ${rev ? 'border-gray-200 bg-gray-50 text-gray-500' : tonos[e.tono]}`}>
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="min-w-0">
                   <p className="font-semibold text-gray-900 truncate">
@@ -86,10 +115,23 @@ export default function ReversosRecientes() {
                   )}
                 </div>
               </div>
-              <p className="flex items-center gap-1 text-xs font-semibold mt-2"><e.Icon className="w-3.5 h-3.5" /> {e.texto}</p>
+              <div className="flex items-center justify-between gap-2 mt-2">
+                <p className="flex items-center gap-1 text-xs font-semibold"><e.Icon className="w-3.5 h-3.5" /> {e.texto}</p>
+                {rev ? (
+                  <span className="text-xs text-gray-400">Revisado por {rev.revisado_por} · {format(new Date(rev.revisado_at), 'dd/MM HH:mm')}</span>
+                ) : (isAdmin && e.tono !== 'green' && (
+                  <Button size="sm" variant="outline" className="h-7 text-xs" disabled={marcar.isPending}
+                    onClick={() => marcar.mutate(r.reverso_id)}>Marcar revisado</Button>
+                ))}
+              </div>
             </div>
           );
         })}
+        {ocultos > 0 && (
+          <button type="button" className="text-xs text-gray-500 underline" onClick={() => setVerRevisados(true)}>
+            Mostrar {ocultos} reverso(s) ya revisado(s)
+          </button>
+        )}
       </CardContent>
     </Card>
   );
