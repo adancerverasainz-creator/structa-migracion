@@ -143,9 +143,52 @@ export default function SummerCamp() {
     onError: (err) => toast.error(`No se pudo registrar el pago: ${err?.message || 'error desconocido'}`),
   });
 
+  // Liquidar un registro PENDIENTE es un movimiento de caja: RPC motor (fecha de hoy,
+  // folio propio). Un registro ya pagado es documento emitido: solo se editan textos;
+  // para corregir dinero se usa Reversar (lo exige la BD: fn_cobro_inmutable).
+  const pagarPendienteMutation = useMutation({
+    mutationFn: async ({ id, data }) => {
+      const { data: res, error } = await supabase.rpc('pagar_summer_pendiente', {
+        p_id: id,
+        p_monto: Number(data.amount) || 0,
+        p_metodo: data.payment_method || 'efectivo',
+        p_banco: data.bank_name || null,
+        p_referencia: data.reference_number || null,
+        p_fecha: (data.payment_date || '').slice(0, 10) || null,
+        p_notas: data.notes || null,
+      });
+      if (error) throw new Error(error.message);
+      return res;
+    },
+    onSuccess: async (res, { id, data }) => {
+      await logAudit({
+        action: 'MODIFICACIÓN', module: 'Summer Camp', entity_type: 'SummerCampPayment',
+        entity_id: id, entity_name: data.player_name || 'Pago Summer',
+        newData: data, monetaryDiff: Number(data.amount) || 0,
+        details: `Pendiente liquidado: $${data.amount} (${data.payment_method})`,
+      });
+      queryClient.invalidateQueries({ queryKey: ['summerCampPayments'] });
+      queryClient.invalidateQueries({ queryKey: ['saldosPorCuenta'] });
+      setShowForm(false); setEditingPayment(null);
+      toast.success('Pago registrado');
+    },
+    onError: (err) => toast.error(`No se pudo registrar el pago: ${err?.message || 'error desconocido'}`),
+  });
+
   const handleSubmit = async (data, isLast = true) => {
     if (editingPayment?.id) {
-      updateMutation.mutate({ id: editingPayment.id, data, prev: editingPayment });
+      if (editingPayment.status === 'pendiente' && data.status === 'pagado') {
+        pagarPendienteMutation.mutate({ id: editingPayment.id, data });
+        return;
+      }
+      const dinero = ['amount', 'base_amount', 'discount', 'payment_method', 'bank_name', 'payment_date', 'status', 'week_number', 'payment_type', 'player_id'];
+      const cambioDinero = dinero.some(k => k in data && String(data[k] ?? '') !== String(editingPayment[k] ?? '') && !(k === 'payment_date' && String(data[k] || '').slice(0, 10) === String(editingPayment[k] || '').slice(0, 10)));
+      if (cambioDinero) {
+        toast.error('Un pago ya registrado no se modifica: usa Reversar y captura de nuevo. Solo se pueden corregir notas y referencia.');
+        return;
+      }
+      const soloTexto = { notes: data.notes ?? null, reference_number: data.reference_number ?? null, discount_reason: data.discount_reason ?? null, player_name: data.player_name ?? editingPayment.player_name };
+      updateMutation.mutate({ id: editingPayment.id, data: soloTexto, prev: editingPayment });
       return;
     }
     batchRef.current.push(data);
@@ -352,7 +395,7 @@ export default function SummerCamp() {
           <SummerCampList payments={payments} players={players} isLoading={paymentsLoading} onEdit={handleEdit} onDelete={canDelete ? handleDelete : null} onReverse={isAdmin ? (p) => { setReversarInfo(p); setMotivoReverso(''); } : null} currentUserEmail={currentUser?.email} isAdmin={isAdmin} filterType="uniforme" />
         </TabsContent>
         <TabsContent value="deudores" className="mt-4">
-          <SummerCampDebtors payments={payments} players={players} onEdit={handleEdit} onDelete={canDelete ? handleDelete : null} onReverse={isAdmin ? (p) => { setReversarInfo(p); setMotivoReverso(''); } : null} currentUserEmail={currentUser?.email} isAdmin={isAdmin} />
+          <SummerCampDebtors payments={payments} players={players} onEdit={handleEdit} onDelete={null} onReverse={isAdmin ? (p) => { setReversarInfo(p); setMotivoReverso(''); } : null} currentUserEmail={currentUser?.email} isAdmin={isAdmin} />
         </TabsContent>
         <TabsContent value="externos" className="mt-4">
           <ExternalPlayersList
