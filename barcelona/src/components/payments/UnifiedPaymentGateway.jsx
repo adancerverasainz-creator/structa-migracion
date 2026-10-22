@@ -530,6 +530,17 @@ export default function UnifiedPaymentGateway({ config, onSubmit, onCancel, isLo
               )}
             </div>
 
+            {/* Total a cobrar — visible SIEMPRE, con desglose del recargo */}
+            {!isUniformes && !isTorneo && (
+              <div className="flex justify-between items-center rounded-lg border-2 border-green-300 bg-green-50 px-3 py-2">
+                <div>
+                  <p className="text-sm font-semibold text-gray-700">Total a cobrar</p>
+                  {surcharge > 0 && <p className="text-xs text-orange-700">Incluye recargo de {formatCurrency(surcharge)} — si no aplica (beca, convenio), pon el recargo en $0 antes de registrar</p>}
+                </div>
+                <span className="text-xl font-bold text-green-700">{formatCurrency(total)}</span>
+              </div>
+            )}
+
             {/* Surcharge — only for mensualidad */}
             {isMensualidad && (
               <div className="space-y-2">
@@ -558,7 +569,9 @@ export default function UnifiedPaymentGateway({ config, onSubmit, onCancel, isLo
                 {surcharge > 0 && (
                   <p className="text-sm font-semibold text-orange-600">
                     Recargo: {formatCurrency(surcharge)}
-                    {isLate && suggestedSurcharge === surcharge && ' (Sugerido automático)'}
+                    {Number(moratorio) > 0 && surcharge === Number(moratorio)
+                      ? ' (calculado por la regla del club — no lo vuelvas a sumar)'
+                      : (isLate && suggestedSurcharge === surcharge && !(Number(moratorio) > 0) ? ' (Sugerido automático)' : '')}
                   </p>
                 )}
               </div>
