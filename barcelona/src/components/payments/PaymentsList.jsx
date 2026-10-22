@@ -10,7 +10,7 @@ import { imprimirVale, folioVale, cuentaLegible } from '../print/PrintVale';
 
 const PAGE_SIZE = 100;
 
-export default function PaymentsList({ payments, players, isLoading, onEdit, onDelete, onReverse, currentUserEmail, isAdmin }) {
+export default function PaymentsList({ payments, players, isLoading, onReverse, currentUserEmail, isAdmin }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
