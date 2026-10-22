@@ -529,16 +529,20 @@ imprimirVale(valeDeIngreso({
 });
 
 const updateGeneralMutation = useMutation({
+// Documento emitido: solo se corrigen textos (concepto, categoría, notas, referencia).
+// Monto, fecha, método y cuenta son inmutables (BD: fn_cobro_inmutable) → Reversar.
 mutationFn: async ({ id, data, prev }) => {
+const soloTexto = { concept: data.concept, category: data.category, notes: data.notes ?? null, reference_number: data.reference_number ?? null };
 await logAudit({
 action: 'MODIFICACIÓN', module: 'Pagos Generales', entity_type: 'GeneralPayment',
 entity_id: id, entity_name: data.concept,
-previousData: prev, newData: data,
-monetaryDiff: (data.amount || 0) - (prev?.amount || 0),
-details: `Monto anterior: $${prev?.amount} → Nuevo: $${data.amount}`
+previousData: prev, newData: { ...prev, ...soloTexto },
+monetaryDiff: 0,
+details: `Corrección de texto: concepto/categoría/notas/referencia (monto $${prev?.amount} sin cambio)`
 });
-return base44.entities.GeneralPayment.update(id, data);
+return base44.entities.GeneralPayment.update(id, soloTexto);
 },
+onError: (err) => toast.error(`No se pudo corregir: ${err?.message || 'error desconocido'}`),
 onSuccess: () => {
 queryClient.invalidateQueries({ queryKey: ['generalPayments'] });
 setShowGeneralForm(false);
@@ -713,8 +717,6 @@ Deuda Unificada
 payments={payments}
 players={players}
 isLoading={paymentsLoading || playersLoading}
-onEdit={handleEdit}
-onDelete={canDelete ? handleDelete : null}
 onReverse={(p) => { setReversarInfo(p); setMotivoReverso(''); }}
 currentUserEmail={currentUser?.email}
 isAdmin={isAdmin}
@@ -726,7 +728,6 @@ isAdmin={isAdmin}
 payments={generalPayments}
 isLoading={generalPaymentsLoading}
 onEdit={handleGeneralEdit}
-onDelete={canDelete ? handleGeneralDelete : null}
 onReverse={(p) => { setReversarInfo({ ...p, __tipo: 'general' }); setMotivoReverso(''); }}
 currentUserEmail={currentUser?.email}
 isAdmin={isAdmin}
