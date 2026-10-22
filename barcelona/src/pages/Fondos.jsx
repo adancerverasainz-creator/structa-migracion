@@ -223,7 +223,8 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
 });
 
   const updateExpenseMutation = useMutation({
-    mutationFn: ({ id, data }) => base44.entities.Expense.update(id, data),
+    // Documento emitido: solo textos; el dinero se corrige con Reversar (BD: fn_egreso_inmutable)
+    mutationFn: ({ id, data }) => base44.entities.Expense.update(id, { concept: data.concept, notes: data.notes ?? null }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['allExpensesForFondos'] });
       queryClient.invalidateQueries({ queryKey: ['expenses'] });
