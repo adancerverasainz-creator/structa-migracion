@@ -114,15 +114,18 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
 });
 
 const updateMutation = useMutation({
+// Documento emitido: solo textos (concepto, notas). Monto/fecha/método/cuenta/categoría
+// son inmutables (BD: fn_egreso_inmutable) → Reversar + nueva captura.
 mutationFn: async ({ id, data, prev }) => {
+const soloTexto = { concept: data.concept, notes: data.notes ?? null };
 await logAudit({
 action: 'MODIFICACIÓN', module: 'Egresos', entity_type: 'Expense',
 entity_id: id, entity_name: data.concept,
-previousData: prev, newData: data,
-monetaryDiff: (data.amount || 0) - (prev?.amount || 0),
-details: `Monto anterior: $${prev?.amount} → Nuevo: $${data.amount}`
+previousData: prev, newData: { ...prev, ...soloTexto },
+monetaryDiff: 0,
+details: `Corrección de texto (concepto/notas); monto $${prev?.amount} sin cambio`
 });
-return base44.entities.Expense.update(id, data);
+return base44.entities.Expense.update(id, soloTexto);
 },
 onSuccess: () => {
 queryClient.invalidateQueries({ queryKey: ['expenses'] });
@@ -196,12 +199,11 @@ const reversarMutation = useMutation({
   onError: (e) => toast.error(`No se pudo reversar: ${e.message}`),
 });
 
+// Corrección de TEXTO (concepto/notas) de un egreso manual: admin o quien lo capturó.
+// El dinero nunca se edita (BD: fn_egreso_inmutable); se reversa y se captura de nuevo.
 const puedeCorregir = (e) => {
-  if (esDeModulo(e)) return false;
-  if (isAdmin) return true;
-  const creado = e.created_date || e.created_at;
-  return !!creado && new Date(creado).toDateString() === new Date().toDateString()
-    && e.created_by === me?.email;
+  if (esDeModulo(e) || e.reversal_of) return false;
+  return isAdmin || e.created_by === me?.email;
 };
 
 const handleEdit = (expense) => {
@@ -396,13 +398,8 @@ className="pl-9"
 </Button>
 )}
 {puedeCorregir(expense) && (
-<Button variant="ghost" size="icon" onClick={() => handleEdit(expense)} title="Corregir (ventana del mismo día)">
-<Edit className="w-4 h-4 text-blue-600" />
-</Button>
-)}
-{canDelete && puedeCorregir(expense) && (
-<Button variant="ghost" size="icon" onClick={() => handleDelete(expense)}>
-<Trash2 className="w-4 h-4 text-red-600" />
+<Button variant="ghost" size="icon" onClick={() => handleEdit(expense)} title="Corregir concepto o notas (el monto no cambia; para dinero usa Reversar)">
+<Edit className="w-4 h-4 text-gray-500" />
 </Button>
 )}
 </div>
