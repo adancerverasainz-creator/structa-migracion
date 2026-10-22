@@ -53,6 +53,12 @@ export default function GeneralPaymentForm({ payment, onSubmit, onCancel, isLoad
       </CardHeader>
       <CardContent className="mt-6">
         <form onSubmit={handleSubmit} className="space-y-4">
+          {payment && (
+            <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              Pago ya emitido (vale impreso): aquí solo se corrigen <b>concepto, categoría, referencia y notas</b>.
+              Para cambiar monto, fecha, método o cuenta usa <b>Reversar</b> y captura de nuevo.
+            </div>
+          )}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Categoría */}
             <div>
@@ -103,6 +109,7 @@ export default function GeneralPaymentForm({ payment, onSubmit, onCancel, isLoad
                     id="amount"
                     type="number" min="0.01" onWheel={(e) => e.target.blur()}
                     step="0.01"
+                    disabled={!!payment}
                     value={formData.amount}
                     onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
                     placeholder="0.00"
@@ -139,6 +146,7 @@ export default function GeneralPaymentForm({ payment, onSubmit, onCancel, isLoad
               <Input
                 id="payment_date"
                 type="date"
+                disabled={!!payment}
                 value={formData.payment_date}
                 onChange={(e) => setFormData({ ...formData, payment_date: e.target.value })}
                 required
@@ -150,6 +158,7 @@ export default function GeneralPaymentForm({ payment, onSubmit, onCancel, isLoad
               <Label htmlFor="payment_method">Método de Pago *</Label>
               <Select
                 value={formData.payment_method}
+                disabled={!!payment}
                 onValueChange={(value) => setFormData({ ...formData, payment_method: value, bank_name: '' })}
               >
                 <SelectTrigger>
@@ -169,6 +178,7 @@ export default function GeneralPaymentForm({ payment, onSubmit, onCancel, isLoad
                 <Label htmlFor="cash_destination">Caja de destino *</Label>
                 <Select
                   value={formData.bank_name === 'Fondos' ? 'Fondos' : 'caja_efectivo'}
+                  disabled={!!payment}
                   onValueChange={(value) => setFormData({ ...formData, bank_name: value === 'Fondos' ? 'Fondos' : '' })}
                 >
                   <SelectTrigger>
@@ -189,6 +199,7 @@ export default function GeneralPaymentForm({ payment, onSubmit, onCancel, isLoad
                 <Label htmlFor="bank_name">Banco</Label>
                 <Select
                   value={formData.bank_name}
+                  disabled={!!payment}
                   onValueChange={(value) => setFormData({ ...formData, bank_name: value })}
                 >
                   <SelectTrigger>
