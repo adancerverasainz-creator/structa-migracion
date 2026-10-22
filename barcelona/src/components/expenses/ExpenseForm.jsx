@@ -119,6 +119,12 @@ export default function ExpenseForm({ expense, onSubmit, onCancel, isLoading }) 
             </div>
           </div>
 
+          {expense && (
+            <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              Egreso ya emitido (vale impreso): aquí solo se corrigen <b>concepto y notas</b>.
+              Para cambiar monto, fecha, método, cuenta o categoría usa <b>Reversar</b> y captura de nuevo.
+            </div>
+          )}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2 md:col-span-2">
               <Label htmlFor="concept">Concepto *</Label>
@@ -149,6 +155,7 @@ export default function ExpenseForm({ expense, onSubmit, onCancel, isLoading }) 
                   id="amount"
                   type="number" min="0.01" onWheel={(e) => e.target.blur()}
                   step="0.01"
+                  disabled={!!expense}
                   value={formData.amount}
                   onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
                   className="pl-7"
@@ -161,6 +168,7 @@ export default function ExpenseForm({ expense, onSubmit, onCancel, isLoading }) 
               <Input
                 id="expense_date"
                 type="date"
+                disabled={!!expense}
                 value={formData.expense_date}
                 onChange={(e) => setFormData({ ...formData, expense_date: e.target.value })}
                 required
@@ -197,6 +205,7 @@ export default function ExpenseForm({ expense, onSubmit, onCancel, isLoading }) 
               <Label htmlFor="payment_method">Método de Pago *</Label>
               <Select
                 value={formData.payment_method}
+                disabled={!!expense}
                 onValueChange={(value) => setFormData({ ...formData, payment_method: value, account: '' })}
               >
                 <SelectTrigger>
@@ -214,6 +223,7 @@ export default function ExpenseForm({ expense, onSubmit, onCancel, isLoading }) 
                 <Label htmlFor="cash_source">Caja de origen *</Label>
                 <Select
                   value={formData.account === 'Fondos' ? 'Fondos' : 'caja_efectivo'}
+                  disabled={!!expense}
                   onValueChange={(value) => setFormData({ ...formData, account: value === 'Fondos' ? 'Fondos' : '' })}
                 >
                   <SelectTrigger>
@@ -232,6 +242,7 @@ export default function ExpenseForm({ expense, onSubmit, onCancel, isLoading }) 
                 <Label htmlFor="account">Cuenta</Label>
                 <Select
                   value={formData.account}
+                  disabled={!!expense}
                   onValueChange={(value) => setFormData({ ...formData, account: value })}
                 >
                   <SelectTrigger>
