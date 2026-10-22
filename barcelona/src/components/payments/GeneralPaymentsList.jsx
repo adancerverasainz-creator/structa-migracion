@@ -3,13 +3,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Search, DollarSign, Undo2, Printer } from 'lucide-react';
+import { Search, DollarSign, Undo2, Printer, Pencil } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { formatCurrency } from '../lib/formatCurrency';
 import { imprimirVale, folioVale, cuentaLegible } from '../print/PrintVale';
 
-export default function GeneralPaymentsList({ payments, isLoading, onEdit, onDelete, onReverse, currentUserEmail, isAdmin }) {
+export default function GeneralPaymentsList({ payments, isLoading, onEdit, onReverse, currentUserEmail, isAdmin }) {
   // Documento emitido: un cobro con vale impreso NO se edita ni se borra (lo
   // bloquea la BD: fn_cobro_inmutable). Corrección = REVERSO + nueva captura.
   const reversedIds = new Set(payments.filter(p => p.reversal_of).map(p => p.reversal_of));
@@ -127,6 +127,12 @@ export default function GeneralPaymentsList({ payments, isLoading, onEdit, onDel
                     className="text-gray-600 hover:text-gray-800" title="Imprimir vale (térmica 80mm)">
                     <Printer className="w-4 h-4" />
                   </Button>
+                  )}
+                  {onEdit && !payment.reversal_of && (isAdmin || payment.created_by === currentUserEmail) && (
+                    <Button size="sm" variant="outline" onClick={() => onEdit(payment)}
+                      className="text-gray-600 hover:text-gray-800" title="Corregir concepto, categoría, referencia o notas (el monto no cambia)">
+                      <Pencil className="w-4 h-4" />
+                    </Button>
                   )}
                   {puedeReversar(payment) && (
                     <Button size="sm" variant="outline" onClick={() => onReverse(payment)}
