@@ -6,7 +6,8 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { AlertCircle, CheckCircle, Trophy, Search, Phone, Mail, PlusCircle } from 'lucide-react';
+import { AlertCircle, CheckCircle, Trophy, Search, Phone, Mail, PlusCircle, FileDown } from 'lucide-react';
+import { exportarPDF, exportarExcel } from '../lib/exportListado';
 import { formatCurrency } from '../lib/formatCurrency';
 import { getTotalPaidForAttendee } from '@/lib/tournamentBalance';
 
@@ -113,6 +114,32 @@ export default function TournamentDebtorsList({ players, onAbonarTorneo }) {
           </div>
         </CardContent>
       </Card>
+
+      {filtered.length > 0 && (
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" className="gap-2 border-green-300 text-green-700 hover:bg-green-50"
+            onClick={() => exportarExcel({
+              titulo: `Morosos de torneos${selectedTournament === 'all' ? '' : ' - ' + (tournaments.find(t => t.id === selectedTournament)?.name || '')}`,
+              resumen: [`Morosos: ${filtered.length}`, `Deuda total: ${formatCurrency(totalDebt)}`],
+              columnas: ['Jugador', 'Categoría', 'Torneo', 'Padre/Tutor', 'Teléfono', 'Cuota', 'Pagado', 'Debe'],
+              filas: filtered.map(d => [d.player.full_name, d.player.category || '-', d.tournament.name, d.player.parent_name || '-', d.player.parent_phone || '-', d.fee || 0, d.totalPaid || 0, d.debt || 0]),
+              archivo: 'morosos_torneos', hoja: 'Torneos',
+            })}>
+            <FileDown className="w-4 h-4" /> Exportar Excel
+          </Button>
+          <Button variant="outline" className="gap-2 border-red-300 text-red-700 hover:bg-red-50"
+            onClick={() => exportarPDF({
+              titulo: `Morosos de torneos${selectedTournament === 'all' ? '' : ' - ' + (tournaments.find(t => t.id === selectedTournament)?.name || '')}`,
+              resumen: [`Morosos: ${filtered.length}`, `Deuda total: ${formatCurrency(totalDebt)}`],
+              columnas: ['Jugador', 'Categoría', 'Torneo', 'Padre/Tutor', 'Teléfono', 'Debe'],
+              anchos: [45, 20, 40, 38, 27, 12],
+              filas: filtered.map(d => [d.player.full_name, d.player.category || '-', d.tournament.name, d.player.parent_name || '-', d.player.parent_phone || '-', formatCurrency(d.debt || 0)]),
+              archivo: 'morosos_torneos',
+            })}>
+            <FileDown className="w-4 h-4" /> Exportar PDF
+          </Button>
+        </div>
+      )}
 
       {/* List */}
       {filtered.length === 0 ? (
