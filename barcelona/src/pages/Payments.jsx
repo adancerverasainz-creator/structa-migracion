@@ -741,6 +741,7 @@ payments={payments}
 isLoading={playersLoading || paymentsLoading}
 onAbonar={handleAbonar}
 onAbonarInscripcion={handleAbonar}
+feesConfig={feesConfig}
 lateFeeSettings={lateFeeSettings}
 seasonCalendar={seasonCalendar}
 playerPauses={playerPauses}
