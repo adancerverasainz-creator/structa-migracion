@@ -15,6 +15,7 @@ import { es } from 'date-fns/locale';
 import { formatCurrency } from '../lib/formatCurrency';
 import jsPDF from 'jspdf';
 import * as XLSX from 'xlsx';
+import { exportarPDF, exportarExcel } from '../lib/exportListado';
 
 // Season options starting from 2025-2026
 const currentYear = new Date().getFullYear();
@@ -43,7 +44,9 @@ function getMonthOptions() {
   return options;
 }
 
-export default function DebtorsList({ players, payments, isLoading, tournamentPayments = [], onAbonar, onAbonarInscripcion, lateFeeSettings = null, debtWaivers = [] , onCondonar, seasonCalendar = null, playerPauses = [] }) {
+export default function DebtorsList({ players, payments, isLoading, tournamentPayments = [], onAbonar, onAbonarInscripcion, lateFeeSettings = null, debtWaivers = [] , onCondonar, seasonCalendar = null, playerPauses = [], feesConfig = null }) {
+  // Cuota de inscripción/reinscripción vigente (Configuración → fees); respaldo $1,800
+  const inscripcionFee = Number(feesConfig?.inscripcion_default) || 1800;
   const monthOptions = getMonthOptions();
   // Historial de cuotas por vigencia (misma regla que Deuda Unificada)
   const { data: feeHistory = [] } = useQuery({
@@ -363,12 +366,39 @@ export default function DebtorsList({ players, payments, isLoading, tournamentPa
                 </div>
               </div>
               <div className="text-right">
-                <p className="text-xs text-gray-500">jugadores activos</p>
-                <p className="text-sm text-gray-700">sin pago registrado</p>
+                <p className="text-sm text-gray-600">Deuda Total</p>
+                <p className="text-2xl font-bold text-orange-600">{formatCurrency(pendingInscripcion.length * inscripcionFee)}</p>
+                <p className="text-xs text-gray-500">{pendingInscripcion.length} × {formatCurrency(inscripcionFee)} · jugadores activos sin pago registrado</p>
               </div>
             </div>
           </CardContent>
         </Card>
+
+        {pendingInscripcion.length > 0 && (
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" className="gap-2 border-green-300 text-green-700 hover:bg-green-50"
+              onClick={() => exportarExcel({
+                titulo: `Inscripciones pendientes - Temporada ${selectedSeason}`,
+                resumen: [`Jugadores sin inscripción: ${filteredPendingInscripcion.length}`, `Deuda total: ${formatCurrency(filteredPendingInscripcion.length * inscripcionFee)}`],
+                columnas: ['Jugador', 'Categoría', 'Padre/Tutor', 'Teléfono', 'Email', 'Reinscripción'],
+                filas: filteredPendingInscripcion.map(p => [p.full_name, p.category || '-', p.parent_name || '-', p.parent_phone || '-', p.parent_email || '-', inscripcionFee]),
+                archivo: `inscripciones_pendientes_${selectedSeason}`, hoja: 'Inscripciones',
+              })}>
+              <FileDown className="w-4 h-4" /> Exportar Excel
+            </Button>
+            <Button variant="outline" className="gap-2 border-red-300 text-red-700 hover:bg-red-50"
+              onClick={() => exportarPDF({
+                titulo: `Inscripciones pendientes - Temporada ${selectedSeason}`,
+                resumen: [`Jugadores sin inscripción: ${filteredPendingInscripcion.length}`, `Deuda total: ${formatCurrency(filteredPendingInscripcion.length * inscripcionFee)}`],
+                columnas: ['Jugador', 'Categoría', 'Padre/Tutor', 'Teléfono', 'Reinscripción'],
+                anchos: [55, 25, 50, 30, 22],
+                filas: filteredPendingInscripcion.map(p => [p.full_name, p.category || '-', p.parent_name || '-', p.parent_phone || '-', formatCurrency(inscripcionFee)]),
+                archivo: `inscripciones_pendientes_${selectedSeason}`,
+              })}>
+              <FileDown className="w-4 h-4" /> Exportar PDF
+            </Button>
+          </div>
+        )}
 
         {isLoading ? (
           <div className="text-center py-12">
@@ -425,7 +455,7 @@ export default function DebtorsList({ players, payments, isLoading, tournamentPa
                         <Button
                           size="sm"
                           className="bg-orange-600 hover:bg-orange-700 gap-2 mt-1"
-                          onClick={() => onAbonarInscripcion({ player, pendingAmount: 1800, payment_type: 'reinscripcion', month: selectedSeason })}
+                          onClick={() => onAbonarInscripcion({ player, pendingAmount: inscripcionFee, payment_type: 'reinscripcion', month: selectedSeason })}
                         >
                           <PlusCircle className="w-4 h-4" />
                           Registrar Pago
@@ -646,6 +676,32 @@ export default function DebtorsList({ players, payments, isLoading, tournamentPa
             </div>
           </CardContent>
         </Card>
+
+        {uniformDebtors.length > 0 && (
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" className="gap-2 border-green-300 text-green-700 hover:bg-green-50"
+              onClick={() => exportarExcel({
+                titulo: 'Uniformes pendientes de pago',
+                resumen: [`Pagos incompletos: ${uniformDebtors.length}`, `Pendiente total: ${formatCurrency(uniformDebtors.reduce((s, p) => s + (p.pendienteAmount || 0), 0))}`],
+                columnas: ['Jugador', 'Categoría', 'Padre/Tutor', 'Teléfono', 'Concepto', 'Fecha', 'Abonado', 'Pendiente'],
+                filas: uniformDebtors.map(p => [p.player?.full_name || '-', p.player?.category || '-', p.player?.parent_name || '-', p.player?.parent_phone || '-', (p.notes || '').replace(/\s*\|\s*Pendiente:.*$/, ''), (p.payment_date || '').slice(0, 10), p.amount || 0, p.pendienteAmount || 0]),
+                archivo: 'uniformes_pendientes', hoja: 'Uniformes',
+              })}>
+              <FileDown className="w-4 h-4" /> Exportar Excel
+            </Button>
+            <Button variant="outline" className="gap-2 border-red-300 text-red-700 hover:bg-red-50"
+              onClick={() => exportarPDF({
+                titulo: 'Uniformes pendientes de pago',
+                resumen: [`Pagos incompletos: ${uniformDebtors.length}`, `Pendiente total: ${formatCurrency(uniformDebtors.reduce((s, p) => s + (p.pendienteAmount || 0), 0))}`],
+                columnas: ['Jugador', 'Categoría', 'Padre/Tutor', 'Teléfono', 'Concepto', 'Pendiente'],
+                anchos: [48, 20, 42, 28, 24, 20],
+                filas: uniformDebtors.map(p => [p.player?.full_name || '-', p.player?.category || '-', p.player?.parent_name || '-', p.player?.parent_phone || '-', (p.notes || '').replace(/\s*\|\s*Pendiente:.*$/, ''), formatCurrency(p.pendienteAmount || 0)]),
+                archivo: 'uniformes_pendientes',
+              })}>
+              <FileDown className="w-4 h-4" /> Exportar PDF
+            </Button>
+          </div>
+        )}
 
         {uniformDebtors.length === 0 ? (
           <Card>
