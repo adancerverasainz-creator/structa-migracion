@@ -7,18 +7,19 @@ import { format } from 'date-fns';
 import { formatCurrency } from '../lib/formatCurrency';
 
 /**
- * Libro de la Caja Efectivo (operativa): todo cobro en efectivo entra aquí y
- * todo gasto en efectivo sale de aquí. Los movimientos se administran en sus
- * módulos de origen (Pagos/Egresos); este libro es de consulta + Corte de Caja.
+ * Libro de la Caja Cobranza: todo cobro en efectivo entra aquí y de aquí solo
+ * sale hacia Fondos, Caja chica o banco al liquidar el corte del día (ya no se
+ * pagan gastos desde la cobranza; los gastos salen de Caja chica o de Fondos).
+ * Los movimientos se administran en sus módulos de origen; este libro es de consulta.
  */
-export default function CajaEfectivoLibro({ payments, expenses, cortes = [], onCorte, saldoServidor = null }) {
+export default function CajaEfectivoLibro({ payments, expenses, cortes = [], onArqueo, saldoServidor = null }) {
   // Todo registro del pool es dinero recibido (los summer no cobrados se filtran
   // antes de llegar aquí, en Tesorería) — misma regla que el RPC saldos_por_cuenta.
   const ingresos = payments.filter(p =>
     p.payment_method === 'efectivo' && (p.bank_name || '') !== 'Fondos');
-  // Lo pagado desde Fondos (account='Fondos') NO sale de esta caja — misma regla
-  // que el RPC saldos_por_cuenta (antes se restaba y el saldo salía negativo).
-  const egresos = expenses.filter(e => e.payment_method === 'efectivo' && (e.account || '') !== 'Fondos');
+  // Lo pagado desde Fondos o desde Caja chica NO sale de esta caja — misma regla
+  // que el RPC saldos_por_cuenta.
+  const egresos = expenses.filter(e => e.payment_method === 'efectivo' && !['Fondos', 'Caja chica'].includes(e.account || ''));
 
   // Traspasos Banco → Efectivo (se guardan como egreso del banco con transfer_to='Efectivo'):
   // también son dinero que ENTRA a esta caja — el RPC saldos_por_cuenta los suma.
@@ -44,8 +45,8 @@ export default function CajaEfectivoLibro({ payments, expenses, cortes = [], onC
       amount: e.amount || 0,
       date: e.expense_date,
       description: e.concept,
-      origen: e.source_module === 'tesoreria' ? 'Corte' : e.source_module === 'cxp' ? 'CxP' : 'Egresos',
-      esCorte: e.source_module === 'tesoreria' && e.is_transfer,
+      origen: e.source_module === 'corte' ? 'Corte' : e.source_module === 'arqueo' ? 'Arqueo' : e.source_module === 'tesoreria' ? 'Tesorería' : e.source_module === 'cxp' ? 'CxP' : 'Egresos',
+      esCorte: e.source_module === 'corte' && e.is_transfer,
     })),
   ].sort((a, b) => new Date(b.date) - new Date(a.date));
 
@@ -68,13 +69,15 @@ export default function CajaEfectivoLibro({ payments, expenses, cortes = [], onC
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
         <p className="text-sm text-gray-600">
-          Caja operativa: aquí entra todo cobro en efectivo del día a día. Los movimientos se
-          corrigen en su módulo de origen; desde aquí se hace el <b>Corte de Caja</b> para
-          entregar el efectivo en custodia.
+          Caja Cobranza: aquí entra todo cobro en efectivo del día a día y de aquí sale solo al
+          liquidar el corte (a Fondos, a Caja chica o depositado en banco). Los cobros se corrigen
+          en Pagos con un reverso. El saldo debe ser el efectivo cobrado que aún no se ha liquidado.
         </p>
-        <Button onClick={onCorte} className="bg-green-700 hover:bg-green-800 flex-shrink-0">
-          <Banknote className="w-4 h-4 mr-2" /> Corte de Caja
-        </Button>
+        {onArqueo && (
+          <Button variant="outline" className="border-blue-300 text-blue-700 hover:bg-blue-50 flex-shrink-0" onClick={() => onArqueo('Efectivo')}>
+            <Banknote className="w-4 h-4 mr-2" /> Arqueo de cobranza
+          </Button>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -87,7 +90,7 @@ export default function CajaEfectivoLibro({ payments, expenses, cortes = [], onC
           <p className="text-2xl font-bold text-red-600">{formatCurrency(totalOut)}</p>
         </CardContent></Card>
         <Card className="border-2 border-blue-200"><CardContent className="pt-6">
-          <p className="text-sm text-gray-600 mb-1">Saldo en caja</p>
+          <p className="text-sm text-gray-600 mb-1">Efectivo cobrado sin liquidar</p>
           <p className="text-2xl font-bold text-blue-700">{formatCurrency(saldo)}</p>
         </CardContent></Card>
       </div>
@@ -120,7 +123,7 @@ export default function CajaEfectivoLibro({ payments, expenses, cortes = [], onC
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Wallet className="w-5 h-5" /> Libro de Caja Efectivo
+            <Wallet className="w-5 h-5" /> Libro de Caja Cobranza
           </CardTitle>
         </CardHeader>
         <CardContent>
