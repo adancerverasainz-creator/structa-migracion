@@ -83,7 +83,7 @@ export default function TraspasoModal({ onClose, bankBalances }) {
               <ArrowRightLeft className="w-5 h-5 text-white" />
             </div>
             <div>
-              <CardTitle className="text-white text-lg">Traspaso Banco → Efectivo</CardTitle>
+              <CardTitle className="text-white text-lg">Traspaso Banco → Fondos</CardTitle>
               <p className="text-white/70 text-sm mt-0.5">Registra salida del banco e ingreso en Caja Fondos</p>
             </div>
           </div>
@@ -204,7 +204,7 @@ export default function TraspasoModal({ onClose, bankBalances }) {
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm space-y-1">
                 <p className="font-semibold text-blue-800 mb-2">Resumen del traspaso:</p>
                 <p className="text-blue-700">• Egreso en <strong>{form.bank}</strong>: <strong>-{formatCurrency(amount)}</strong></p>
-                <p className="text-green-700">• Ingreso en <strong>Caja Fondos (Efectivo)</strong>: <strong>+{formatCurrency(amount)}</strong></p>
+                <p className="text-green-700">• Ingreso en <strong>Caja Fondos (CEO)</strong>: <strong>+{formatCurrency(amount)}</strong></p>
               </div>
             )}
 
