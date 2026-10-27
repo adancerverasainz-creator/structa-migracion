@@ -17,8 +17,10 @@ import ExpenseForm from '../components/expenses/ExpenseForm';
 import { formatCurrency } from '../components/lib/formatCurrency';
 import TraspasoModal from '../components/fondos/TraspasoModal';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import CorteCajaModal from '../components/tesoreria/CorteCajaModal';
 import CajaEfectivoLibro from '../components/tesoreria/CajaEfectivoLibro';
+import CajaChicaPanel from '../components/tesoreria/CajaChicaPanel';
+import CortesPendientesCard from '../components/tesoreria/CortesPendientesCard';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import BancosPanel from '../components/tesoreria/BancosPanel';
 import ExportContador from '../components/tesoreria/ExportContador';
 import CierrePeriodo from '../components/tesoreria/CierrePeriodo';
@@ -32,8 +34,7 @@ export default function Fondos() {
   const [editingExpense, setEditingExpense] = useState(null);
   const [editingCashRegister, setEditingCashRegister] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [cajaView, setCajaView] = useState('fondos');
-  const [showCorte, setShowCorte] = useState(false);
+  const [cajaView, setCajaView] = useState('fondos'); // fondos | cobranza | cajachica
   const [formData, setFormData] = useState({
     cash_amount: '',
     register_date: format(new Date(), 'yyyy-MM-dd'), // fecha LOCAL, no UTC
@@ -44,6 +45,7 @@ export default function Fondos() {
   const queryClient = useQueryClient();
   const [periodo, setPeriodo] = useState('todo'); // libro de caja: todo | hoy | semana | mes
   const [showArqueo, setShowArqueo] = useState(false);
+  const [arqueoCaja, setArqueoCaja] = useState('Fondos'); // Fondos | Efectivo (cobranza) | Caja chica
   const [arqueoContado, setArqueoContado] = useState('');
   const [arqueoNotas, setArqueoNotas] = useState('');
 
@@ -93,59 +95,23 @@ export default function Fondos() {
       return data || [];
     },
   });
-  const saldoEfectivo = Number(saldosCuentas.find(s => s.cuenta === 'Efectivo')?.saldo ?? 0);
-
-  // Cortes pendientes de entrega — el monto lo calcula el servidor (cero captura manual)
-  const { data: cortesPendientes = [] } = useQuery({
-    queryKey: ['cortesPendientes'],
+  const saldoEfectivoRow = saldosCuentas.find(s => s.cuenta === 'Efectivo') || null;
+  const saldoCajaChicaRow = saldosCuentas.find(s => s.cuenta === 'Caja chica') || null;
+  const saldoFondosRow = saldosCuentas.find(s => s.cuenta === 'Fondos (caja)') || null;
+  // Bancos activos (para "Depositar en banco" al liquidar un corte)
+  const bancos = saldosCuentas.map(s => s.cuenta).filter(c => !['Efectivo', 'Caja chica', 'Tarjeta', 'Fondos (caja)'].includes(c));
+  // Fondo fijo de la Caja chica (Configuración → caja_chica.fondo_fijo)
+  const { data: cajaChicaCfg = null } = useQuery({
+    queryKey: ['clubSettings', 'caja_chica'],
     queryFn: async () => {
-      const { data, error } = await supabase.rpc('cortes_pendientes');
+      const { data, error } = await supabase.from('club_settings').select('value').eq('key', 'caja_chica').maybeSingle();
       if (error) throw new Error(error.message);
-      return data || [];
+      return data?.value || null;
     },
   });
-  const entregarCorteMutation = useMutation({
-    mutationFn: async (fecha) => {
-      const { data, error } = await supabase.rpc('entregar_corte', {
-        p_fecha: fecha,
-        p_op_key: (crypto.randomUUID ? crypto.randomUUID() : null),
-      });
-      if (error) throw new Error(error.message);
-      return data;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['cashRegisters'] });
-      queryClient.invalidateQueries({ queryKey: ['saldosPorCuenta'] });
-      queryClient.invalidateQueries({ queryKey: ['cortesPendientes'] });
-      queryClient.invalidateQueries({ queryKey: ['allExpensesForFondos'] });
-      toast.success('Entrega registrada — la caja chica se descontó automáticamente');
-    },
-    onError: (err) => toast.error(`No se registró la entrega: ${err?.message || 'error desconocido'}`),
-  });
+  const fondoFijo = Number(cajaChicaCfg?.fondo_fijo) || 0;
 
-  // Fase 2: entregas en tránsito (corte entregado, pendiente de "recibido" del admin)
-  const entregasTransito = (cashRegisters || []).filter((r) => r.corte_fecha && !r.recibido_at);
-  const confirmarRecepcionMutation = useMutation({
-    mutationFn: async (id) => {
-      const { error } = await supabase.rpc('confirmar_recepcion_corte', { p_cash_id: id });
-      if (error) throw new Error(error.message);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['cashRegisters'] });
-      queryClient.invalidateQueries({ queryKey: ['cortesPendientes'] });
-      toast.success('Recepción confirmada — corte cerrado con doble firma');
-    },
-    onError: (err) => toast.error(`No se confirmó la recepción: ${err?.message || 'error desconocido'}`),
-  });
-  const { data: cortes = [] } = useQuery({
-    queryKey: ['cajaCortes'],
-    queryFn: async () => {
-      const { data, error } = await supabase.from('caja_cortes').select('*').order('created_at', { ascending: false }).limit(5);
-      if (error) throw new Error(error.message);
-      return data || [];
-    },
-  });
-
+  // Entregas a Fondos en tránsito (pendientes de "recibido" del admin) — se muestran en CortesPendientesCard
   const bankBalances = ['BBVA', 'MP', 'NU', 'OpenBank'].reduce((acc, bank) => {
     const inc = allPayments.filter(p => p.payment_method === 'transferencia' && p.bank_name === bank).reduce((s, p) => s + (p.amount || 0), 0);
     const out = allExpenses.filter(e => e.payment_method === 'transferencia' && e.account === bank).reduce((s, e) => s + (e.amount || 0), 0);
@@ -404,24 +370,25 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
     return matchesDescription || matchesNotes || matchesDate || matchesAmount || matchesType || matchesCategory;
   });
 
+  // Arqueo por caja (RPC registrar_arqueo): guarda el acta y, en Cobranza y Caja chica,
+  // contabiliza la diferencia ese mismo día (sobrante/faltante de arqueo).
+  const saldoSistemaArqueo = arqueoCaja === 'Fondos' ? Number(saldoFondosRow?.saldo ?? 0)
+    : arqueoCaja === 'Caja chica' ? Number(saldoCajaChicaRow?.saldo ?? 0)
+    : Number(saldoEfectivoRow?.saldo ?? 0);
+  const abrirArqueo = (caja) => { setArqueoCaja(caja || 'Fondos'); setArqueoContado(''); setArqueoNotas(''); setShowArqueo(true); };
   const arqueoMutation = useMutation({
-    mutationFn: async ({ contado, notas, saldoSistema }) => {
-      const me = await base44.auth.me();
-      const { error } = await supabase.from('caja_arqueos').insert({
-        saldo_sistema: saldoSistema,
-        efectivo_contado: contado,
-        notas: notas || null,
-        contado_por: me?.email || 'desconocido',
-      });
-      if (error) throw error;
-      return contado - saldoSistema;
+    mutationFn: async ({ contado, notas }) => {
+      const { data, error } = await supabase.rpc('registrar_arqueo', { p_caja: arqueoCaja, p_contado: contado, p_notas: notas || null });
+      if (error) throw new Error(error.message);
+      return Number(data?.diferencia) || 0;
     },
     onSuccess: (diff) => {
-      queryClient.invalidateQueries({ queryKey: ['cajaArqueos'] });
+      ['cajaArqueos', 'saldosPorCuenta', 'allExpensesForFondos', 'expenses'].forEach((k) => queryClient.invalidateQueries({ queryKey: [k] }));
       setShowArqueo(false); setArqueoContado(''); setArqueoNotas('');
+      const ajustado = arqueoCaja !== 'Fondos' ? ' — diferencia contabilizada hoy' : '';
       if (Math.abs(diff) < 0.01) toast.success('Arqueo registrado: caja cuadrada ✓');
-      else if (diff > 0) toast.warning(`Arqueo registrado: SOBRAN ${formatCurrency(diff)} en caja`);
-      else toast.error(`Arqueo registrado: FALTAN ${formatCurrency(-diff)} en caja`);
+      else if (diff > 0) toast.warning(`Arqueo registrado: SOBRAN ${formatCurrency(diff)}${ajustado}`);
+      else toast.error(`Arqueo registrado: FALTAN ${formatCurrency(-diff)}${ajustado}`);
     },
     onError: (err) => toast.error(`No se pudo registrar el arqueo: ${err?.message || 'error'}`),
   });
@@ -443,9 +410,9 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
             size="sm"
           >
             <ArrowRightLeft className="w-4 h-4" />
-            Traspaso Banco → Efectivo
+            Traspaso Banco → Fondos
           </Button>
-          <Button variant="outline" className="border-blue-300 text-blue-700 hover:bg-blue-50" onClick={() => setShowArqueo(true)}>
+          <Button variant="outline" className="border-blue-300 text-blue-700 hover:bg-blue-50" onClick={() => abrirArqueo(cajaView === 'cobranza' ? 'Efectivo' : cajaView === 'cajachica' ? 'Caja chica' : 'Fondos')}>
             <DollarSign className="w-4 h-4 mr-1" /> Arqueo de Caja
           </Button>
           {isAdmin && (
@@ -496,130 +463,32 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
         </TabsList>
 
         <TabsContent value="cajas" className="mt-4 space-y-6">
-          <div className="flex gap-2">
-            <Button size="sm" variant={cajaView === 'fondos' ? 'default' : 'outline'} onClick={() => setCajaView('fondos')}>Caja Fondos (CEO)</Button>
-            <Button size="sm" variant={cajaView === 'efectivo' ? 'default' : 'outline'} onClick={() => setCajaView('efectivo')}>Caja Efectivo (operativa)</Button>
+          <div className="flex gap-2 flex-wrap">
+            <Button size="sm" variant={cajaView === 'cobranza' ? 'default' : 'outline'} onClick={() => setCajaView('cobranza')}>
+              Caja Cobranza{saldoEfectivoRow ? ` · ${formatCurrency(Number(saldoEfectivoRow.saldo))}` : ''}
+            </Button>
+            <Button size="sm" variant={cajaView === 'cajachica' ? 'default' : 'outline'} onClick={() => setCajaView('cajachica')}>
+              Caja chica{saldoCajaChicaRow ? ` · ${formatCurrency(Number(saldoCajaChicaRow.saldo))}` : ''}
+            </Button>
+            <Button size="sm" variant={cajaView === 'fondos' ? 'default' : 'outline'} onClick={() => setCajaView('fondos')}>
+              Caja Fondos (CEO){saldoFondosRow ? ` · ${formatCurrency(Number(saldoFondosRow.saldo))}` : ''}
+            </Button>
           </div>
 
-          {cajaView === 'efectivo' && (
-            <CajaEfectivoLibro payments={allPayments} expenses={allExpenses} cortes={cortes} onCorte={() => setShowCorte(true)} />
+          {cajaView === 'cobranza' && (<>
+            <CortesPendientesCard isAdmin={isAdmin} cashRegisters={cashRegisters} bancos={bancos} />
+            <CajaEfectivoLibro payments={allPayments} expenses={allExpenses} cortes={[]} onArqueo={abrirArqueo} saldoServidor={saldoEfectivoRow} />
+          </>)}
+
+          {cajaView === 'cajachica' && (
+            <CajaChicaPanel expenses={allExpenses} saldoServidor={saldoCajaChicaRow} fondoFijo={fondoFijo} isAdmin={isAdmin} onArqueo={abrirArqueo} />
           )}
 
           {cajaView === 'fondos' && (<>
       {/* Control por excepción: reversos de cobros vs. recaptura (solo aparece si hubo reversos) */}
       <ReversosRecientes />
-      {/* Cortes pendientes de entrega — sin captura manual de montos */}
-      <Card className="border-2 border-amber-300">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base flex items-center gap-2">
-            <Wallet className="w-5 h-5 text-amber-600" />
-            Cortes pendientes de entrega a Fondos
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {cortesPendientes.filter((c) => !c.es_hoy && Number(c.pendiente) !== 0).length === 0 && (
-            <p className="text-sm text-green-700 font-medium">Sin cortes pendientes de entrega.</p>
-          )}
-          {cortesPendientes.map((c) => {
-            const pend = Number(c.pendiente) || 0;
-            const fechaTxt = format(new Date(c.fecha + 'T12:00:00'), "dd 'de' MMMM yyyy", { locale: es });
-            if (c.es_hoy) {
-              return (
-                <div key={c.fecha} className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-lg bg-blue-50 border border-blue-200">
-                  <div className="text-sm">
-                    <span className="font-semibold">{fechaTxt}</span>
-                    <Badge className="ml-2 bg-blue-600">día en curso</Badge>
-                    <p className="text-xs text-gray-600 mt-1">
-                      Cobros {formatCurrency(Number(c.cobros))} − gastos de caja {formatCurrency(Number(c.gastos))} = <b>{formatCurrency(Number(c.neto))}</b> · se entrega mañana con el día cerrado.
-                    </p>
-                  </div>
-                </div>
-              );
-            }
-            if (pend < 0) {
-              return (
-                <div key={c.fecha} className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-lg bg-red-50 border border-red-200">
-                  <div className="text-sm">
-                    <span className="font-semibold text-red-700">{fechaTxt}</span>
-                    <Badge variant="outline" className="ml-2 border-red-400 text-red-700">día en déficit</Badge>
-                    <p className="text-xs text-red-600 mt-1">
-                      {Number(c.entregado) > Number(c.neto) && Number(c.entregado) > 0
-                        ? `Se entregó ${formatCurrency(Math.abs(pend))} de más respecto al neto vigente (¿hubo un reverso después de la entrega?). Corrige antes de confirmar la recepción.`
-                        : `Los gastos de caja superaron los cobros por ${formatCurrency(Math.abs(pend))} — ese faltante salió del fondo de caja. Revisa los registros del día.`}
-                    </p>
-                  </div>
-                </div>
-              );
-            }
-            if (pend === 0) return null;
-            return (
-              <div key={c.fecha} className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-lg bg-amber-50 border border-amber-200">
-                <div className="text-sm">
-                  <span className="font-semibold">{fechaTxt}</span>
-                  <p className="text-xs text-gray-600 mt-1">
-                    Cobros {formatCurrency(Number(c.cobros))} − gastos de caja {formatCurrency(Number(c.gastos))} = <b>{formatCurrency(Number(c.neto))}</b>
-                    {Number(c.entregado) > 0 ? ` · ya entregado ${formatCurrency(Number(c.entregado))}` : ''}
-                  </p>
-                </div>
-                <Button
-                  size="sm"
-                  className="bg-emerald-600 hover:bg-emerald-700"
-                  disabled={entregarCorteMutation.isPending}
-                  onClick={async () => {
-                    const ok = await confirmar(
-                      `Confirma la entrega de ${formatCurrency(pend)} a Caja Fondos (corte del ${fechaTxt}). El monto lo calculó el sistema — solo confirma que el efectivo va completo.`,
-                      { titulo: 'Registrar entrega de corte', confirmLabel: 'Sí, entregar' }
-                    );
-                    if (ok) entregarCorteMutation.mutate(c.fecha);
-                  }}
-                >
-                  Entregar {formatCurrency(pend)}
-                </Button>
-              </div>
-            );
-          })}
-          {entregasTransito.length > 0 && (
-            <div className="space-y-2 border-t pt-3">
-              <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Entregas en tránsito — esperando confirmación de recepción</p>
-              {entregasTransito.map((r) => (
-                <div key={r.id} className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-lg bg-indigo-50 border border-indigo-200">
-                  <div className="text-sm">
-                    <span className="font-semibold">{formatCurrency(Number(r.cash_amount) || 0)}</span>
-                    <span className="text-gray-600"> · corte del {format(new Date(r.corte_fecha + 'T12:00:00'), 'dd/MM/yyyy')}</span>
-                    <p className="text-xs text-gray-600 mt-1">Entregó: {r.created_by || '—'} el {format(new Date(r.register_date + 'T12:00:00'), 'dd/MM/yyyy')}</p>
-                  </div>
-                  {isAdmin ? (
-                    <Button
-                      size="sm"
-                      className="bg-indigo-600 hover:bg-indigo-700"
-                      disabled={confirmarRecepcionMutation.isPending}
-                      onClick={async () => {
-                        const ok = await confirmar(
-                          `Confirma que recibiste ${formatCurrency(Number(r.cash_amount) || 0)} en efectivo (corte del ${format(new Date(r.corte_fecha + 'T12:00:00'), 'dd/MM/yyyy')}). Confirma solo con el dinero contado en mano — si no cuadra, primero se reversa lo que corresponda.`,
-                          { titulo: 'Confirmar recepción del corte', confirmLabel: 'Sí, lo recibí completo' }
-                        );
-                        if (ok) confirmarRecepcionMutation.mutate(r.id);
-                      }}
-                    >
-                      Confirmar recibido
-                    </Button>
-                  ) : (
-                    <Badge variant="outline" className="border-indigo-400 text-indigo-700">En tránsito</Badge>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-          <p className="text-xs text-gray-500 border-t pt-2">
-            Fondo que debe quedar en caja chica: <b>{formatCurrency(
-              saldoEfectivo
-              - cortesPendientes.filter((c) => !c.es_hoy).reduce((s2, c) => s2 + Math.max(Number(c.pendiente) || 0, 0), 0)
-              - Math.max(Number(cortesPendientes.find((c) => c.es_hoy)?.neto) || 0, 0)
-            )}</b> — efectivo del sistema {formatCurrency(saldoEfectivo)} menos cortes aún no entregados.
-          </p>
-        </CardContent>
-      </Card>
-
+      {/* Cortes por liquidar + entregas en tránsito (confirmación del CEO) */}
+      <CortesPendientesCard isAdmin={isAdmin} cashRegisters={cashRegisters} bancos={bancos} compacto />
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card className="border-2 border-green-200 bg-gradient-to-br from-green-50 to-white">
           <CardContent className="pt-6">
@@ -694,10 +563,10 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
                   onChange={(e) => setFormData({ ...formData, source: e.target.value })}
                   placeholder="Ej: Corte de caja"
                 />
-                {!editingCashRegister && /corte/i.test(formData.source || '') && (cortesPendientes.some((c) => !c.es_hoy && Number(c.pendiente) > 0) || entregasTransito.length > 0) && (
+                {!editingCashRegister && /corte/i.test(formData.source || '') && (
                   <p className="text-xs text-amber-700 bg-amber-50 border border-amber-300 rounded-md px-2 py-1.5">
-                    ⚠ Los cortes de caja se registran con el botón <b>Entregar</b> de la tarjeta
-                    "Cortes pendientes" — este formulario NO liquida pendientes y puede duplicar la entrega.
+                    ⚠ Los cortes de cobranza se liquidan desde la tarjeta <b>"Cortes de cobranza por liquidar"</b>
+                    (Caja Cobranza) — este formulario NO liquida pendientes y puede duplicar la entrega.
                     Úsalo solo para ingresos ajenos a cortes.
                   </p>
                 )}
@@ -859,10 +728,6 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
         </TabsContent>
       </Tabs>
 
-      {showCorte && (
-        <CorteCajaModal saldoEfectivo={saldoEfectivo} onClose={() => setShowCorte(false)} />
-      )}
-
       {/* ── Arqueo de Caja ── */}
       {showArqueo && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowArqueo(false)}>
@@ -870,8 +735,19 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
             <h3 className="font-bold text-lg text-gray-900 flex items-center gap-2">
               <DollarSign className="w-5 h-5 text-blue-600" /> Arqueo de Caja
             </h3>
+            <div className="space-y-1">
+              <Label>Caja que estás contando *</Label>
+              <Select value={arqueoCaja} onValueChange={(v) => { setArqueoCaja(v); setArqueoContado(''); }}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Efectivo">Caja Cobranza (efectivo cobrado sin liquidar)</SelectItem>
+                  <SelectItem value="Caja chica">Caja chica (fondo para gastos)</SelectItem>
+                  {isAdmin && <SelectItem value="Fondos">Caja Fondos (CEO)</SelectItem>}
+                </SelectContent>
+              </Select>
+            </div>
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm">
-              Saldo según sistema: <b className="text-lg">{formatCurrency(balance)}</b>
+              Saldo según sistema: <b className="text-lg">{formatCurrency(saldoSistemaArqueo)}</b>
             </div>
             <div className="space-y-1">
               <Label>Efectivo contado físicamente *</Label>
@@ -879,12 +755,12 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
                 onWheel={(e) => e.target.blur()}
                 onChange={(e) => setArqueoContado(e.target.value)} placeholder="0.00" />
               {arqueoContado !== '' && (
-                <p className={`text-sm font-semibold ${Math.abs(parseFloat(arqueoContado) - balance) < 0.01 ? 'text-green-600' : (parseFloat(arqueoContado) - balance > 0 ? 'text-amber-600' : 'text-red-600')}`}>
-                  {Math.abs(parseFloat(arqueoContado) - balance) < 0.01
+                <p className={`text-sm font-semibold ${Math.abs(parseFloat(arqueoContado) - saldoSistemaArqueo) < 0.01 ? 'text-green-600' : (parseFloat(arqueoContado) - saldoSistemaArqueo > 0 ? 'text-amber-600' : 'text-red-600')}`}>
+                  {Math.abs(parseFloat(arqueoContado) - saldoSistemaArqueo) < 0.01
                     ? 'Caja cuadrada ✓'
-                    : (parseFloat(arqueoContado) - balance > 0
-                      ? `Sobrante: ${formatCurrency(parseFloat(arqueoContado) - balance)}`
-                      : `Faltante: ${formatCurrency(balance - (parseFloat(arqueoContado) || 0))}`)}
+                    : (parseFloat(arqueoContado) - saldoSistemaArqueo > 0
+                      ? `Sobrante: ${formatCurrency(parseFloat(arqueoContado) - saldoSistemaArqueo)}`
+                      : `Faltante: ${formatCurrency(saldoSistemaArqueo - (parseFloat(arqueoContado) || 0))}`)}
                 </p>
               )}
             </div>
@@ -894,18 +770,21 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
             </div>
             {arqueos.length > 0 && (
               <p className="text-xs text-gray-500">
-                Último arqueo: {arqueos[0].arqueo_date} — contado {formatCurrency(arqueos[0].efectivo_contado)}, diferencia {formatCurrency(arqueos[0].diferencia)} ({arqueos[0].contado_por})
+                Último arqueo ({arqueos[0].caja || 'Fondos'}): {arqueos[0].arqueo_date} — contado {formatCurrency(arqueos[0].efectivo_contado)}, diferencia {formatCurrency(arqueos[0].diferencia)} ({arqueos[0].contado_por})
               </p>
             )}
             <div className="flex justify-end gap-2 pt-2">
               <Button variant="outline" onClick={() => setShowArqueo(false)}>Cancelar</Button>
               <Button className="bg-blue-600 hover:bg-blue-700 text-white"
                 disabled={arqueoContado === '' || isNaN(parseFloat(arqueoContado)) || arqueoMutation.isPending}
-                onClick={() => arqueoMutation.mutate({ contado: parseFloat(arqueoContado), notas: arqueoNotas, saldoSistema: balance })}>
+                onClick={() => arqueoMutation.mutate({ contado: parseFloat(arqueoContado), notas: arqueoNotas })}>
                 Registrar Arqueo
               </Button>
             </div>
-            <p className="text-[11px] text-gray-400">El arqueo queda como acta inmutable en Auditoría (no se puede editar ni borrar).</p>
+            <p className="text-[11px] text-gray-400">
+              El arqueo queda como acta inmutable en Auditoría. En Cobranza y Caja chica la diferencia se contabiliza el mismo día
+              (sobrante o faltante de arqueo); en Fondos solo se registra el acta.
+            </p>
           </div>
         </div>
       )}
