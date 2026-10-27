@@ -650,6 +650,7 @@ className="w-full flex justify-between items-center p-4 hover:bg-red-100 transit
 {(() => {
 const estilos = {
 'Efectivo': ['bg-blue-50 border-blue-200', 'text-blue-600'],
+'Caja chica': ['bg-amber-50 border-amber-200', 'text-amber-700'],
 'Tarjeta': ['bg-purple-50 border-purple-200', 'text-purple-600'],
 'BBVA': ['bg-emerald-50 border-emerald-200', 'text-emerald-600'],
 'MP': ['bg-cyan-50 border-cyan-200', 'text-cyan-600'],
@@ -663,7 +664,7 @@ const [box, txt] = estilos[c.cuenta] || ['bg-gray-50 border-gray-200', 'text-gra
 const saldo = parseFloat(c.saldo) || 0;
 return (
 <div key={c.cuenta} className={`p-4 rounded-lg border ${box}`}>
-<p className="text-sm text-gray-600 mb-1">{c.cuenta === 'MercadoPagoBIA' ? 'Mercado Pago BIA' : c.cuenta}</p>
+<p className="text-sm text-gray-600 mb-1">{c.cuenta === 'MercadoPagoBIA' ? 'Mercado Pago BIA' : c.cuenta === 'Efectivo' ? 'Caja Cobranza (efectivo)' : c.cuenta}</p>
 <p className={`text-2xl font-bold ${saldo >= 0 ? txt : 'text-red-600'}`}>{formatCurrency(saldo)}</p>
 <p className="text-xs text-gray-500 mt-1">In: {formatCurrency(parseFloat(c.ingresos) || 0)} | Out: {formatCurrency(parseFloat(c.egresos) || 0)}</p>
 </div>
