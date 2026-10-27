@@ -402,8 +402,10 @@ const dayDifiere = Math.abs(dayNetoReal - dayBruto) > 0.005;
 // esos no descuentan el corte del cajero.
 const cobrosCaja = allPayments.filter(p => vigente(p) && inRange(p, dayStart, dayEnd)
   && p.payment_method === 'efectivo' && p.bank_name !== 'Fondos');
+// Modelo de tres cajas (27/10/2026): los gastos salen de Caja chica, no de la cobranza;
+// solo los registros históricos sin cuenta descuentan el corte.
 const gastosCaja = allExpenses.filter(e => vigente(e) && inRange(e, dayStart, dayEnd)
-  && e.payment_method === 'efectivo' && e.account !== 'Fondos'
+  && e.payment_method === 'efectivo' && e.account !== 'Fondos' && e.account !== 'Caja chica' && !e.is_transfer
   && !e.payroll_item_id
   && (!e.source_module || e.source_module === 'egresos' || e.source_module === 'cxp'));
 const corteCobros = cobrosCaja.reduce((s, p) => s + getEffectiveAmount(p), 0);
