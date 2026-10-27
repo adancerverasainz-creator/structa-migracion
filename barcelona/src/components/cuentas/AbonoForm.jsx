@@ -155,8 +155,8 @@ export default function AbonoForm({ account, pendingAmount, onSubmit, onCancel, 
                 <Select value={formData.cash_register} onValueChange={v => setFormData({ ...formData, cash_register: v })}>
                   <SelectTrigger className="h-10"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="caja_chica">Caja Chica (Egresos)</SelectItem>
-                    <SelectItem value="caja_principal">Fondos</SelectItem>
+                    <SelectItem value="caja_chica">Caja chica (fondo para gastos)</SelectItem>
+                    <SelectItem value="caja_principal">Fondos (caja del CEO)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
