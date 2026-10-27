@@ -155,7 +155,7 @@ export const folioVale = (m) => (m?.folio ? 'V-' + String(m.folio).padStart(6, '
 // Nombre legible de la caja/cuenta según la convención del motor de saldos
 export const cuentaLegible = ({ payment_method, account, bank_name }) => {
   const cta = account ?? bank_name ?? '';
-  if (payment_method === 'efectivo') return cta === 'Fondos' ? 'Fondos (caja)' : 'Efectivo (caja chica)';
+  if (payment_method === 'efectivo') return cta === 'Fondos' ? 'Fondos (caja)' : cta === 'Caja chica' ? 'Caja chica' : 'Efectivo (caja cobranza)';
   if (payment_method === 'tarjeta') return 'Tarjeta';
   return cta === 'MercadoPagoBIA' ? 'Mercado Pago BIA' : (cta || '—');
 };
