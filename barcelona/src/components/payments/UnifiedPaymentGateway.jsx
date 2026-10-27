@@ -655,7 +655,7 @@ export default function UnifiedPaymentGateway({ config, onSubmit, onCancel, isLo
                 <Select value={bankName || 'Efectivo'} onValueChange={v => setBankName(v === 'Efectivo' ? '' : v)}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Efectivo">Efectivo — caja fondos (operativa)</SelectItem>
+                    <SelectItem value="Efectivo">Efectivo — Caja Cobranza</SelectItem>
                     <SelectItem value="Fondos">Fondos — caja CEO</SelectItem>
                   </SelectContent>
                 </Select>
