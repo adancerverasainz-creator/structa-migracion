@@ -44,7 +44,7 @@ export default function ExpenseForm({ expense, onSubmit, onCancel, isLoading }) 
     expense_date: format(new Date(), 'yyyy-MM-dd'),
     category: 'otros',
     payment_method: 'efectivo',
-    account: '',
+    account: 'Caja chica',
     notes: '',
   });
 
@@ -68,10 +68,10 @@ export default function ExpenseForm({ expense, onSubmit, onCancel, isLoading }) 
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    // En efectivo la cuenta solo puede ser '' (caja chica) o 'Fondos'; se normaliza
-    // por si un egreso viejo traía un residuo de cuenta de otro método.
+    // En efectivo la cuenta solo puede ser 'Caja chica' (fondo de quien cobra) o 'Fondos' (CEO).
+    // Ya no se paga nada directo de la Caja Cobranza (cuenta vacía = solo registros históricos).
     const account = formData.payment_method === 'efectivo'
-      ? (formData.account === 'Fondos' ? 'Fondos' : '')
+      ? (formData.account === 'Fondos' ? 'Fondos' : 'Caja chica')
       : formData.account;
     onSubmit({
       ...formData,
@@ -206,7 +206,7 @@ export default function ExpenseForm({ expense, onSubmit, onCancel, isLoading }) 
               <Select
                 value={formData.payment_method}
                 disabled={!!expense}
-                onValueChange={(value) => setFormData({ ...formData, payment_method: value, account: '' })}
+                onValueChange={(value) => setFormData({ ...formData, payment_method: value, account: value === 'efectivo' ? 'Caja chica' : '' })}
               >
                 <SelectTrigger>
                   <SelectValue />
@@ -222,19 +222,20 @@ export default function ExpenseForm({ expense, onSubmit, onCancel, isLoading }) 
               <div className="space-y-2">
                 <Label htmlFor="cash_source">Caja de origen *</Label>
                 <Select
-                  value={formData.account === 'Fondos' ? 'Fondos' : 'caja_efectivo'}
+                  value={formData.account === 'Fondos' ? 'Fondos' : (expense && !formData.account ? 'cobranza' : 'Caja chica')}
                   disabled={!!expense}
-                  onValueChange={(value) => setFormData({ ...formData, account: value === 'Fondos' ? 'Fondos' : '' })}
+                  onValueChange={(value) => setFormData({ ...formData, account: value === 'Fondos' ? 'Fondos' : 'Caja chica' })}
                 >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="caja_efectivo">Efectivo (caja chica)</SelectItem>
-                    <SelectItem value="Fondos">Fondos (caja)</SelectItem>
+                    <SelectItem value="Caja chica">Caja chica (fondo para gastos)</SelectItem>
+                    <SelectItem value="Fondos">Fondos (caja del CEO)</SelectItem>
+                    {expense && !formData.account && <SelectItem value="cobranza">Caja Cobranza (registro histórico)</SelectItem>}
                   </SelectContent>
                 </Select>
-                <p className="text-xs text-gray-500">De qué caja sale el efectivo. El saldo se descuenta solo de la caja elegida.</p>
+                <p className="text-xs text-gray-500">De qué caja sale el efectivo. Los gastos del día a día salen de Caja chica; la cobranza no se toca.</p>
               </div>
             )}
             {formData.payment_method === 'transferencia' && (
