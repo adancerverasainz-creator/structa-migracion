@@ -69,7 +69,7 @@ export default function CuentasPorPagar() {
     monto: p.amount,
     cuenta_nombre: cuentaLegible(egreso || {
       payment_method: p.payment_method,
-      account: p.payment_method === 'efectivo' ? (p.caja === 'caja_principal' ? 'Fondos' : '') : p.bank_name,
+      account: p.payment_method === 'efectivo' ? (p.caja === 'caja_principal' ? 'Fondos' : 'Caja chica') : p.bank_name,
     }),
     forma_pago: egreso?.payment_method || p.payment_method,
     referencia: p.reference_number,
