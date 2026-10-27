@@ -185,8 +185,8 @@ export default function GeneralPaymentForm({ payment, onSubmit, onCancel, isLoad
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="caja_efectivo">Efectivo (caja chica)</SelectItem>
-                    <SelectItem value="Fondos">Fondos (caja)</SelectItem>
+                    <SelectItem value="caja_efectivo">Efectivo — Caja Cobranza</SelectItem>
+                    <SelectItem value="Fondos">Fondos (caja del CEO)</SelectItem>
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-gray-500 mt-1">A qué caja ingresa el efectivo. El saldo se acredita solo en la caja elegida.</p>
