@@ -480,7 +480,7 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
           </div>
 
           {cajaView === 'cobranza' && (<>
-            <CortesPendientesCard isAdmin={isAdmin} cashRegisters={cashRegisters} bancos={bancos} />
+            <CortesPendientesCard isAdmin={isAdmin} cashRegisters={cashRegisters} bancos={bancos} saldoCajaChica={Number(saldoCajaChicaRow?.saldo ?? 0)} fondoFijo={fondoFijo} />
             <CajaEfectivoLibro payments={allPayments} expenses={allExpenses} cortes={[]} onArqueo={abrirArqueo} saldoServidor={saldoEfectivoRow} />
           </>)}
 
@@ -492,7 +492,7 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
       {/* Control por excepción: reversos de cobros vs. recaptura (solo aparece si hubo reversos) */}
       <ReversosRecientes />
       {/* Cortes por liquidar + entregas en tránsito (confirmación del CEO) */}
-      <CortesPendientesCard isAdmin={isAdmin} cashRegisters={cashRegisters} bancos={bancos} compacto />
+      <CortesPendientesCard isAdmin={isAdmin} cashRegisters={cashRegisters} bancos={bancos} compacto saldoCajaChica={Number(saldoCajaChicaRow?.saldo ?? 0)} fondoFijo={fondoFijo} />
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card className="border-2 border-green-200 bg-gradient-to-br from-green-50 to-white">
           <CardContent className="pt-6">
