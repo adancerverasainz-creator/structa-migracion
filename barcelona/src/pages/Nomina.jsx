@@ -31,7 +31,7 @@ const ESQUEMAS = [
 // (bank_accounts) — un banco nuevo aparece aquí automáticamente.
 const FUENTES_EFECTIVO = [
   { value: 'fondos', label: 'Efectivo — Caja Fondos' },
-  { value: 'efectivo', label: 'Efectivo — Caja del día' },
+  { value: 'efectivo', label: 'Efectivo — Caja Fondos (sale de Fondos)' },
 ];
 const construirFuentes = (bancos) => [
   ...FUENTES_EFECTIVO,
