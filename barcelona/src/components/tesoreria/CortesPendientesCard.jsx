@@ -87,17 +87,48 @@ export default function CortesPendientesCard({ isAdmin, cashRegisters = [], banc
           <p className="text-xs text-gray-500">
             Cada día de cobranza se liquida completo: a <b>Fondos</b> (queda en tránsito hasta que el CEO confirma),
             a <b>Caja chica</b> (para pagar gastos sin esperar al CEO) o <b>depositado en banco</b>. Puedes repartir un mismo día entre destinos.
+            Los gastos nunca se pagan de la cobranza: primero pasas dinero a Caja chica y de ahí pagas.
           </p>
         )}
-        {hoy && (
-          <div className="p-3 rounded-lg bg-blue-50 border border-blue-200 text-sm">
-            <span className="font-semibold">{FECHA(hoy.fecha)}</span>
-            <Badge className="ml-2 bg-blue-600">día en curso</Badge>
-            <p className="text-xs text-gray-600 mt-1">
-              Cobros en efectivo <b>{formatCurrency(Number(hoy.cobros))}</b> · se liquida mañana con el día cerrado.
-            </p>
-          </div>
-        )}
+        {hoy && (() => {
+          const disp = Math.max(0, Number(hoy.pendiente) || 0);
+          const s = getSel(hoy);
+          const monto = s.monto === '' ? disp : Number(s.monto);
+          const montoOk = monto > 0 && monto <= disp + 0.005;
+          return (
+            <div className="p-3 rounded-lg bg-blue-50 border border-blue-200 text-sm space-y-2">
+              <div>
+                <span className="font-semibold">{FECHA(hoy.fecha)}</span>
+                <Badge className="ml-2 bg-blue-600">día en curso</Badge>
+                <p className="text-xs text-gray-600 mt-1">
+                  Cobros en efectivo <b>{formatCurrency(Number(hoy.cobros))}</b>
+                  {Number(hoy.a_caja_chica) > 0 ? ` · ya pasado a Caja chica ${formatCurrency(Number(hoy.a_caja_chica))}` : ''}
+                  {' · '}la entrega a Fondos o el depósito en banco se hace mañana con el día cerrado.
+                  {disp > 0 ? ' Si hoy necesitas pagar algo, pasa parte de esta cobranza a tu Caja chica:' : ''}
+                </p>
+              </div>
+              {disp > 0 && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <Input type="number" min="0.01" step="0.01" className="h-8 w-[130px] bg-white" placeholder={String(disp)}
+                    value={s.monto} onWheel={(e) => e.target.blur()}
+                    onChange={(e) => setSel({ ...sel, [hoy.fecha]: { ...s, monto: e.target.value } })} />
+                  <Button size="sm" variant="outline" className="h-8 border-amber-400 text-amber-800 hover:bg-amber-50"
+                    disabled={!montoOk || liquidar.isPending}
+                    onClick={async () => {
+                      const ok = await confirmar(
+                        `Confirma que ${formatCurrency(monto)} de la cobranza de hoy pasan a tu Caja chica (quedarán ${formatCurrency(disp - monto)} por liquidar mañana).`,
+                        { titulo: 'Pasar a Caja chica', confirmLabel: 'Sí, registrar' }
+                      );
+                      if (ok) liquidar.mutate({ c: hoy, destino: 'Caja chica', monto });
+                    }}>
+                    Pasar {formatCurrency(monto || 0)} a Caja chica
+                  </Button>
+                  {!montoOk && s.monto !== '' && <span className="text-xs text-red-600">Entre $0.01 y {formatCurrency(disp)}</span>}
+                </div>
+              )}
+            </div>
+          );
+        })()}
         {pendientes.length === 0 && !hoy && (
           <p className="text-sm text-green-700 font-medium">Sin cortes pendientes de liquidar.</p>
         )}
