@@ -24,7 +24,7 @@ const FECHA = (d) => format(new Date(d + 'T12:00:00'), "dd 'de' MMMM yyyy", { lo
 const invalidar = (qc) => ['cortesPendientes', 'cortesPendientesV2', 'cashRegisters', 'saldosPorCuenta', 'allExpensesForFondos', 'expenses']
   .forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
 
-export default function CortesPendientesCard({ isAdmin, cashRegisters = [], bancos = [], compacto = false }) {
+export default function CortesPendientesCard({ isAdmin, cashRegisters = [], bancos = [], compacto = false, saldoCajaChica = 0, fondoFijo = 0 }) {
   const queryClient = useQueryClient();
   const { data: cortes = [], error: errorCortes } = useQuery({
     queryKey: ['cortesPendientesV2'],
@@ -34,26 +34,56 @@ export default function CortesPendientesCard({ isAdmin, cashRegisters = [], banc
       return data || [];
     },
   });
-  // destino y monto elegidos por día: { [fecha]: { destino, monto } }
+  // Ajustes manuales por día (opcionales): { [fecha]: { destino, cajaChica, ajustar } }
   const [sel, setSel] = useState({});
-  const getSel = (c) => sel[c.fecha] || { destino: 'Fondos', monto: '' };
+  const getSel = (c) => sel[c.fecha] || { destino: 'Fondos', cajaChica: '', ajustar: false };
+  const setDia = (c, patch) => setSel((prev) => ({ ...prev, [c.fecha]: { ...getSel(c), ...patch } }));
 
-  const liquidar = useMutation({
-    mutationFn: async ({ c, destino, monto }) => {
-      const op = crypto.randomUUID ? crypto.randomUUID() : null;
-      const args = { p_fecha: c.fecha, p_monto: monto, p_op_key: op };
-      let r;
-      if (destino === 'Fondos') r = await supabase.rpc('entregar_corte_monto', args);
-      else if (destino === 'Caja chica') r = await supabase.rpc('corte_a_caja_chica', args);
-      else r = await supabase.rpc('corte_a_banco', { ...args, p_banco: destino });
-      if (r.error) throw new Error(r.error.message);
-      return destino;
+  // Déficit de la Caja chica respecto a su fondo fijo: el sistema lo repone PRIMERO con la cobranza
+  const deficitCajaChica = Math.max(0, (Number(fondoFijo) || 0) - (Number(saldoCajaChica) || 0));
+  // Propuesta automática para un día: cuánto va a Caja chica y cuánto al destino del resto.
+  // Si hay varios días pendientes, el déficit se cubre con el más antiguo y los demás van completos al resto.
+  const propuestas = (() => {
+    let faltante = deficitCajaChica;
+    const map = {};
+    for (const c of cortes.filter((x) => !x.es_hoy && Number(x.pendiente) > 0.005)) {
+      const pend = Number(c.pendiente);
+      const aCC = Math.min(pend, faltante);
+      faltante = Math.max(0, faltante - aCC);
+      map[c.fecha] = { aCC: Math.round(aCC * 100) / 100, resto: Math.round((pend - aCC) * 100) / 100 };
+    }
+    return map;
+  })();
+
+  // Liquidación atómica en un paso (RPC liquidar_corte): Caja chica + resto
+  const liquidarDia = useMutation({
+    mutationFn: async ({ c, destino, aCC }) => {
+      const { data, error } = await supabase.rpc('liquidar_corte', {
+        p_fecha: c.fecha, p_destino_resto: destino, p_a_caja_chica: aCC,
+        p_op_key: (crypto.randomUUID ? crypto.randomUUID() : null),
+      });
+      if (error) throw new Error(error.message);
+      return data;
     },
-    onSuccess: (destino) => {
+    onSuccess: (d) => {
       invalidar(queryClient);
-      toast.success(destino === 'Fondos' ? 'Entrega registrada — queda en tránsito hasta que el CEO confirme'
-        : destino === 'Caja chica' ? 'Cobranza pasada a Caja chica' : `Depósito en ${destino} registrado`);
+      const partes = [];
+      if (Number(d?.a_caja_chica) > 0) partes.push(`${formatCurrency(Number(d.a_caja_chica))} a Caja chica`);
+      if (Number(d?.resto) > 0) partes.push(`${formatCurrency(Number(d.resto))} a ${d.destino_resto === 'Fondos' ? 'Fondos (en tránsito hasta que el CEO confirme)' : d.destino_resto}`);
+      toast.success(`Día liquidado: ${partes.join(' y ')}`);
     },
+    onError: (e) => toast.error(e.message),
+  });
+
+  // Día en curso: solo puede pasar cobranza a Caja chica (el resto se liquida mañana)
+  const pasarHoy = useMutation({
+    mutationFn: async ({ c, monto }) => {
+      const { error } = await supabase.rpc('corte_a_caja_chica', {
+        p_fecha: c.fecha, p_monto: monto, p_op_key: (crypto.randomUUID ? crypto.randomUUID() : null),
+      });
+      if (error) throw new Error(error.message);
+    },
+    onSuccess: () => { invalidar(queryClient); toast.success('Cobranza de hoy pasada a Caja chica'); },
     onError: (e) => toast.error(e.message),
   });
 
@@ -71,6 +101,7 @@ export default function CortesPendientesCard({ isAdmin, cashRegisters = [], banc
   const porEntregar = pendientes.reduce((s, c) => s + Number(c.pendiente), 0);
   const hoy = cortes.find((c) => c.es_hoy);
   const descuadrados = cortes.filter((c) => !c.es_hoy && Number(c.pendiente) < -0.005);
+  const nombreDestino = (d) => d === 'Fondos' ? 'Fondos (CEO)' : d;
 
   return (
     <Card className={`border-2 ${pendientes.length ? 'border-amber-300' : 'border-gray-200'}`}>
@@ -88,15 +119,16 @@ export default function CortesPendientesCard({ isAdmin, cashRegisters = [], banc
         )}
         {!compacto && (
           <p className="text-xs text-gray-500">
-            Cada día de cobranza se liquida completo: a <b>Fondos</b> (queda en tránsito hasta que el CEO confirma),
-            a <b>Caja chica</b> (para pagar gastos sin esperar al CEO) o <b>depositado en banco</b>. Puedes repartir un mismo día entre destinos.
-            Los gastos nunca se pagan de la cobranza: primero pasas dinero a Caja chica y de ahí pagas.
+            El sistema reparte cada día de cobranza solo: primero completa tu <b>Caja chica</b> hasta su fondo fijo
+            ({formatCurrency(Number(fondoFijo) || 0)}) y el resto lo manda al destino que elijas (<b>Fondos</b>, en tránsito hasta que
+            el CEO confirme, o <b>depósito en banco</b>). Tú solo confirmas. Los gastos nunca se pagan de la cobranza.
           </p>
         )}
         {hoy && (() => {
           const disp = Math.max(0, Number(hoy.pendiente) || 0);
           const s = getSel(hoy);
-          const monto = s.monto === '' ? disp : Number(s.monto);
+          const sugerido = Math.min(disp, deficitCajaChica);
+          const monto = s.cajaChica === '' ? sugerido : Number(s.cajaChica);
           const montoOk = monto > 0 && monto <= disp + 0.005;
           return (
             <div className="p-3 rounded-lg bg-blue-50 border border-blue-200 text-sm space-y-2">
@@ -106,27 +138,31 @@ export default function CortesPendientesCard({ isAdmin, cashRegisters = [], banc
                 <p className="text-xs text-gray-600 mt-1">
                   Cobros en efectivo <b>{formatCurrency(Number(hoy.cobros))}</b>
                   {Number(hoy.a_caja_chica) > 0 ? ` · ya pasado a Caja chica ${formatCurrency(Number(hoy.a_caja_chica))}` : ''}
-                  {' · '}la entrega a Fondos o el depósito en banco se hace mañana con el día cerrado.
-                  {disp > 0 ? ' Si hoy necesitas pagar algo, pasa parte de esta cobranza a tu Caja chica:' : ''}
+                  {' · '}se liquida mañana con el día cerrado.
                 </p>
+                {disp > 0 && sugerido > 0 && (
+                  <p className="text-xs text-amber-800 mt-1">
+                    Tu Caja chica está {formatCurrency(deficitCajaChica)} por debajo del fondo fijo: repónla ahora con la cobranza de hoy.
+                  </p>
+                )}
               </div>
               {disp > 0 && (
                 <div className="flex flex-wrap items-center gap-2">
-                  <Input type="number" min="0.01" step="0.01" className="h-8 w-[130px] bg-white" placeholder={String(disp)}
-                    value={s.monto} onWheel={(e) => e.target.blur()}
-                    onChange={(e) => setSel({ ...sel, [hoy.fecha]: { ...s, monto: e.target.value } })} />
+                  <Input type="number" min="0.01" step="0.01" className="h-8 w-[130px] bg-white" placeholder={String(sugerido || disp)}
+                    value={s.cajaChica} onWheel={(e) => e.target.blur()}
+                    onChange={(e) => setDia(hoy, { cajaChica: e.target.value })} />
                   <Button size="sm" variant="outline" className="h-8 border-amber-400 text-amber-800 hover:bg-amber-50"
-                    disabled={!montoOk || liquidar.isPending}
+                    disabled={!montoOk || pasarHoy.isPending}
                     onClick={async () => {
                       const ok = await confirmar(
                         `Confirma que ${formatCurrency(monto)} de la cobranza de hoy pasan a tu Caja chica (quedarán ${formatCurrency(disp - monto)} por liquidar mañana).`,
                         { titulo: 'Pasar a Caja chica', confirmLabel: 'Sí, registrar' }
                       );
-                      if (ok) liquidar.mutate({ c: hoy, destino: 'Caja chica', monto });
+                      if (ok) pasarHoy.mutate({ c: hoy, monto });
                     }}>
-                    Pasar {formatCurrency(monto || 0)} a Caja chica
+                    {sugerido > 0 && s.cajaChica === '' ? `Reponer Caja chica ${formatCurrency(monto)}` : `Pasar ${formatCurrency(monto || 0)} a Caja chica`}
                   </Button>
-                  {!montoOk && s.monto !== '' && <span className="text-xs text-red-600">Entre $0.01 y {formatCurrency(disp)}</span>}
+                  {!montoOk && s.cajaChica !== '' && <span className="text-xs text-red-600">Entre $0.01 y {formatCurrency(disp)}</span>}
                 </div>
               )}
             </div>
@@ -138,8 +174,10 @@ export default function CortesPendientesCard({ isAdmin, cashRegisters = [], banc
         {pendientes.map((c) => {
           const pend = Number(c.pendiente);
           const s = getSel(c);
-          const monto = s.monto === '' ? pend : Number(s.monto);
-          const montoOk = monto > 0 && monto <= pend + 0.005;
+          const prop = propuestas[c.fecha] || { aCC: 0, resto: pend };
+          const aCC = s.ajustar && s.cajaChica !== '' ? Number(s.cajaChica) : prop.aCC;
+          const resto = Math.round((pend - aCC) * 100) / 100;
+          const valido = aCC >= 0 && aCC <= pend + 0.005;
           const liquidado = Number(c.entregado) > 0;
           return (
             <div key={c.fecha} className="p-3 rounded-lg bg-amber-50 border border-amber-200 space-y-2">
@@ -158,31 +196,53 @@ export default function CortesPendientesCard({ isAdmin, cashRegisters = [], banc
                   {' · '}<b className="text-amber-800">pendiente {formatCurrency(pend)}</b>
                 </p>
               </div>
+              {/* Propuesta del sistema */}
+              <div className="rounded-md bg-white border border-amber-200 p-2 text-sm space-y-1">
+                {aCC > 0 && (
+                  <p>→ <b>{formatCurrency(aCC)}</b> a <b>Caja chica</b> <span className="text-xs text-gray-500">(repone el fondo a {formatCurrency(Number(fondoFijo) || 0)})</span></p>
+                )}
+                {resto > 0 && (
+                  <p className="flex flex-wrap items-center gap-2">
+                    <span>→ <b>{formatCurrency(resto)}</b> a</span>
+                    <Select value={s.destino} onValueChange={(v) => setDia(c, { destino: v })}>
+                      <SelectTrigger className="h-7 w-[190px] bg-white"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Fondos">Fondos (CEO)</SelectItem>
+                        {bancos.map((b) => <SelectItem key={b} value={b}>Depósito en {b}</SelectItem>)}
+                        <SelectItem value="Caja chica">Caja chica (todo)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </p>
+                )}
+                {s.ajustar && (
+                  <p className="flex flex-wrap items-center gap-2 text-xs text-gray-700">
+                    A Caja chica:
+                    <Input type="number" min="0" step="0.01" className="h-7 w-[120px] bg-white" placeholder={String(prop.aCC)}
+                      value={s.cajaChica} onWheel={(e) => e.target.blur()}
+                      onChange={(e) => setDia(c, { cajaChica: e.target.value })} />
+                    <span>(el resto, {formatCurrency(Math.max(0, resto))}, va al destino elegido)</span>
+                    {!valido && <span className="text-red-600">Entre $0 y {formatCurrency(pend)}</span>}
+                  </p>
+                )}
+              </div>
               <div className="flex flex-wrap items-center gap-2">
-                <Select value={s.destino} onValueChange={(v) => setSel({ ...sel, [c.fecha]: { ...s, destino: v } })}>
-                  <SelectTrigger className="h-8 w-[200px] bg-white"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Fondos">Entregar a Fondos (CEO)</SelectItem>
-                    <SelectItem value="Caja chica">Pasar a Caja chica</SelectItem>
-                    {bancos.map((b) => <SelectItem key={b} value={b}>Depositar en {b}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-                <Input type="number" min="0.01" step="0.01" className="h-8 w-[130px] bg-white" placeholder={String(pend)}
-                  value={s.monto} onWheel={(e) => e.target.blur()}
-                  onChange={(e) => setSel({ ...sel, [c.fecha]: { ...s, monto: e.target.value } })} />
                 <Button size="sm" className="h-8 bg-emerald-600 hover:bg-emerald-700"
-                  disabled={!montoOk || liquidar.isPending}
+                  disabled={!valido || liquidarDia.isPending}
                   onClick={async () => {
-                    const destinoTxt = s.destino === 'Fondos' ? 'Caja Fondos (CEO)' : s.destino === 'Caja chica' ? 'tu Caja chica' : `la cuenta ${s.destino}`;
+                    const partes = [];
+                    if (aCC > 0) partes.push(`${formatCurrency(aCC)} a tu Caja chica`);
+                    if (resto > 0) partes.push(`${formatCurrency(resto)} a ${nombreDestino(s.destino)}`);
                     const ok = await confirmar(
-                      `Confirma que ${formatCurrency(monto)} de la cobranza del ${FECHA(c.fecha)} van a ${destinoTxt}${monto < pend - 0.005 ? ` (quedarán pendientes ${formatCurrency(pend - monto)})` : ''}.`,
-                      { titulo: 'Liquidar corte', confirmLabel: 'Sí, registrar' }
+                      `Liquidar la cobranza del ${FECHA(c.fecha)}: ${partes.join(' y ')}. El monto lo calculó el sistema; solo confirma que el efectivo está completo.`,
+                      { titulo: 'Liquidar día', confirmLabel: 'Sí, liquidar' }
                     );
-                    if (ok) liquidar.mutate({ c, destino: s.destino, monto });
+                    if (ok) liquidarDia.mutate({ c, destino: s.destino, aCC });
                   }}>
-                  Registrar {formatCurrency(monto || 0)}
+                  Liquidar día — {formatCurrency(pend)}
                 </Button>
-                {!montoOk && s.monto !== '' && <span className="text-xs text-red-600">El monto debe ser entre $0.01 y {formatCurrency(pend)}</span>}
+                <button type="button" className="text-xs text-gray-500 underline" onClick={() => setDia(c, { ajustar: !s.ajustar, cajaChica: '' })}>
+                  {s.ajustar ? 'usar propuesta del sistema' : 'ajustar reparto'}
+                </button>
               </div>
             </div>
           );
