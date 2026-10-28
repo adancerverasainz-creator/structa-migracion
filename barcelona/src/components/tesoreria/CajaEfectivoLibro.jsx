@@ -144,7 +144,7 @@ export default function CajaEfectivoLibro({ payments, expenses, cortes = [], onA
                   </div>
                   <div className="text-right flex-shrink-0">
                     <p className={`font-bold ${m.type === 'ingreso' ? 'text-green-600' : m.esCorte ? 'text-blue-700' : 'text-red-600'}`}>
-                      {m.type === 'ingreso' ? (m.amount < 0 ? '' : '+') : '-'}{formatCurrency(m.amount)}
+                      {(m.type === 'ingreso' ? 1 : -1) * m.amount >= 0 ? '+' : '-'}{formatCurrency(Math.abs(m.amount))}
                     </p>
                     <p className="text-xs text-gray-400">Saldo: {formatCurrency(m.balanceAfter)}</p>
                   </div>
