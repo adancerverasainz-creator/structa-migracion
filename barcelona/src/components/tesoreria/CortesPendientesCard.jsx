@@ -26,7 +26,7 @@ const invalidar = (qc) => ['cortesPendientes', 'cortesPendientesV2', 'cashRegist
 
 export default function CortesPendientesCard({ isAdmin, cashRegisters = [], bancos = [], compacto = false }) {
   const queryClient = useQueryClient();
-  const { data: cortes = [] } = useQuery({
+  const { data: cortes = [], error: errorCortes } = useQuery({
     queryKey: ['cortesPendientesV2'],
     queryFn: async () => {
       const { data, error } = await supabase.rpc('cortes_pendientes_v2');
@@ -83,6 +83,9 @@ export default function CortesPendientesCard({ isAdmin, cashRegisters = [], banc
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
+        {errorCortes && (
+          <p className="text-sm text-red-600">No se pudieron cargar los cortes: {errorCortes.message}</p>
+        )}
         {!compacto && (
           <p className="text-xs text-gray-500">
             Cada día de cobranza se liquida completo: a <b>Fondos</b> (queda en tránsito hasta que el CEO confirma),
@@ -129,7 +132,7 @@ export default function CortesPendientesCard({ isAdmin, cashRegisters = [], banc
             </div>
           );
         })()}
-        {pendientes.length === 0 && !hoy && (
+        {pendientes.length === 0 && !hoy && !errorCortes && (
           <p className="text-sm text-green-700 font-medium">Sin cortes pendientes de liquidar.</p>
         )}
         {pendientes.map((c) => {
