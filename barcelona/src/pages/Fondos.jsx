@@ -39,7 +39,7 @@ export default function Fondos() {
     cash_amount: '',
     register_date: format(new Date(), 'yyyy-MM-dd'), // fecha LOCAL, no UTC
     notes: '',
-    source: 'Corte de caja'
+    source: 'Ingreso directo a Fondos'
   });
 
   const queryClient = useQueryClient();
@@ -132,7 +132,7 @@ queryClient.invalidateQueries({ queryKey: ['saldosPorCuenta'] });
         cash_amount: '',
         register_date: format(new Date(), 'yyyy-MM-dd'), // fecha LOCAL, no UTC
         notes: '',
-        source: 'Corte de caja'
+        source: 'Ingreso directo a Fondos'
       });
     },
 onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desconocido'}`),
@@ -149,7 +149,7 @@ queryClient.invalidateQueries({ queryKey: ['saldosPorCuenta'] });
         cash_amount: '',
         register_date: format(new Date(), 'yyyy-MM-dd'), // fecha LOCAL, no UTC
         notes: '',
-        source: 'Corte de caja'
+        source: 'Ingreso directo a Fondos'
       });
     },
 onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desconocido'}`),
@@ -221,7 +221,7 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
       cash_amount: cashRegister.cash_amount.toString(),
       register_date: cashRegister.register_date,
       notes: cashRegister.notes || '',
-      source: cashRegister.source || 'Corte de caja'
+      source: cashRegister.source || 'Ingreso directo a Fondos'
     });
     setShowForm(true);
   };
@@ -375,7 +375,11 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
   const saldoSistemaArqueo = arqueoCaja === 'Fondos' ? Number(saldoFondosRow?.saldo ?? 0)
     : arqueoCaja === 'Caja chica' ? Number(saldoCajaChicaRow?.saldo ?? 0)
     : Number(saldoEfectivoRow?.saldo ?? 0);
-  const abrirArqueo = (caja) => { setArqueoCaja(caja || 'Fondos'); setArqueoContado(''); setArqueoNotas(''); setShowArqueo(true); };
+  const abrirArqueo = (caja) => {
+    // Fondos solo lo cuenta el admin; a los demás se les abre la Caja Cobranza
+    const c = (!isAdmin && (caja || 'Fondos') === 'Fondos') ? 'Efectivo' : (caja || 'Fondos');
+    setArqueoCaja(c); setArqueoContado(''); setArqueoNotas(''); setShowArqueo(true);
+  };
   const arqueoMutation = useMutation({
     mutationFn: async ({ contado, notas }) => {
       const { data, error } = await supabase.rpc('registrar_arqueo', { p_caja: arqueoCaja, p_contado: contado, p_notas: notas || null });
@@ -423,7 +427,7 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
                 cash_amount: '',
                 register_date: format(new Date(), 'yyyy-MM-dd'), // fecha LOCAL, no UTC
                 notes: '',
-                source: 'Corte de caja'
+                source: 'Ingreso directo a Fondos'
               });
               setShowForm(true);
             }}
@@ -561,7 +565,7 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
                   id="source"
                   value={formData.source}
                   onChange={(e) => setFormData({ ...formData, source: e.target.value })}
-                  placeholder="Ej: Corte de caja"
+                  placeholder="Ej: Patrocinio, traspaso, ingreso directo"
                 />
                 {!editingCashRegister && /corte/i.test(formData.source || '') && (
                   <p className="text-xs text-amber-700 bg-amber-50 border border-amber-300 rounded-md px-2 py-1.5">
