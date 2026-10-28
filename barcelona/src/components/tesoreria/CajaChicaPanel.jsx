@@ -160,7 +160,7 @@ export default function CajaChicaPanel({ expenses = [], saldoServidor = null, fo
                   </div>
                   <div className="text-right flex-shrink-0">
                     <span className={`text-lg font-bold ${m.type === 'ingreso' ? 'text-green-600' : 'text-red-600'}`}>
-                      {m.type === 'ingreso' ? '+' : '-'}{formatCurrency(m.amount)}
+                      {(m.type === 'ingreso' ? 1 : -1) * m.amount >= 0 ? '+' : '-'}{formatCurrency(Math.abs(m.amount))}
                     </span>
                     <p className="text-xs text-gray-500">Saldo: {formatCurrency(m.balanceAfter ?? 0)}</p>
                   </div>
