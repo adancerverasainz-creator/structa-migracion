@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ArrowUpCircle, ArrowDownCircle, Wallet, PiggyBank, DollarSign } from 'lucide-react';
+import { ArrowUpCircle, ArrowDownCircle, Wallet, PiggyBank, DollarSign, Banknote } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { formatCurrency } from '../lib/formatCurrency';
@@ -24,6 +24,8 @@ export default function CajaChicaPanel({ expenses = [], saldoServidor = null, fo
   const [showReponer, setShowReponer] = useState(false);
   const [monto, setMonto] = useState('');
   const [notas, setNotas] = useState('');
+  const [showEntregar, setShowEntregar] = useState(false);
+  const [montoEntrega, setMontoEntrega] = useState('');
 
   const ingresos = expenses.filter((e) => e.is_transfer && e.transfer_to === 'Caja chica');
   const egresos = expenses.filter((e) => e.account === 'Caja chica');
@@ -48,6 +50,8 @@ export default function CajaChicaPanel({ expenses = [], saldoServidor = null, fo
   const totalOut = saldoServidor ? Number(saldoServidor.egresos) : egresos.reduce((s, e) => s + (Number(e.amount) || 0), 0);
   const saldo = saldoServidor ? Number(saldoServidor.saldo) : totalIn - totalOut;
   const porReponer = Math.max(0, (Number(fondoFijo) || 0) - saldo);
+  // Lo que sobra por encima del fondo fijo se entrega a Fondos (queda en tránsito hasta que el CEO confirma)
+  const excedente = Math.max(0, saldo - (Number(fondoFijo) || 0));
 
   const reponer = useMutation({
     mutationFn: async () => {
@@ -64,6 +68,21 @@ export default function CajaChicaPanel({ expenses = [], saldoServidor = null, fo
     onError: (e) => toast.error(e.message),
   });
 
+  const entregar = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase.rpc('caja_chica_a_fondos', {
+        p_monto: Number(montoEntrega), p_notas: null, p_op_key: (crypto.randomUUID ? crypto.randomUUID() : null),
+      });
+      if (error) throw new Error(error.message);
+    },
+    onSuccess: () => {
+      ['saldosPorCuenta', 'allExpensesForFondos', 'expenses', 'cashRegisters'].forEach((k) => queryClient.invalidateQueries({ queryKey: [k] }));
+      toast.success('Entrega registrada — queda en tránsito hasta que el CEO confirme que la recibió');
+      setShowEntregar(false); setMontoEntrega('');
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
@@ -75,6 +94,11 @@ export default function CajaChicaPanel({ expenses = [], saldoServidor = null, fo
           {onArqueo && (
             <Button variant="outline" className="border-blue-300 text-blue-700 hover:bg-blue-50" onClick={() => onArqueo('Caja chica')}>
               <DollarSign className="w-4 h-4 mr-1" /> Arqueo
+            </Button>
+          )}
+          {excedente > 0 && (
+            <Button variant="outline" className="border-emerald-400 text-emerald-800 hover:bg-emerald-50" onClick={() => { setMontoEntrega(String(excedente)); setShowEntregar(true); }}>
+              <Banknote className="w-4 h-4 mr-2" /> Entregar excedente a Fondos
             </Button>
           )}
           {isAdmin && (
@@ -95,7 +119,9 @@ export default function CajaChicaPanel({ expenses = [], saldoServidor = null, fo
           <p className="text-2xl font-bold text-gray-800">{formatCurrency(Number(fondoFijo) || 0)}</p>
           {porReponer > 0
             ? <p className="text-xs text-amber-700 mt-1">Por reponer: {formatCurrency(porReponer)}</p>
-            : <p className="text-xs text-green-700 mt-1">Fondo completo</p>}
+            : excedente > 0
+              ? <p className="text-xs text-emerald-700 mt-1">Excedente sobre el fondo: {formatCurrency(excedente)} (entrégalo a Fondos)</p>
+              : <p className="text-xs text-green-700 mt-1">Fondo completo</p>}
         </CardContent></Card>
         <Card className="border-2 border-green-200"><CardContent className="pt-6">
           <p className="text-sm text-gray-600 mb-1">Entradas</p>
@@ -129,6 +155,32 @@ export default function CajaChicaPanel({ expenses = [], saldoServidor = null, fo
                   if (ok) reponer.mutate();
                 }}>
                 Registrar reposición
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {showEntregar && (
+        <Card className="border-2 border-emerald-300">
+          <CardHeader><CardTitle className="text-base">Entregar efectivo de Caja chica a Fondos</CardTitle></CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-xs text-gray-600">
+              El sistema propone el excedente sobre el fondo fijo ({formatCurrency(excedente)}). La entrega queda <b>en tránsito</b> hasta que el CEO confirme que la recibió.
+            </p>
+            <div className="space-y-1 max-w-xs">
+              <Label>Monto que entregas *</Label>
+              <Input type="number" min="0.01" step="0.01" max={saldo} value={montoEntrega} onWheel={(e) => e.target.blur()} onChange={(e) => setMontoEntrega(e.target.value)} />
+              {Number(montoEntrega) > saldo + 0.005 && <p className="text-xs text-red-600">No puedes entregar más de lo que tiene la Caja chica ({formatCurrency(saldo)}).</p>}
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setShowEntregar(false)}>Cancelar</Button>
+              <Button className="bg-emerald-700 hover:bg-emerald-800" disabled={!(Number(montoEntrega) > 0) || Number(montoEntrega) > saldo + 0.005 || entregar.isPending}
+                onClick={async () => {
+                  const ok = await confirmar(`Confirma que entregas ${formatCurrency(Number(montoEntrega))} de tu Caja chica a Fondos (CEO).`, { titulo: 'Entregar a Fondos', confirmLabel: 'Sí, entregar' });
+                  if (ok) entregar.mutate();
+                }}>
+                Registrar entrega
               </Button>
             </div>
           </CardContent>
