@@ -692,13 +692,16 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
                     {(() => {
                       // Movimientos generados por otros módulos (Pagos, CxP, traspasos)
                       // se corrigen en su módulo de origen — aquí son solo lectura.
+                      const esCorte = transaction.type === 'ingreso' && !!transaction.record?.corte_fecha;
+                      const esEntregaCC = transaction.type === 'ingreso' && transaction.record?.source === 'Entrega de Caja chica a Fondos';
                       const externo = transaction.readOnly
                         || transaction.record?.source_module === 'cxp'
                         || transaction.record?.is_transfer
+                        || esCorte || esEntregaCC
                         || /^Abono CxP:/i.test(transaction.description || '');
                       if (externo) return (
                         <Badge variant="outline" className="text-xs text-gray-500">
-                          {transaction.readOnly ? 'Origen: Pagos' : (transaction.record?.is_transfer ? 'Traspaso' : 'Origen: CxP')}
+                          {transaction.readOnly ? 'Origen: Pagos' : esCorte ? 'Corte (Tesorería)' : esEntregaCC ? 'Entrega Caja chica' : (transaction.record?.is_transfer ? 'Traspaso' : 'Origen: CxP')}
                         </Badge>
                       );
                       return (<>
