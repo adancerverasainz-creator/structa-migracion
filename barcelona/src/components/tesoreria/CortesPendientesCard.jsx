@@ -24,7 +24,7 @@ const FECHA = (d) => format(new Date(d + 'T12:00:00'), "dd 'de' MMMM yyyy", { lo
 const invalidar = (qc) => ['cortesPendientes', 'cortesPendientesV2', 'cashRegisters', 'saldosPorCuenta', 'allExpensesForFondos', 'expenses']
   .forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
 
-export default function CortesPendientesCard({ isAdmin, cashRegisters = [], bancos = [], compacto = false, saldoCajaChica = 0, fondoFijo = 0 }) {
+export default function CortesPendientesCard({ isAdmin, cashRegisters = [], bancos = [], compacto = false, saldoCajaChica = null, fondoFijo = null }) {
   const queryClient = useQueryClient();
   const { data: cortes = [], error: errorCortes } = useQuery({
     queryKey: ['cortesPendientesV2'],
@@ -39,27 +39,24 @@ export default function CortesPendientesCard({ isAdmin, cashRegisters = [], banc
   const getSel = (c) => sel[c.fecha] || { destino: 'Fondos', cajaChica: '', ajustar: false };
   const setDia = (c, patch) => setSel((prev) => ({ ...prev, [c.fecha]: { ...getSel(c), ...patch } }));
 
+  // Hasta no tener saldo de Caja chica y fondo fijo cargados, no se propone ni se permite liquidar
+  const listo = saldoCajaChica != null && fondoFijo != null;
   // Déficit de la Caja chica respecto a su fondo fijo: el sistema lo repone PRIMERO con la cobranza
-  const deficitCajaChica = Math.max(0, (Number(fondoFijo) || 0) - (Number(saldoCajaChica) || 0));
-  // Propuesta automática para un día: cuánto va a Caja chica y cuánto al destino del resto.
-  // Si hay varios días pendientes, el déficit se cubre con el más antiguo y los demás van completos al resto.
-  const propuestas = (() => {
-    let faltante = deficitCajaChica;
-    const map = {};
-    for (const c of cortes.filter((x) => !x.es_hoy && Number(x.pendiente) > 0.005)) {
-      const pend = Number(c.pendiente);
-      const aCC = Math.min(pend, faltante);
-      faltante = Math.max(0, faltante - aCC);
-      map[c.fecha] = { aCC: Math.round(aCC * 100) / 100, resto: Math.round((pend - aCC) * 100) / 100 };
-    }
-    return map;
-  })();
+  const deficitCajaChica = listo ? Math.max(0, (Number(fondoFijo) || 0) - (Number(saldoCajaChica) || 0)) : 0;
+  // Propuesta por día, independiente: el día que se liquide primero cubre el déficit; al refrescar,
+  // los demás se recalculan. Así lo que se muestra es exactamente lo que se registra.
+  const propuestaDe = (c) => {
+    const pend = Number(c.pendiente) || 0;
+    const aCC = Math.round(Math.min(pend, deficitCajaChica) * 100) / 100;
+    return { aCC, resto: Math.round((pend - aCC) * 100) / 100 };
+  };
 
   // Liquidación atómica en un paso (RPC liquidar_corte): Caja chica + resto
   const liquidarDia = useMutation({
     mutationFn: async ({ c, destino, aCC }) => {
-      const { data, error } = await supabase.rpc('liquidar_corte', {
+      const { data, error } = await supabase.rpc('liquidar_corte_v2', {
         p_fecha: c.fecha, p_destino_resto: destino, p_a_caja_chica: aCC,
+        p_pendiente_esperado: Number(c.pendiente), // si cambió en el servidor, rechaza y pide recargar
         p_op_key: (crypto.randomUUID ? crypto.randomUUID() : null),
       });
       if (error) throw new Error(error.message);
@@ -152,7 +149,7 @@ export default function CortesPendientesCard({ isAdmin, cashRegisters = [], banc
                     value={s.cajaChica} onWheel={(e) => e.target.blur()}
                     onChange={(e) => setDia(hoy, { cajaChica: e.target.value })} />
                   <Button size="sm" variant="outline" className="h-8 border-amber-400 text-amber-800 hover:bg-amber-50"
-                    disabled={!montoOk || pasarHoy.isPending}
+                    disabled={!listo || !montoOk || pasarHoy.isPending}
                     onClick={async () => {
                       const ok = await confirmar(
                         `Confirma que ${formatCurrency(monto)} de la cobranza de hoy pasan a tu Caja chica (quedarán ${formatCurrency(disp - monto)} por liquidar mañana).`,
@@ -174,7 +171,7 @@ export default function CortesPendientesCard({ isAdmin, cashRegisters = [], banc
         {pendientes.map((c) => {
           const pend = Number(c.pendiente);
           const s = getSel(c);
-          const prop = propuestas[c.fecha] || { aCC: 0, resto: pend };
+          const prop = propuestaDe(c);
           const aCC = s.ajustar && s.cajaChica !== '' ? Number(s.cajaChica) : prop.aCC;
           const resto = Math.round((pend - aCC) * 100) / 100;
           const valido = aCC >= 0 && aCC <= pend + 0.005;
@@ -227,7 +224,7 @@ export default function CortesPendientesCard({ isAdmin, cashRegisters = [], banc
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <Button size="sm" className="h-8 bg-emerald-600 hover:bg-emerald-700"
-                  disabled={!valido || liquidarDia.isPending}
+                  disabled={!listo || !valido || liquidarDia.isPending}
                   onClick={async () => {
                     const partes = [];
                     if (aCC > 0) partes.push(`${formatCurrency(aCC)} a tu Caja chica`);
