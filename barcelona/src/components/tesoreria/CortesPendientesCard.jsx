@@ -84,7 +84,9 @@ export default function CortesPendientesCard({ isAdmin, cashRegisters = [], banc
     onError: (e) => toast.error(e.message),
   });
 
-  const entregasTransito = (cashRegisters || []).filter((r) => r.corte_fecha && !r.recibido_at);
+  // En tránsito: entregas de corte (corte_fecha) y entregas de excedente de Caja chica
+  const esEntregaCajaChica = (r) => !r.corte_fecha && r.source === 'Entrega de Caja chica a Fondos';
+  const entregasTransito = (cashRegisters || []).filter((r) => (r.corte_fecha || esEntregaCajaChica(r)) && !r.recibido_at);
   const confirmarRecepcion = useMutation({
     mutationFn: async (id) => {
       const { error } = await supabase.rpc('confirmar_recepcion_corte', { p_cash_id: id });
@@ -260,14 +262,14 @@ export default function CortesPendientesCard({ isAdmin, cashRegisters = [], banc
               <div key={r.id} className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-lg bg-indigo-50 border border-indigo-200">
                 <div className="text-sm">
                   <span className="font-semibold">{formatCurrency(Number(r.cash_amount) || 0)}</span>
-                  <span className="text-gray-600"> · corte del {format(new Date(r.corte_fecha + 'T12:00:00'), 'dd/MM/yyyy')}</span>
+                  <span className="text-gray-600"> · {r.corte_fecha ? `corte del ${format(new Date(r.corte_fecha + 'T12:00:00'), 'dd/MM/yyyy')}` : 'excedente de Caja chica'}</span>
                   <p className="text-xs text-gray-600 mt-1">Entregó: {r.created_by || '—'} el {format(new Date(r.register_date + 'T12:00:00'), 'dd/MM/yyyy')}</p>
                 </div>
                 {isAdmin ? (
                   <Button size="sm" className="bg-indigo-600 hover:bg-indigo-700" disabled={confirmarRecepcion.isPending}
                     onClick={async () => {
                       const ok = await confirmar(
-                        `Confirma que recibiste ${formatCurrency(Number(r.cash_amount) || 0)} en efectivo (corte del ${format(new Date(r.corte_fecha + 'T12:00:00'), 'dd/MM/yyyy')}). Confirma solo con el dinero contado en mano.`,
+                        `Confirma que recibiste ${formatCurrency(Number(r.cash_amount) || 0)} en efectivo (${r.corte_fecha ? `corte del ${format(new Date(r.corte_fecha + 'T12:00:00'), 'dd/MM/yyyy')}` : 'excedente de Caja chica'}). Confirma solo con el dinero contado en mano.`,
                         { titulo: 'Confirmar recepción del corte', confirmLabel: 'Sí, lo recibí completo' }
                       );
                       if (ok) confirmarRecepcion.mutate(r.id);
