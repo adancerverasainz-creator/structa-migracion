@@ -30,8 +30,8 @@ const ESQUEMAS = [
 // Fuentes de efectivo fijas; los bancos se cargan del catálogo de Tesorería
 // (bank_accounts) — un banco nuevo aparece aquí automáticamente.
 const FUENTES_EFECTIVO = [
-  { value: 'fondos', label: 'Efectivo — Caja Fondos' },
-  { value: 'efectivo', label: 'Efectivo — Caja Fondos (sale de Fondos)' },
+  { value: 'fondos', label: 'Efectivo — Caja Fondos (CEO)' },
+  { value: 'efectivo', label: 'Efectivo — Caja chica' },
 ];
 const construirFuentes = (bancos) => [
   ...FUENTES_EFECTIVO,
