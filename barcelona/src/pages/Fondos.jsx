@@ -694,14 +694,16 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
                       // se corrigen en su módulo de origen — aquí son solo lectura.
                       const esCorte = transaction.type === 'ingreso' && !!transaction.record?.corte_fecha;
                       const esEntregaCC = transaction.type === 'ingreso' && transaction.record?.source === 'Entrega de Caja chica a Fondos';
+                      // Traspaso banco → Fondos (traspasar_a_fondos): tiene su egreso espejo en el banco; se revierte desde Tesorería
+                      const esTraspasoBanco = transaction.type === 'ingreso' && /^Traspaso desde /i.test(transaction.record?.source || '');
                       const externo = transaction.readOnly
                         || transaction.record?.source_module === 'cxp'
                         || transaction.record?.is_transfer
-                        || esCorte || esEntregaCC
+                        || esCorte || esEntregaCC || esTraspasoBanco
                         || /^Abono CxP:/i.test(transaction.description || '');
                       if (externo) return (
                         <Badge variant="outline" className="text-xs text-gray-500">
-                          {transaction.readOnly ? 'Origen: Pagos' : esCorte ? 'Corte (Tesorería)' : esEntregaCC ? 'Entrega Caja chica' : (transaction.record?.is_transfer ? 'Traspaso' : 'Origen: CxP')}
+                          {transaction.readOnly ? 'Origen: Pagos' : esCorte ? 'Corte (Tesorería)' : esEntregaCC ? 'Entrega Caja chica' : esTraspasoBanco ? 'Traspaso banco' : (transaction.record?.is_transfer ? 'Traspaso' : 'Origen: CxP')}
                         </Badge>
                       );
                       return (<>
