@@ -11,7 +11,7 @@ import { exportarPDF, exportarExcel } from '../lib/exportListado';
 import { formatCurrency } from '../lib/formatCurrency';
 import { getTotalPaidForAttendee } from '@/lib/tournamentBalance';
 
-export default function TournamentDebtorsList({ players, onAbonarTorneo }) {
+export default function TournamentDebtorsList({ players, onAbonarTorneo, debtWaivers = [], onCondonar }) {
   const [selectedTournament, setSelectedTournament] = useState('all');
   const [search, setSearch] = useState('');
 
@@ -40,10 +40,17 @@ export default function TournamentDebtorsList({ players, onAbonarTorneo }) {
     const tournamentAttendees = attendees.filter(a => a.tournament_id === tournament.id);
     const tPayments = tournamentPayments.filter(p => p.tournament_id === tournament.id);
 
+    // Condonaciones del torneo (clave: 'torneo:<tournament_id>'): restan deuda igual que un pago
+    const waivedByPlayer = {};
+    debtWaivers
+      .filter(w => (w.month || '').toLowerCase() === `torneo:${tournament.id}`.toLowerCase())
+      .forEach(w => { waivedByPlayer[w.player_id] = (waivedByPlayer[w.player_id] || 0) + (w.amount || 0); });
+
     return tournamentAttendees
       .map(a => {
         const totalPaid = getTotalPaidForAttendee(a, tPayments, tournament.id);
-        const debt = fee - totalPaid;
+        const waived = a.is_external ? 0 : (waivedByPlayer[a.player_id] || 0);
+        const debt = fee - totalPaid - waived;
         if (debt <= 0) return null;
 
         if (a.is_external) {
@@ -201,16 +208,28 @@ export default function TournamentDebtorsList({ players, onAbonarTorneo }) {
                       <span className="font-bold text-purple-700">Debe: {formatCurrency(debt)}</span>
                     </div>
                     <span className="text-xs text-gray-500">Cuota: {formatCurrency(fee)}</span>
-                    {onAbonarTorneo && (
-                      <Button
-                        size="sm"
-                        className="bg-purple-600 hover:bg-purple-700 gap-2 mt-1"
-                        onClick={() => onAbonarTorneo({ player, tournament, debt, fee, totalPaid })}
-                      >
-                        <PlusCircle className="w-4 h-4" />
-                        Abonar
-                      </Button>
-                    )}
+                    <div className="flex gap-2 mt-1">
+                      {onCondonar && !isExternal && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="border-purple-300 text-purple-700 hover:bg-purple-50"
+                          onClick={() => onCondonar(player, `torneo:${tournament.id}`, debt, { kind: 'torneo', label: `Torneo ${tournament.name}`, tournament_id: tournament.id })}
+                        >
+                          Condonar
+                        </Button>
+                      )}
+                      {onAbonarTorneo && (
+                        <Button
+                          size="sm"
+                          className="bg-purple-600 hover:bg-purple-700 gap-2"
+                          onClick={() => onAbonarTorneo({ player, tournament, debt, fee, totalPaid })}
+                        >
+                          <PlusCircle className="w-4 h-4" />
+                          Abonar
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 </div>
               </CardContent>
