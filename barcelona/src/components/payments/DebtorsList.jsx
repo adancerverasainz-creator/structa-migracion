@@ -65,6 +65,10 @@ export default function DebtorsList({ players, payments, isLoading, tournamentPa
   const CURRENT_SEASON = getCurrentSeason(new Date(), feesConfig?.season_start_month ?? 8);
   const SEASON_OPTIONS = seasonOptionsHasta(CURRENT_SEASON);
   const [selectedSeason, setSelectedSeason] = useState(CURRENT_SEASON); // arranca en la temporada activa
+  // Si la configuración (mes de inicio) llega después del primer render y cambia la temporada activa,
+  // sigue a la activa mientras el usuario no haya elegido otra a mano.
+  const [seasonTouched, setSeasonTouched] = useState(false);
+  React.useEffect(() => { if (!seasonTouched) setSelectedSeason(CURRENT_SEASON); }, [CURRENT_SEASON, seasonTouched]);
   const [seasonSearch, setSeasonSearch] = useState('');
 
   const selectedOption = monthOptions.find(o => o.value === selectedMonth) || monthOptions[0];
@@ -341,7 +345,7 @@ export default function DebtorsList({ players, payments, isLoading, tournamentPa
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="flex items-center gap-3">
             <Calendar className="w-5 h-5 text-gray-500" />
-            <Select value={selectedSeason} onValueChange={setSelectedSeason}>
+            <Select value={selectedSeason} onValueChange={(v) => { setSeasonTouched(true); setSelectedSeason(v); }}>
               <SelectTrigger className="w-40">
                 <SelectValue />
               </SelectTrigger>
