@@ -84,11 +84,12 @@ queryFn: () => base44.entities.DebtWaiver.list(null, 10000),
 });
 
 // Condonar deuda: registro inmutable + auditoría (nunca se borra deuda en silencio)
-const [condonarInfo, setCondonarInfo] = useState(null); // { player, month, amount }
+const [condonarInfo, setCondonarInfo] = useState(null); // { player, month, amount, kind, label, tournament_id }
 const [condonarReason, setCondonarReason] = useState('');
 const condonarMutation = useMutation({
-mutationFn: async ({ player, month, amount, reason }) => {
+mutationFn: async ({ player, month, amount, reason, kind, label }) => {
 const user = await base44.auth.me();
+// month es la clave del concepto: 'mes año' (mensualidad), 'inscripcion:<temporada>' o 'torneo:<id>'
 await base44.entities.DebtWaiver.create({
 player_id: player.id, month, amount, reason, created_by: user.email,
 });
@@ -96,7 +97,7 @@ await logAudit({
 action: 'CONDONACIÓN', module: 'Pagos', entity_type: 'DebtWaiver',
 entity_id: player.id, entity_name: player.full_name,
 monetaryDiff: -amount,
-details: `Deuda condonada: ${month} por $${amount}. Motivo: ${reason}`,
+details: `Deuda condonada (${kind || 'mensualidad'}): ${label || month} por $${amount}. Motivo: ${reason}`,
 });
 },
 onSuccess: () => {
@@ -746,7 +747,7 @@ lateFeeSettings={lateFeeSettings}
 seasonCalendar={seasonCalendar}
 playerPauses={playerPauses}
 debtWaivers={debtWaivers}
-onCondonar={(player, month, amount) => setCondonarInfo({ player, month, amount })}
+onCondonar={isAdmin ? (player, month, amount, extra = {}) => setCondonarInfo({ player, month, amount, kind: extra.kind || 'mensualidad', label: extra.label || month, tournament_id: extra.tournament_id || null }) : undefined}
 />
 </TabsContent>
 
@@ -811,7 +812,7 @@ Reversar pago
 <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6 space-y-4">
 <h3 className="text-lg font-bold text-gray-900">Condonar deuda</h3>
 <p className="text-sm text-gray-600">
-{condonarInfo.player.full_name} — {condonarInfo.month} — <span className="font-bold text-red-600">${condonarInfo.amount}</span>
+{condonarInfo.player.full_name} — {condonarInfo.label || condonarInfo.month} — <span className="font-bold text-red-600">${condonarInfo.amount}</span>
 </p>
 <p className="text-xs text-gray-500">La condonación es permanente, queda registrada en Auditoría y no se puede editar ni borrar.</p>
 <div>
