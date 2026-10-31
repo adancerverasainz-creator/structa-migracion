@@ -9,7 +9,7 @@ import { AlertCircle, Phone, Mail, DollarSign, Calendar, FileDown, Search, Clipb
 import TournamentDebtorsList from './TournamentDebtorsList';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { calculateMoratorio, getSeasonAdjustment, getPauseAdjustment } from '../../lib/financeEngine';
+import { calculateMoratorio, getSeasonAdjustment, getPauseAdjustment, getCurrentSeason } from '../../lib/financeEngine';
 import { format, subMonths, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { formatCurrency } from '../lib/formatCurrency';
@@ -17,12 +17,15 @@ import jsPDF from 'jspdf';
 import * as XLSX from 'xlsx';
 import { exportarPDF, exportarExcel } from '../lib/exportListado';
 
-// Season options starting from 2025-2026
-const currentYear = new Date().getFullYear();
-const SEASON_OPTIONS = Array.from({ length: currentYear - 2025 + 4 }, (_, i) => {
-  const y = 2025 + i;
-  return `${y}-${y + 1}`;
-});
+// Temporadas: desde 2025-2026 hasta la ACTIVA (no se muestran temporadas futuras:
+// nadie paga una inscripción de una temporada que aún no empieza).
+const CURRENT_SEASON = getCurrentSeason();
+const SEASON_OPTIONS = (() => {
+  const endYear = parseInt(CURRENT_SEASON.slice(0, 4), 10);
+  const out = [];
+  for (let y = 2025; y <= endYear; y++) out.push(`${y}-${y + 1}`);
+  return out;
+})();
 
 // Generate list of months (current + 11 previous)
 // Inicio oficial de la ventana de deuda del sistema: diciembre 2025
@@ -59,7 +62,7 @@ export default function DebtorsList({ players, payments, isLoading, tournamentPa
   });
   const [selectedMonth, setSelectedMonth] = useState(monthOptions[0].value);
   const [search, setSearch] = useState('');
-  const [selectedSeason, setSelectedSeason] = useState('2025-2026');
+  const [selectedSeason, setSelectedSeason] = useState(CURRENT_SEASON); // arranca en la temporada activa
   const [seasonSearch, setSeasonSearch] = useState('');
 
   const selectedOption = monthOptions.find(o => o.value === selectedMonth) || monthOptions[0];
@@ -468,7 +471,7 @@ export default function DebtorsList({ players, payments, isLoading, tournamentPa
                             Condonar
                           </Button>
                         )}
-                        {onAbonarInscripcion && (
+                        {onAbonarInscripcion && selectedSeason === CURRENT_SEASON && (
                           <Button
                             size="sm"
                             className="bg-orange-600 hover:bg-orange-700 gap-2"
