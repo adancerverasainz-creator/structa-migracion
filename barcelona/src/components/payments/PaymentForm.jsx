@@ -119,7 +119,7 @@ export default function PaymentForm({ payment, players, onSubmit, onCancel, isLo
 
   // Inscripción/reinscripción: la temporada es siempre la ACTIVA (no se eligen temporadas futuras).
   // Un registro antiguo con otra temporada se sigue mostrando tal cual al editar textos.
-  const currentSeason = getCurrentSeason();
+  const currentSeason = getCurrentSeason(new Date(), feesConfig?.season_start_month ?? 8);
   const seasonOptions = [currentSeason];
   if (formData.month && /^\d{4}-\d{4}$/.test(formData.month) && formData.month !== currentSeason) seasonOptions.push(formData.month);
 
@@ -231,7 +231,13 @@ export default function PaymentForm({ payment, players, onSubmit, onCancel, isLo
                   <button
                     key={value}
                     type="button"
-                    onClick={() => { setFormData({ ...formData, payment_type: value, amount: '' }); setSelectedUniformItems({}); setMontoRecibido(''); }}
+                    onClick={() => {
+                      // Al cambiar de tipo, el campo mes/temporada no arrastra un valor del otro tipo
+                      const esInsc = value === 'inscripcion' || value === 'reinscripcion';
+                      const mesActual = formData.month || '';
+                      const month = esInsc ? currentSeason : (/^\d{4}-\d{4}$/.test(mesActual) ? '' : mesActual);
+                      setFormData({ ...formData, payment_type: value, amount: '', month }); setSelectedUniformItems({}); setMontoRecibido('');
+                    }}
                     className={`flex-1 py-2 px-4 rounded-lg border-2 text-sm font-medium transition-colors ${
                       formData.payment_type === value
                         ? 'bg-green-600 border-green-600 text-white'
