@@ -275,7 +275,8 @@ export default function PlayerUnifiedDebt({
       const exentoInscripcion = esBajaOInactivo || p.scholarship === '100%';
       // Un abono NO liquida: pendiente = cuota − abonado (salvo pago con status 'pagado' o exento)
       const inscTotal = feesConfig?.inscripcion_default ?? 1800;
-      const inscPending = (exentoInscripcion || insc.liquidado) ? 0 : Math.max(0, inscTotal - paidInscripcion);
+      const waivedInsc = waiverIdx.get(`${p.id}|inscripcion:${currentSeason}`.toLowerCase()) || 0;
+      const inscPending = (exentoInscripcion || insc.liquidado) ? 0 : Math.max(0, inscTotal - paidInscripcion - waivedInsc);
 
       if (paidInscripcion > 0 || !exentoInscripcion) sections.push({
         id: 'inscripcion',
@@ -356,10 +357,11 @@ export default function PlayerUnifiedDebt({
         const fee = tournament.registration_fee || 0;
         const paid = (tpIdx.get(`${tournament.id}|p:${p.id}`) || 0)
           + (tpIdx.get(`${tournament.id}|e:${att.id}`) || 0);
-        const pending = Math.max(0, fee - paid);
+        const waivedT = waiverIdx.get(`${p.id}|torneo:${tournament.id}`.toLowerCase()) || 0;
+        const pending = Math.max(0, fee - paid - waivedT);
         tournamentDebtItems.push({
           label: tournament.name,
-          detail: `Cuota: ${formatCurrency(fee)}`,
+          detail: `Cuota: ${formatCurrency(fee)}${waivedT > 0 ? ` | Condonado: ${formatCurrency(waivedT)}` : ''}`,
           paid,
           pending,
           isTournament: true,
