@@ -9,6 +9,7 @@ import { X, Save, Search, ShoppingBag, CheckCircle2, AlertTriangle, ArrowLeftRig
 import { format, subMonths } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { formatCurrency } from '../lib/formatCurrency';
+import { getCurrentSeason } from '../../lib/financeEngine';
 import TicketUniforme from './TicketUniforme';
 
 export default function PaymentForm({ payment, players, onSubmit, onCancel, isLoading, feesConfig = null }) {
@@ -116,16 +117,19 @@ export default function PaymentForm({ payment, players, onSubmit, onCancel, isLo
     return format(d, 'MMMM yyyy', { locale: es });
   }).reverse();
 
-  // Generate season options: from 2025-2026 onwards + 3 future
-  const currentYear = new Date().getFullYear();
-  const startYear = 2025;
-  const endYear = currentYear + 3;
-  const seasonOptions = Array.from({ length: endYear - startYear + 1 }, (_, i) => {
-    const y = startYear + i;
-    return `${y}-${y + 1}`;
-  });
+  // Inscripción/reinscripción: la temporada es siempre la ACTIVA (no se eligen temporadas futuras).
+  // Un registro antiguo con otra temporada se sigue mostrando tal cual al editar textos.
+  const currentSeason = getCurrentSeason();
+  const seasonOptions = [currentSeason];
+  if (formData.month && /^\d{4}-\d{4}$/.test(formData.month) && formData.month !== currentSeason) seasonOptions.push(formData.month);
 
   const isInscripcion = formData.payment_type === 'inscripcion' || formData.payment_type === 'reinscripcion';
+  React.useEffect(() => {
+    if (isInscripcion && !payment && formData.month !== currentSeason) {
+      setFormData((f) => ({ ...f, month: currentSeason }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isInscripcion]);
   const isUniforme = formData.payment_type === 'uniformes';
 
   const totalUniforme = uniformItems.reduce((sum, i) => sum + i.price * (selectedUniformItems[i.id] || 0), 0);
@@ -458,6 +462,7 @@ export default function PaymentForm({ payment, players, onSubmit, onCancel, isLo
                 <Label htmlFor="month">Temporada *</Label>
                 <Select
                   value={formData.month}
+                  disabled={!payment}
                   onValueChange={(value) => setFormData({ ...formData, month: value })}
                 >
                   <SelectTrigger>
