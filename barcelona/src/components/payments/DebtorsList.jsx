@@ -183,7 +183,13 @@ export default function DebtorsList({ players, payments, isLoading, tournamentPa
   // Inscripciones/reinscripciones: SOLO jugadores activos (a un inactivo/baja no se le genera nueva reinscripción)
   // Excluir jugadores con cuota mensual $0 (no pagan reinscripción)
   const activeOnly = eligiblePlayers.filter(p => p.status === 'activo');
-  const pendingInscripcion = activeOnly.filter(p => (p.monthly_fee || 0) > 0 && !paidInscripcionIds.has(p.id));
+  // Condonaciones de inscripción de la temporada (clave: 'inscripcion:<temporada>')
+  const waivedInscripcionIds = new Set(
+    debtWaivers
+      .filter(w => (w.month || '').toLowerCase() === `inscripcion:${selectedSeason}`.toLowerCase() && (w.amount || 0) >= inscripcionFee)
+      .map(w => w.player_id)
+  );
+  const pendingInscripcion = activeOnly.filter(p => (p.monthly_fee || 0) > 0 && !paidInscripcionIds.has(p.id) && !waivedInscripcionIds.has(p.id));
 
   const filteredPendingInscripcion = seasonSearch.trim()
     ? pendingInscripcion.filter(p =>
@@ -450,17 +456,29 @@ export default function DebtorsList({ players, payments, isLoading, tournamentPa
                     </div>
                     <div className="flex flex-col items-end justify-center gap-2">
                       <span className="text-xs text-gray-500">Reinscripción</span>
-                      <span className="text-lg font-bold text-purple-700">{formatCurrency(1800)}</span>
-                      {onAbonarInscripcion && (
-                        <Button
-                          size="sm"
-                          className="bg-orange-600 hover:bg-orange-700 gap-2 mt-1"
-                          onClick={() => onAbonarInscripcion({ player, pendingAmount: inscripcionFee, payment_type: 'reinscripcion', month: selectedSeason })}
-                        >
-                          <PlusCircle className="w-4 h-4" />
-                          Registrar Pago
-                        </Button>
-                      )}
+                      <span className="text-lg font-bold text-purple-700">{formatCurrency(inscripcionFee)}</span>
+                      <div className="flex gap-2 mt-1">
+                        {onCondonar && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="border-purple-300 text-purple-700 hover:bg-purple-50"
+                            onClick={() => onCondonar(player, `inscripcion:${selectedSeason}`, inscripcionFee, { kind: 'inscripcion', label: `Inscripción temporada ${selectedSeason}` })}
+                          >
+                            Condonar
+                          </Button>
+                        )}
+                        {onAbonarInscripcion && (
+                          <Button
+                            size="sm"
+                            className="bg-orange-600 hover:bg-orange-700 gap-2"
+                            onClick={() => onAbonarInscripcion({ player, pendingAmount: inscripcionFee, payment_type: 'reinscripcion', month: selectedSeason })}
+                          >
+                            <PlusCircle className="w-4 h-4" />
+                            Registrar Pago
+                          </Button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </CardContent>
@@ -651,7 +669,7 @@ export default function DebtorsList({ players, payments, isLoading, tournamentPa
       </TabsContent>
 
       <TabsContent value="torneos" className="space-y-4">
-        <TournamentDebtorsList players={players} onAbonarTorneo={onAbonar ? (info) => onAbonar({ ...info, isTournament: true }) : undefined} />
+        <TournamentDebtorsList players={players} debtWaivers={debtWaivers} onCondonar={onCondonar} onAbonarTorneo={onAbonar ? (info) => onAbonar({ ...info, isTournament: true }) : undefined} />
       </TabsContent>
 
       <TabsContent value="uniformes" className="space-y-4">
