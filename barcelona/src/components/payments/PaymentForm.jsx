@@ -129,7 +129,7 @@ export default function PaymentForm({ payment, players, onSubmit, onCancel, isLo
       setFormData((f) => ({ ...f, month: currentSeason }));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isInscripcion]);
+  }, [isInscripcion, currentSeason]);
   const isUniforme = formData.payment_type === 'uniformes';
 
   const totalUniforme = uniformItems.reduce((sum, i) => sum + i.price * (selectedUniformItems[i.id] || 0), 0);
