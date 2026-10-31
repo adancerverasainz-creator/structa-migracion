@@ -18,14 +18,14 @@ import * as XLSX from 'xlsx';
 import { exportarPDF, exportarExcel } from '../lib/exportListado';
 
 // Temporadas: desde 2025-2026 hasta la ACTIVA (no se muestran temporadas futuras:
-// nadie paga una inscripción de una temporada que aún no empieza).
-const CURRENT_SEASON = getCurrentSeason();
-const SEASON_OPTIONS = (() => {
-  const endYear = parseInt(CURRENT_SEASON.slice(0, 4), 10);
+// nadie paga una inscripción de una temporada que aún no empieza). La activa se
+// calcula con el mes de inicio configurado (Configuración → fees.season_start_month).
+const seasonOptionsHasta = (currentSeason) => {
+  const endYear = parseInt(String(currentSeason).slice(0, 4), 10) || new Date().getFullYear();
   const out = [];
   for (let y = 2025; y <= endYear; y++) out.push(`${y}-${y + 1}`);
   return out;
-})();
+};
 
 // Generate list of months (current + 11 previous)
 // Inicio oficial de la ventana de deuda del sistema: diciembre 2025
@@ -62,6 +62,8 @@ export default function DebtorsList({ players, payments, isLoading, tournamentPa
   });
   const [selectedMonth, setSelectedMonth] = useState(monthOptions[0].value);
   const [search, setSearch] = useState('');
+  const CURRENT_SEASON = getCurrentSeason(new Date(), feesConfig?.season_start_month ?? 8);
+  const SEASON_OPTIONS = seasonOptionsHasta(CURRENT_SEASON);
   const [selectedSeason, setSelectedSeason] = useState(CURRENT_SEASON); // arranca en la temporada activa
   const [seasonSearch, setSeasonSearch] = useState('');
 
