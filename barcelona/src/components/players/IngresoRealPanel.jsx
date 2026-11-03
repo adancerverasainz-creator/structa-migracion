@@ -137,9 +137,15 @@ export default function IngresoRealPanel({ players = [], playerPauses = [], paym
       const mi = d.getMonth(); const yy = d.getFullYear();
       const sAdj = getSeasonAdjustment(mi, yy, seasonCalendar);
       let devengado = 0;
-      for (const p of activos) {
+      const mesInicio = new Date(yy, mi, 1);
+      for (const p of players) {
         const join = p.join_date ? new Date(String(p.join_date).slice(0, 10) + 'T00:00:00') : null;
         if (join && (join.getFullYear() > yy || (join.getFullYear() === yy && join.getMonth() > mi))) continue; // aún no ingresaba
+        if (p.status !== 'activo') {
+          // Baja/inactivo: devengó ese mes solo si su baja fue después de iniciado el mes
+          const baja = p.baja_date ? new Date(String(p.baja_date).slice(0, 10) + 'T00:00:00') : null;
+          if (!baja || baja < mesInicio) continue;
+        }
         const pausa = getPauseAdjustment(mi, yy, pausasDe(p.id));
         devengado += (Number(p.monthly_fee) || 0) * sAdj.factor * pausa.factor;
       }
@@ -149,7 +155,7 @@ export default function IngresoRealPanel({ players = [], playerPauses = [], paym
     }
 
     return { filas, lista, motivos, teorico, real, mesActual, becadoTotal, pagan, fueraPolitica, sinMotivo, reducidoSinBeca, meses };
-  }, [activos, cuotaCompleta, playerPauses, payments, mesIdx, anio, season.factor, seasonCalendar]);
+  }, [activos, players, cuotaCompleta, playerPauses, payments, mesIdx, anio, season.factor, seasonCalendar]);
 
   const pct = (v, base) => (base > 0 ? `${Math.round((v / base) * 1000) / 10}%` : '—');
   const mesLabel = `${MESES[mesIdx]} ${anio}`;
@@ -411,7 +417,7 @@ export default function IngresoRealPanel({ players = [], playerPauses = [], paym
                   ))}
                 </tbody>
               </table>
-              <p className="text-[11px] text-gray-400 mt-1">Devengado = cuotas netas de los activos de hoy que ya habían ingresado ese mes, con pausas y calendario. Cobrado = pagos de mensualidad aplicados a ese mes (sin recargos ni reversos).</p>
+              <p className="text-[11px] text-gray-400 mt-1">Devengado = cuotas netas de quienes estaban activos ese mes (ya ingresados y aún no dados de baja), con pausas y calendario. Cobrado = pagos de mensualidad aplicados a ese mes (sin recargos ni reversos).</p>
             </div>
           </div>
 
