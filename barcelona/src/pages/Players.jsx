@@ -14,6 +14,7 @@ import jsPDF from 'jspdf';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import PlayerForm from '../components/players/PlayerForm';
 import PlayerCard from '../components/players/PlayerCard';
+import IngresoRealPanel from '../components/players/IngresoRealPanel';
 import { logAudit } from '../components/lib/auditLogger';
 import ERPPageHeader from '../components/layout/ERPPageHeader';
 import KPICard from '../components/layout/KPICard';
@@ -271,6 +272,9 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
         <KPICard title="Inactivos" value={inactivePlayers.length} icon={AlertCircle} color="gray" />
         <KPICard title="Baja" value={bajaPlayers.length} icon={XCircle} color="red" />
       </div>
+
+      {/* Becas e ingreso real por mensualidades */}
+      <IngresoRealPanel players={players} playerPauses={playerPauses} />
 
       {/* Search and Filter */}
       <Card>
