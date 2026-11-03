@@ -5,38 +5,38 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { GraduationCap, FileDown, ChevronDown, ChevronUp, TrendingUp } from 'lucide-react';
+import { GraduationCap, FileDown, ChevronDown, ChevronUp, TrendingUp, AlertTriangle } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import { formatCurrency } from '../lib/formatCurrency';
-import { getSeasonAdjustment, getPauseAdjustment } from '@/lib/financeEngine';
+import { getSeasonAdjustment, getPauseAdjustment, becaPct, becaMotivoLabel, cuotaNeta } from '@/lib/financeEngine';
 
 const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
 
-/**
- * Cuota efectiva que el motor financiero realmente exige al jugador
- * (misma regla que PlayerUnifiedDebt: beca 50% y 100% se aplican sobre monthly_fee).
- */
-function cuotaEfectiva(p) {
-  const base = Number(p.monthly_fee) || 0;
-  if (p.scholarship === '100%') return 0;
-  if (p.scholarship === '50%') return base * 0.5;
-  return base;
+/** Clave 'mes año' de un texto de mes de pago (misma regla que el motor de deuda). */
+function normMonthKey(m) {
+  if (!m) return null;
+  const lower = String(m).toLowerCase();
+  const name = MESES.find(n => lower.includes(n));
+  const yr = (lower.match(/(20\d{2})/) || [])[1];
+  return name && yr ? `${name} ${yr}` : null;
 }
 
-function clasificar(efectiva, completa) {
-  if (efectiva <= 0) return { tipo: 'Beca 100%', orden: 0 };
-  if (completa > 0 && efectiva < completa) return { tipo: 'Beca parcial', orden: 1 };
-  if (completa > 0 && efectiva > completa) return { tipo: 'Cuota superior', orden: 3 };
-  return { tipo: 'Cuota completa', orden: 2 };
+function clasificar(pct, efectiva, completa) {
+  if (pct >= 100 || efectiva <= 0) return { tipo: 'Beca 100%', orden: 0 };
+  if (pct > 0) return { tipo: 'Beca parcial', orden: 1 };
+  if (completa > 0 && efectiva < completa) return { tipo: 'Precio reducido sin beca', orden: 2 };
+  if (completa > 0 && efectiva > completa) return { tipo: 'Cuota superior', orden: 4 };
+  return { tipo: 'Cuota completa', orden: 3 };
 }
 
 /**
  * IngresoRealPanel — "¿Cuánto percibimos realmente?"
- * Clasifica a los jugadores activos por tipo de beca contra la cuota completa del club
- * y calcula el ingreso mensual teórico vs. real esperado por mensualidades.
+ * Modelo: cuota completa (Configuración → Precios) × (1 − beca%) = cuota neta del jugador (monthly_fee).
+ * Clasifica a los activos por beca declarada y motivo, detecta cuotas fuera de política
+ * y compara lo devengado contra lo cobrado por mensualidades en los últimos meses.
  */
-export default function IngresoRealPanel({ players = [], playerPauses = [] }) {
+export default function IngresoRealPanel({ players = [], playerPauses = [], payments = [] }) {
   const [abierto, setAbierto] = useState(true);
   const [cuotaRef, setCuotaRef] = useState(null); // override local de la cuota completa
 
@@ -75,37 +75,81 @@ export default function IngresoRealPanel({ players = [], playerPauses = [] }) {
   const season = getSeasonAdjustment(mesIdx, anio, seasonCalendar);
 
   const analisis = useMemo(() => {
+    const pausasDe = (pid) => playerPauses.filter(pp => pp.player_id === pid);
     const filas = activos.map(p => {
-      const efectiva = cuotaEfectiva(p);
-      const { tipo, orden } = clasificar(efectiva, cuotaCompleta);
+      const efectiva = Number(p.monthly_fee) || 0;
+      const pct = Math.round(becaPct(p));
+      const { tipo, orden } = clasificar(pct, efectiva, cuotaCompleta);
       const becado = Math.max(0, cuotaCompleta - efectiva);
-      const pctBeca = cuotaCompleta > 0 ? Math.max(0, Math.min(100, Math.round((becado / cuotaCompleta) * 100))) : 0;
-      const pausa = getPauseAdjustment(mesIdx, anio, playerPauses.filter(pp => pp.player_id === p.id));
+      const esperada = cuotaNeta(cuotaCompleta, pct);
+      const fueraPolitica = pct > 0 && efectiva !== esperada;
+      const motivo = pct > 0 ? becaMotivoLabel(p.scholarship_reason) : '';
+      const pausa = getPauseAdjustment(mesIdx, anio, pausasDe(p.id));
       const mesActual = efectiva * season.factor * pausa.factor;
       return {
-        id: p.id, nombre: p.full_name, categoria: p.category || '-', becaCampo: p.scholarship || 'ninguna',
-        cuotaRegistrada: Number(p.monthly_fee) || 0, efectiva, tipo, orden, becado, pctBeca,
+        id: p.id, nombre: p.full_name, categoria: p.category || '-', pct, motivo, sinMotivo: pct > 0 && !p.scholarship_reason,
+        cuotaRegistrada: efectiva, efectiva, esperada, fueraPolitica, tipo, orden, becado,
         pausa: pausa.active ? (pausa.factor === 0 ? 'Pausa (mes completo)' : 'Pausa (medio mes)') : '',
         mesActual,
       };
-    }).sort((a, b) => a.orden - b.orden || b.pctBeca - a.pctBeca || a.nombre.localeCompare(b.nombre));
+    }).sort((a, b) => a.orden - b.orden || b.pct - a.pct || a.nombre.localeCompare(b.nombre));
 
     const grupos = {};
     for (const f of filas) {
       const g = grupos[f.tipo] || (grupos[f.tipo] = { tipo: f.tipo, orden: f.orden, n: 0, ingreso: 0, becado: 0, subgrupos: {} });
       g.n += 1; g.ingreso += f.efectiva; g.becado += f.becado;
-      const sk = f.tipo === 'Beca parcial' ? `${f.pctBeca}%` : formatCurrency(f.efectiva);
-      const s = g.subgrupos[sk] || (g.subgrupos[sk] = { etiqueta: sk, n: 0, ingreso: 0, efectiva: f.efectiva });
+      const sk = f.pct > 0 ? `${f.pct}%` : formatCurrency(f.efectiva);
+      const s = g.subgrupos[sk] || (g.subgrupos[sk] = { etiqueta: sk, n: 0, ingreso: 0, efectiva: f.efectiva, pct: f.pct });
       s.n += 1; s.ingreso += f.efectiva;
     }
     const lista = Object.values(grupos).sort((a, b) => a.orden - b.orden);
+
+    // Becas por motivo (solo quienes tienen beca declarada)
+    const porMotivo = {};
+    for (const f of filas.filter(x => x.pct > 0)) {
+      const m = porMotivo[f.motivo] || (porMotivo[f.motivo] = { motivo: f.motivo, n: 0, becado: 0, ingreso: 0 });
+      m.n += 1; m.becado += f.becado; m.ingreso += f.efectiva;
+    }
+    const motivos = Object.values(porMotivo).sort((a, b) => b.becado - a.becado);
+
     const teorico = activos.length * cuotaCompleta;
     const real = filas.reduce((s, f) => s + f.efectiva, 0);
     const mesActual = filas.reduce((s, f) => s + f.mesActual, 0);
     const becadoTotal = filas.reduce((s, f) => s + f.becado, 0);
     const pagan = filas.filter(f => f.efectiva > 0).length;
-    return { filas, lista, teorico, real, mesActual, becadoTotal, pagan };
-  }, [activos, cuotaCompleta, playerPauses, mesIdx, anio, season.factor]);
+    const fueraPolitica = filas.filter(f => f.fueraPolitica);
+    const sinMotivo = filas.filter(f => f.sinMotivo);
+    const reducidoSinBeca = filas.filter(f => f.tipo === 'Precio reducido sin beca');
+
+    // Devengado vs cobrado por mensualidades: mes en curso y los 3 anteriores
+    const reversedIds = new Set(payments.filter(x => x.reversal_of).map(x => x.reversal_of));
+    const cobradoPorMes = new Map();
+    for (const pay of payments) {
+      if (pay.reversal_of || reversedIds.has(pay.id)) continue;
+      if (pay.payment_type && pay.payment_type !== 'mensualidad') continue;
+      const k = normMonthKey(pay.month);
+      if (!k) continue;
+      cobradoPorMes.set(k, (cobradoPorMes.get(k) || 0) + (Number(pay.amount) || 0));
+    }
+    const meses = [];
+    for (let back = 3; back >= 0; back--) {
+      const d = new Date(anio, mesIdx - back, 1);
+      const mi = d.getMonth(); const yy = d.getFullYear();
+      const sAdj = getSeasonAdjustment(mi, yy, seasonCalendar);
+      let devengado = 0;
+      for (const p of activos) {
+        const join = p.join_date ? new Date(String(p.join_date).slice(0, 10) + 'T00:00:00') : null;
+        if (join && (join.getFullYear() > yy || (join.getFullYear() === yy && join.getMonth() > mi))) continue; // aún no ingresaba
+        const pausa = getPauseAdjustment(mi, yy, pausasDe(p.id));
+        devengado += (Number(p.monthly_fee) || 0) * sAdj.factor * pausa.factor;
+      }
+      const key = `${MESES[mi]} ${yy}`;
+      const cobrado = cobradoPorMes.get(key) || 0;
+      meses.push({ key, label: `${MESES[mi].slice(0, 3)} ${yy}`, devengado, cobrado, pctCobrado: devengado > 0 ? cobrado / devengado : 0, enCurso: back === 0, ajuste: sAdj.label || (sAdj.factor !== 1 ? `factor ${sAdj.factor}` : '') });
+    }
+
+    return { filas, lista, motivos, teorico, real, mesActual, becadoTotal, pagan, fueraPolitica, sinMotivo, reducidoSinBeca, meses };
+  }, [activos, cuotaCompleta, playerPauses, payments, mesIdx, anio, season.factor, seasonCalendar]);
 
   const pct = (v, base) => (base > 0 ? `${Math.round((v / base) * 1000) / 10}%` : '—');
   const mesLabel = `${MESES[mesIdx]} ${anio}`;
@@ -114,12 +158,13 @@ export default function IngresoRealPanel({ players = [], playerPauses = [] }) {
   const colorTipo = {
     'Beca 100%': 'bg-purple-100 text-purple-700',
     'Beca parcial': 'bg-orange-100 text-orange-700',
+    'Precio reducido sin beca': 'bg-amber-100 text-amber-800',
     'Cuota completa': 'bg-green-100 text-green-700',
     'Cuota superior': 'bg-blue-100 text-blue-700',
   };
 
   const exportXLSX = () => {
-    const { filas, lista, teorico, real, mesActual, becadoTotal, pagan } = analisis;
+    const { filas, lista, motivos, teorico, real, mesActual, becadoTotal, pagan, fueraPolitica, meses } = analisis;
     const resumen = [
       ['Barcelona Inter Academy — Ingreso real por mensualidades'],
       [`Generado: ${fechaStr}  ·  Cuota completa de referencia: ${formatCurrency(cuotaCompleta)}  ·  Solo jugadores activos`],
@@ -129,33 +174,42 @@ export default function IngresoRealPanel({ players = [], playerPauses = [] }) {
       ['TOTAL', activos.length, '100%', real, becadoTotal],
       [],
       ['Ingreso teórico (activos × cuota completa)', teorico],
-      ['Ingreso real esperado (suma de cuotas efectivas)', real],
+      ['Ingreso real esperado (suma de cuotas netas)', real],
       ['Becas otorgadas al mes', becadoTotal],
       ['% del ingreso teórico que realmente se percibe', pct(real, teorico)],
       ['Jugadores que pagan algo', pagan],
       ['Jugadores con beca 100%', activos.length - pagan],
       [`Ingreso esperado ${mesLabel} (con pausas y calendario de temporada)`, mesActual],
+      ['Cuotas fuera de política de becas', fueraPolitica.length],
+      [],
+      ['Becas por motivo'],
+      ['Motivo', 'Jugadores', 'Monto becado / mes', 'Ingreso que sí aportan'],
+      ...motivos.map(m => [m.motivo, m.n, m.becado, m.ingreso]),
+      [],
+      ['Devengado vs cobrado (mensualidades)'],
+      ['Mes', 'Devengado', 'Cobrado', '% cobranza', 'Ajuste calendario'],
+      ...meses.map(m => [m.key + (m.enCurso ? ' (en curso)' : ''), m.devengado, m.cobrado, pct(m.cobrado, m.devengado), m.ajuste || '-']),
       [],
       ['Desglose'],
-      ['Tipo', 'Subgrupo', 'Jugadores', 'Cuota efectiva', 'Ingreso mensual'],
+      ['Tipo', 'Subgrupo', 'Jugadores', 'Cuota neta', 'Ingreso mensual'],
       ...lista.flatMap(g => Object.values(g.subgrupos).sort((a, b) => b.efectiva - a.efectiva).map(s => [g.tipo, s.etiqueta, s.n, s.efectiva, s.ingreso])),
     ];
     const detalle = [
-      ['Jugador', 'Categoría', 'Tipo', 'Beca (campo)', 'Cuota registrada', 'Cuota efectiva', '% beca', 'Monto becado', `Cuota ${mesLabel}`, 'Pausa'],
-      ...filas.map(f => [f.nombre, f.categoria, f.tipo, f.becaCampo, f.cuotaRegistrada, f.efectiva, `${f.pctBeca}%`, f.becado, f.mesActual, f.pausa || '-']),
+      ['Jugador', 'Categoría', 'Tipo', 'Beca %', 'Motivo', 'Cuota neta registrada', 'Cuota según política', 'Fuera de política', 'Monto becado', `Cuota ${mesLabel}`, 'Pausa'],
+      ...filas.map(f => [f.nombre, f.categoria, f.tipo, f.pct, f.motivo || '-', f.cuotaRegistrada, f.pct > 0 ? f.esperada : '-', f.fueraPolitica ? 'SÍ' : '', f.becado, f.mesActual, f.pausa || '-']),
     ];
     const wb = XLSX.utils.book_new();
     const ws1 = XLSX.utils.aoa_to_sheet(resumen);
-    ws1['!cols'] = [{ wch: 48 }, { wch: 14 }, { wch: 14 }, { wch: 18 }, { wch: 16 }];
+    ws1['!cols'] = [{ wch: 48 }, { wch: 14 }, { wch: 18 }, { wch: 18 }, { wch: 18 }];
     const ws2 = XLSX.utils.aoa_to_sheet(detalle);
-    ws2['!cols'] = [{ wch: 36 }, { wch: 10 }, { wch: 16 }, { wch: 12 }, { wch: 16 }, { wch: 14 }, { wch: 8 }, { wch: 14 }, { wch: 18 }, { wch: 20 }];
+    ws2['!cols'] = [{ wch: 36 }, { wch: 10 }, { wch: 22 }, { wch: 8 }, { wch: 26 }, { wch: 18 }, { wch: 18 }, { wch: 14 }, { wch: 14 }, { wch: 18 }, { wch: 20 }];
     XLSX.utils.book_append_sheet(wb, ws1, 'Resumen');
     XLSX.utils.book_append_sheet(wb, ws2, 'Detalle por jugador');
     XLSX.writeFile(wb, `ingreso_real_becas_${anio}-${String(mesIdx + 1).padStart(2, '0')}.xlsx`);
   };
 
   const exportPDF = () => {
-    const { filas, lista, teorico, real, mesActual, becadoTotal, pagan } = analisis;
+    const { filas, lista, motivos, teorico, real, mesActual, becadoTotal, pagan, fueraPolitica, meses } = analisis;
     const doc = new jsPDF();
     const pw = doc.internal.pageSize.getWidth();
     doc.setFontSize(16); doc.setTextColor(165, 0, 68);
@@ -179,36 +233,43 @@ export default function IngresoRealPanel({ players = [], playerPauses = [] }) {
         y += 7;
       });
     };
+    const titulo = (t) => { y += 6; doc.setFontSize(11); doc.setTextColor(40, 40, 40); doc.text(t, 14, y); y += 4; };
 
-    tabla(['Tipo', 'Jugadores', '% activos', 'Ingreso mensual', 'Monto becado'], [50, 28, 28, 40, 36],
+    tabla(['Tipo', 'Jugadores', '% activos', 'Ingreso mensual', 'Monto becado'], [56, 26, 26, 38, 36],
       [...lista.map(g => [g.tipo, g.n, pct(g.n, activos.length), formatCurrency(g.ingreso), formatCurrency(g.becado)]),
         ['TOTAL', activos.length, '100%', formatCurrency(real), formatCurrency(becadoTotal)]]);
 
     y += 6;
     doc.setFontSize(10); doc.setTextColor(40, 40, 40);
-    const lineas = [
+    [
       `Ingreso teórico (activos × cuota completa): ${formatCurrency(teorico)}`,
       `Ingreso real esperado por mes: ${formatCurrency(real)}  (${pct(real, teorico)} del teórico)`,
       `Becas otorgadas al mes: ${formatCurrency(becadoTotal)}`,
-      `Pagan cuota: ${pagan} jugadores   ·   Beca 100%: ${activos.length - pagan} jugadores`,
+      `Pagan cuota: ${pagan} jugadores   ·   Beca 100%: ${activos.length - pagan} jugadores   ·   Fuera de política: ${fueraPolitica.length}`,
       `Ingreso esperado ${mesLabel} (con pausas y calendario): ${formatCurrency(mesActual)}`,
-    ];
-    lineas.forEach(l => { doc.text(l, 14, y); y += 6; });
+    ].forEach(l => { doc.text(l, 14, y); y += 6; });
 
-    y += 4;
-    doc.setFontSize(11); doc.text('Desglose por subgrupo', 14, y); y += 4;
-    tabla(['Tipo', 'Subgrupo', 'Jugadores', 'Cuota efectiva', 'Ingreso mensual'], [40, 34, 28, 40, 40],
+    titulo('Becas por motivo');
+    tabla(['Motivo', 'Jugadores', 'Monto becado / mes', 'Ingreso que sí aportan'], [70, 30, 42, 40],
+      motivos.map(m => [m.motivo, m.n, formatCurrency(m.becado), formatCurrency(m.ingreso)]));
+
+    titulo('Devengado vs cobrado (mensualidades)');
+    tabla(['Mes', 'Devengado', 'Cobrado', '% cobranza', 'Calendario'], [46, 36, 36, 30, 34],
+      meses.map(m => [m.key + (m.enCurso ? ' (en curso)' : ''), formatCurrency(m.devengado), formatCurrency(m.cobrado), pct(m.cobrado, m.devengado), m.ajuste || '-']));
+
+    titulo('Desglose por subgrupo');
+    tabla(['Tipo', 'Subgrupo', 'Jugadores', 'Cuota neta', 'Ingreso mensual'], [56, 30, 26, 34, 36],
       lista.flatMap(g => Object.values(g.subgrupos).sort((a, b) => b.efectiva - a.efectiva).map(s => [g.tipo, s.etiqueta, s.n, formatCurrency(s.efectiva), formatCurrency(s.ingreso)])));
 
     doc.addPage(); y = 20;
     doc.setFontSize(11); doc.text('Detalle por jugador (activos)', 14, y); y += 4;
-    tabla(['Jugador', 'Cat.', 'Tipo', 'Cuota', 'Efectiva', '% beca', 'Becado'], [62, 18, 30, 20, 20, 16, 16],
-      filas.map(f => [f.nombre, f.categoria, f.tipo, formatCurrency(f.cuotaRegistrada), formatCurrency(f.efectiva), `${f.pctBeca}%`, formatCurrency(f.becado)]));
+    tabla(['Jugador', 'Cat.', 'Beca', 'Motivo', 'Cuota', 'Política', 'Becado'], [56, 16, 14, 40, 18, 20, 18],
+      filas.map(f => [f.nombre, f.categoria, f.pct > 0 ? `${f.pct}%` : '-', f.motivo || '-', formatCurrency(f.cuotaRegistrada), f.fueraPolitica ? `≠ ${formatCurrency(f.esperada)}` : 'ok', formatCurrency(f.becado)]));
 
     doc.save(`ingreso_real_becas_${anio}-${String(mesIdx + 1).padStart(2, '0')}.pdf`);
   };
 
-  const { lista, teorico, real, mesActual, becadoTotal, pagan } = analisis;
+  const { lista, motivos, teorico, real, mesActual, becadoTotal, pagan, fueraPolitica, sinMotivo, reducidoSinBeca, meses } = analisis;
 
   return (
     <Card className="border-purple-100">
@@ -223,7 +284,7 @@ export default function IngresoRealPanel({ players = [], playerPauses = [] }) {
           </div>
           <div className="flex items-center gap-2">
             <Select value={String(cuotaCompleta)} onValueChange={v => setCuotaRef(Number(v))}>
-              <SelectTrigger className="w-40 h-9 text-sm"><SelectValue placeholder="Cuota completa" /></SelectTrigger>
+              <SelectTrigger className="w-52 h-9 text-sm"><SelectValue placeholder="Cuota completa" /></SelectTrigger>
               <SelectContent>
                 {opcionesCuota.map(v => <SelectItem key={v} value={String(v)}>Cuota completa {formatCurrency(v)}</SelectItem>)}
               </SelectContent>
@@ -261,6 +322,15 @@ export default function IngresoRealPanel({ players = [], playerPauses = [] }) {
             </div>
           </div>
 
+          {(fueraPolitica.length > 0 || sinMotivo.length > 0 || reducidoSinBeca.length > 0) && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 space-y-1">
+              <p className="font-medium flex items-center gap-1"><AlertTriangle className="w-3.5 h-3.5" /> Revisión de política de becas</p>
+              {reducidoSinBeca.length > 0 && <p>{reducidoSinBeca.length} jugador(es) pagan menos de la cuota completa sin beca declarada: {reducidoSinBeca.slice(0, 6).map(f => `${f.nombre} (${formatCurrency(f.efectiva)})`).join(', ')}{reducidoSinBeca.length > 6 ? '…' : ''}. Edita al jugador y declara el % y motivo.</p>}
+              {sinMotivo.length > 0 && <p>{sinMotivo.length} beca(s) sin motivo clasificado: {sinMotivo.slice(0, 6).map(f => f.nombre).join(', ')}{sinMotivo.length > 6 ? '…' : ''}.</p>}
+              {fueraPolitica.length > 0 && <p>{fueraPolitica.length} cuota(s) que no corresponden a su % de beca: {fueraPolitica.slice(0, 6).map(f => `${f.nombre} (${formatCurrency(f.efectiva)} vs ${formatCurrency(f.esperada)})`).join(', ')}{fueraPolitica.length > 6 ? '…' : ''}.</p>}
+            </div>
+          )}
+
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -279,7 +349,7 @@ export default function IngresoRealPanel({ players = [], playerPauses = [] }) {
                     <td className="py-2 pr-3"><Badge className={colorTipo[g.tipo] || 'bg-gray-100 text-gray-700'}>{g.tipo}</Badge></td>
                     <td className="py-2 pr-3 text-xs text-gray-600">
                       {Object.values(g.subgrupos).sort((a, b) => b.efectiva - a.efectiva).map(s => (
-                        <span key={s.etiqueta} className="inline-block mr-2">{s.n} × {g.tipo === 'Beca parcial' ? `${s.etiqueta} beca (${formatCurrency(s.efectiva)})` : s.etiqueta}</span>
+                        <span key={s.etiqueta} className="inline-block mr-2">{s.n} × {s.pct > 0 && s.pct < 100 ? `${s.etiqueta} beca (${formatCurrency(s.efectiva)})` : s.pct >= 100 ? '100%' : s.etiqueta}</span>
                       ))}
                     </td>
                     <td className="py-2 pr-3 text-right font-medium">{g.n}</td>
@@ -304,8 +374,49 @@ export default function IngresoRealPanel({ players = [], playerPauses = [] }) {
               </tfoot>
             </table>
           </div>
+
+          <div className="grid md:grid-cols-2 gap-4">
+            <div className="rounded-lg border border-gray-100 p-3">
+              <p className="text-xs font-medium uppercase tracking-wide text-gray-500 mb-2">Becas por motivo</p>
+              {motivos.length === 0 ? <p className="text-xs text-gray-400">Sin becas declaradas.</p> : (
+                <table className="w-full text-sm">
+                  <tbody>
+                    {motivos.map(m => (
+                      <tr key={m.motivo} className="border-b last:border-0">
+                        <td className="py-1.5 pr-2">{m.motivo}</td>
+                        <td className="py-1.5 pr-2 text-right text-gray-600">{m.n}</td>
+                        <td className="py-1.5 text-right text-purple-700 font-medium">{formatCurrency(m.becado)}<span className="text-xs text-gray-400"> /mes</span></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+            <div className="rounded-lg border border-gray-100 p-3">
+              <p className="text-xs font-medium uppercase tracking-wide text-gray-500 mb-2">Devengado vs cobrado (mensualidades)</p>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-xs text-gray-400 text-left">
+                    <th className="font-normal pb-1">Mes</th><th className="font-normal pb-1 text-right">Devengado</th><th className="font-normal pb-1 text-right">Cobrado</th><th className="font-normal pb-1 text-right">Cobranza</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {meses.map(m => (
+                    <tr key={m.key} className={`border-b last:border-0 ${m.enCurso ? 'bg-blue-50/60' : ''}`}>
+                      <td className="py-1.5 pr-2 capitalize">{m.label}{m.enCurso ? <span className="text-xs text-blue-600"> · en curso</span> : ''}{m.ajuste ? <span className="text-xs text-gray-400"> · {m.ajuste}</span> : ''}</td>
+                      <td className="py-1.5 pr-2 text-right text-gray-600">{formatCurrency(m.devengado)}</td>
+                      <td className="py-1.5 pr-2 text-right font-medium text-green-700">{formatCurrency(m.cobrado)}</td>
+                      <td className={`py-1.5 text-right font-medium ${m.enCurso ? 'text-blue-600' : m.pctCobrado >= 0.9 ? 'text-green-700' : m.pctCobrado >= 0.7 ? 'text-amber-600' : 'text-red-600'}`}>{pct(m.cobrado, m.devengado)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <p className="text-[11px] text-gray-400 mt-1">Devengado = cuotas netas de los activos de hoy que ya habían ingresado ese mes, con pausas y calendario. Cobrado = pagos de mensualidad aplicados a ese mes (sin recargos ni reversos).</p>
+            </div>
+          </div>
+
           <p className="text-xs text-gray-400">
-            La cuota efectiva es la que el motor de deuda realmente exige (cuota registrada, menos beca 50%/100% del campo Beca). El ingreso real esperado no incluye recargos, inscripciones, torneos ni uniformes; el detalle por jugador está en la descarga.
+            La cuota neta es la que el motor de deuda exige (cuota completa × (1 − beca%), redondeada a decena). El ingreso real esperado no incluye recargos, inscripciones, torneos ni uniformes; el detalle por jugador está en la descarga.
           </p>
         </CardContent>
       )}
