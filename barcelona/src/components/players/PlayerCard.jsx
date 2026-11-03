@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Edit, Trash2, Phone, Mail, Calendar, DollarSign, CheckCircle, AlertCircle, GraduationCap } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { becaPct, becaMotivoLabel } from '@/lib/financeEngine';
 
 export default function PlayerCard({ player, payments, onEdit, onDelete, onPauses, isPaused = false }) {
   const currentMonth = format(new Date(), 'MMMM yyyy', { locale: es });
@@ -40,10 +41,10 @@ export default function PlayerCard({ player, payments, onEdit, onDelete, onPause
               {player.category && (
                 <Badge variant="outline">{player.category}</Badge>
               )}
-              {(player.scholarship && player.scholarship !== 'ninguna') && (
-                <Badge className="bg-purple-100 text-purple-800 flex items-center gap-1">
+              {becaPct(player) > 0 && (
+                <Badge className="bg-purple-100 text-purple-800 flex items-center gap-1" title={becaMotivoLabel(player.scholarship_reason)}>
                   <GraduationCap className="w-3 h-3" />
-                  Beca {player.scholarship}
+                  Beca {Math.round(becaPct(player))}% · {becaMotivoLabel(player.scholarship_reason)}
                 </Badge>
               )}
             </div>
