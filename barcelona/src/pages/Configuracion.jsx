@@ -190,6 +190,10 @@ export default function Configuracion() {
                   <Input type="number" value={f.inscripcion_default ?? ''} onChange={e => setFeesDraft({ ...f, inscripcion_default: parseFloat(e.target.value) || 0 })} />
                 </label>
                 <label className="text-sm space-y-1 block">
+                  <span className="text-gray-600">Cuota mensual completa (referencia para becas e ingreso real)</span>
+                  <Input type="number" value={f.cuota_completa ?? ''} placeholder="1320" onChange={e => setFeesDraft({ ...f, cuota_completa: parseFloat(e.target.value) || 0 })} />
+                </label>
+                <label className="text-sm space-y-1 block">
                   <span className="text-gray-600">Semana de Summer Camp</span>
                   <Input type="number" value={f.summer_week ?? ''} onChange={e => setFeesDraft({ ...f, summer_week: parseFloat(e.target.value) || 0 })} />
                 </label>
