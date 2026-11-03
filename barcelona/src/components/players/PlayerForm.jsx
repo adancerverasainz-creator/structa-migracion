@@ -184,8 +184,9 @@ export default function PlayerForm({ player, onSubmit, onCancel, isLoading }) {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="scholarship_pct">Beca (% sobre cuota completa ${cuotaCompleta.toLocaleString('en-US')})</Label>
+              <Label htmlFor="scholarship_pct">Beca (% sobre cuota completa ${cuotaCompleta.toLocaleString('en-US')}){!isAdmin && <span className="text-xs text-gray-400 ml-1">· solo admin</span>}</Label>
               <Select
+                disabled={!isAdmin}
                 value={String(Math.round(parseFloat(formData.scholarship_pct) || 0))}
                 onValueChange={(value) => {
                   const pct = parseFloat(value) || 0;
@@ -215,6 +216,7 @@ export default function PlayerForm({ player, onSubmit, onCancel, isLoading }) {
               <div className="space-y-2">
                 <Label htmlFor="scholarship_reason">Motivo de la beca *</Label>
                 <Select
+                  disabled={!isAdmin}
                   value={formData.scholarship_reason || ''}
                   onValueChange={(value) => { setBecaError(''); setFormData({ ...formData, scholarship_reason: value }); }}
                 >
@@ -253,7 +255,8 @@ export default function PlayerForm({ player, onSubmit, onCancel, isLoading }) {
                 const pct = parseFloat(formData.scholarship_pct) || 0;
                 const esperada = cuotaNeta(cuotaCompleta, pct);
                 const actual = parseFloat(formData.monthly_fee);
-                if (isNaN(actual) || actual === esperada) return null;
+                // Solo avisa cuando hay beca declarada o la cuota queda por debajo de la completa sin beca
+                if (isNaN(actual) || actual === esperada || (pct === 0 && actual >= esperada)) return null;
                 return (
                   <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1 flex items-center gap-1">
                     <GraduationCap className="w-3 h-3" /> Cuota fuera de política: con beca {Math.round(pct)}% corresponde ${esperada.toLocaleString('en-US')}. Se guardará ${actual.toLocaleString('en-US')} y quedará marcada en el panel de becas.
