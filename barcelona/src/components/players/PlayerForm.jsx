@@ -6,7 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { X, Save } from 'lucide-react';
+import { X, Save, GraduationCap } from 'lucide-react';
+import { BECA_MOTIVOS, becaPct, cuotaNeta } from '@/lib/financeEngine';
 
 export default function PlayerForm({ player, onSubmit, onCancel, isLoading }) {
   // Regla del club: solo un admin puede capturar/modificar fecha de ingreso retroactiva.
@@ -21,11 +22,17 @@ export default function PlayerForm({ player, onSubmit, onCancel, isLoading }) {
   const CUOTAS_DEFAULT = [2000, 1700, 1450, 1320, 1300, 1200, 1190, 1160, 1100, 1080, 1060, 960, 900, 800, 660, 600, 400, 300, 0];
   const montosConfig = clubSettings.find(cs => cs.key === 'fees')?.value?.mensualidad_montos;
   const cuotasBase = (montosConfig && montosConfig.length) ? montosConfig : CUOTAS_DEFAULT;
+  // Cuota completa del club (Configuración → Precios). La cuota del jugador = cuota completa × (1 − beca%).
+  const feesCfg = clubSettings.find(cs => cs.key === 'fees')?.value || {};
+  const cuotaCompleta = Number(feesCfg.cuota_completa) || 1320;
+  const BECA_PCTS = [0, 10, 20, 25, 30, 40, 50, 60, 75, 100];
 
   const [formData, setFormData] = useState(() => {
     if (player) {
       return {
         ...player,
+        scholarship_pct: becaPct(player),
+        scholarship_reason: player.scholarship_reason || '',
         birth_date: player.birth_date ? player.birth_date.split('T')[0] : '',
         join_date: player.join_date ? player.join_date.split('T')[0] : '',
         baja_date: player.baja_date ? player.baja_date.split('T')[0] : '',
@@ -41,17 +48,31 @@ export default function PlayerForm({ player, onSubmit, onCancel, isLoading }) {
       parent_email: '',
       monthly_fee: '',
       scholarship: 'ninguna',
+      scholarship_pct: 0,
+      scholarship_reason: '',
       photo_url: '',
       status: 'activo',
       baja_date: '',
     };
   });
 
+  const [becaError, setBecaError] = useState('');
+
   const handleSubmit = (e) => {
     e.preventDefault();
+    const pctBeca = Math.min(100, Math.max(0, parseFloat(formData.scholarship_pct) || 0));
+    if (pctBeca > 0 && !formData.scholarship_reason) {
+      setBecaError('Indica el motivo de la beca.');
+      return;
+    }
+    setBecaError('');
     const submitData = {
       ...formData,
       monthly_fee: parseFloat(formData.monthly_fee) || 0,
+      scholarship_pct: pctBeca,
+      scholarship_reason: pctBeca > 0 ? formData.scholarship_reason : null,
+      // Campo legado (solo etiqueta): se mantiene sincronizado con el porcentaje.
+      scholarship: pctBeca > 0 ? `${Math.round(pctBeca)}%` : 'ninguna',
     };
     // No-admin: alta siempre con fecha del día; edición no puede alterar la fecha de ingreso
     if (!isAdmin) {
@@ -163,30 +184,50 @@ export default function PlayerForm({ player, onSubmit, onCancel, isLoading }) {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="scholarship">Beca</Label>
+              <Label htmlFor="scholarship_pct">Beca (% sobre cuota completa ${cuotaCompleta.toLocaleString('en-US')})</Label>
               <Select
-                value={formData.scholarship || 'ninguna'}
+                value={String(Math.round(parseFloat(formData.scholarship_pct) || 0))}
                 onValueChange={(value) => {
-                  const updates = { scholarship: value };
-                  const currentFee = parseFloat(formData.monthly_fee) || 0;
-                  if (value === '100%') {
-                    updates.monthly_fee = '0';
-                  } else if (value === '50%' && currentFee > 0) {
-                    updates.monthly_fee = String(currentFee / 2);
-                  }
-                  setFormData({ ...formData, ...updates });
+                  const pct = parseFloat(value) || 0;
+                  setFormData({
+                    ...formData,
+                    scholarship_pct: pct,
+                    scholarship_reason: pct > 0 ? formData.scholarship_reason : '',
+                    monthly_fee: String(cuotaNeta(cuotaCompleta, pct)),
+                  });
                 }}
               >
-                <SelectTrigger>
+                <SelectTrigger id="scholarship_pct">
                   <SelectValue placeholder="Sin beca" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="ninguna">Sin beca</SelectItem>
-                  <SelectItem value="50%">Beca 50%</SelectItem>
-                  <SelectItem value="100%">Beca 100%</SelectItem>
+                  {(() => {
+                    const actual = Math.round(parseFloat(formData.scholarship_pct) || 0);
+                    const lista = BECA_PCTS.includes(actual) ? BECA_PCTS : [...BECA_PCTS, actual].sort((a, b) => a - b);
+                    return lista.map(v => (
+                      <SelectItem key={v} value={String(v)}>{v === 0 ? 'Sin beca' : `Beca ${v}% → cuota $${cuotaNeta(cuotaCompleta, v).toLocaleString('en-US')}`}</SelectItem>
+                    ));
+                  })()}
                 </SelectContent>
               </Select>
             </div>
+            {(parseFloat(formData.scholarship_pct) || 0) > 0 && (
+              <div className="space-y-2">
+                <Label htmlFor="scholarship_reason">Motivo de la beca *</Label>
+                <Select
+                  value={formData.scholarship_reason || ''}
+                  onValueChange={(value) => { setBecaError(''); setFormData({ ...formData, scholarship_reason: value }); }}
+                >
+                  <SelectTrigger id="scholarship_reason" className={becaError ? 'border-red-400' : ''}>
+                    <SelectValue placeholder="Seleccionar motivo" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {BECA_MOTIVOS.map(m => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                {becaError && <p className="text-xs text-red-600">{becaError}</p>}
+              </div>
+            )}
             <div className="space-y-2">
               <Label htmlFor="monthly_fee">Cuota Mensual *</Label>
               <Select
@@ -208,6 +249,17 @@ export default function PlayerForm({ player, onSubmit, onCancel, isLoading }) {
                   })()}
                 </SelectContent>
               </Select>
+              {(() => {
+                const pct = parseFloat(formData.scholarship_pct) || 0;
+                const esperada = cuotaNeta(cuotaCompleta, pct);
+                const actual = parseFloat(formData.monthly_fee);
+                if (isNaN(actual) || actual === esperada) return null;
+                return (
+                  <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1 flex items-center gap-1">
+                    <GraduationCap className="w-3 h-3" /> Cuota fuera de política: con beca {Math.round(pct)}% corresponde ${esperada.toLocaleString('en-US')}. Se guardará ${actual.toLocaleString('en-US')} y quedará marcada en el panel de becas.
+                  </p>
+                );
+              })()}
             </div>
             <div className="space-y-2">
               <Label htmlFor="parent_name">Nombre del Padre/Madre *</Label>
