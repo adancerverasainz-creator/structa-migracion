@@ -15,7 +15,7 @@ import {
 import { format, subMonths } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { formatCurrency } from '../lib/formatCurrency';
-import { calculateMoratorio, getSeasonAdjustment, getCurrentSeason, getPauseAdjustment, isPausedOn } from '../../lib/financeEngine';
+import { calculateMoratorio, getSeasonAdjustment, getCurrentSeason, getPauseAdjustment, isPausedOn, becaPct, becaMotivoLabel } from '../../lib/financeEngine';
 import jsPDF from 'jspdf';
 import * as XLSX from 'xlsx';
 
@@ -208,8 +208,8 @@ export default function PlayerUnifiedDebt({
           if (joinDate && genCursor.getFullYear() === joinDate.getFullYear() && genCursor.getMonth() === joinDate.getMonth() && joinDate.getDate() > 15) {
             requiredFee = requiredFee * 0.5;
           }
-          if (p.scholarship === '50%') requiredFee *= 0.5;
-          else if (p.scholarship === '100%') requiredFee = 0;
+          // monthly_fee ya es la cuota NETA con beca (players.scholarship_pct); no se vuelve a aplicar.
+          if (becaPct(p) >= 100) requiredFee = 0;
         }
         const waivedForMonth = waiverIdx.get(`${p.id}|${mKey.toLowerCase()}`) || 0;
 
@@ -272,7 +272,7 @@ export default function PlayerUnifiedDebt({
       const insc = inscIdx.get(p.id) || { paid: 0, liquidado: false };
       const paidInscripcion = insc.paid;
       const esBajaOInactivo = !!p.baja_date || ['baja', 'inactivo'].includes((p.status || '').toLowerCase());
-      const exentoInscripcion = esBajaOInactivo || p.scholarship === '100%';
+      const exentoInscripcion = esBajaOInactivo || becaPct(p) >= 100;
       // Un abono NO liquida: pendiente = cuota − abonado (salvo pago con status 'pagado' o exento)
       const inscTotal = feesConfig?.inscripcion_default ?? 1800;
       const waivedInsc = waiverIdx.get(`${p.id}|inscripcion:${currentSeason}`.toLowerCase()) || 0;
@@ -623,9 +623,9 @@ export default function PlayerUnifiedDebt({
                           <Badge className="bg-amber-100 text-amber-800 text-xs">⚕ Lesionado</Badge>
                         )}
                         {player.category && <Badge variant="outline">{player.category}</Badge>}
-                        {(player.scholarship && player.scholarship !== 'ninguna') && (
-                          <Badge className="bg-purple-100 text-purple-800 flex items-center gap-1">
-                            <GraduationCap className="w-3 h-3" /> Beca {player.scholarship}
+                        {becaPct(player) > 0 && (
+                          <Badge className="bg-purple-100 text-purple-800 flex items-center gap-1" title={becaMotivoLabel(player.scholarship_reason)}>
+                            <GraduationCap className="w-3 h-3" /> Beca {Math.round(becaPct(player))}%
                           </Badge>
                         )}
                         {totalDebt > 0
