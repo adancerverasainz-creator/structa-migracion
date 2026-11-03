@@ -159,16 +159,60 @@ export function calculateMoratorio(monthKey, referenceDate = new Date(), lateFee
 }
 
 /**
+ * Becas — modelo "precio de lista + descuento con motivo" (SAP/Odoo).
+ * La cuota completa del club vive en club_settings.fees.cuota_completa; cada jugador
+ * declara un porcentaje de beca (players.scholarship_pct) y un motivo (scholarship_reason).
+ * players.monthly_fee es la cuota NETA ya con beca: el motor de deuda la usa tal cual y
+ * NUNCA vuelve a aplicar el porcentaje (antes se aplicaba dos veces).
+ */
+export const BECA_MOTIVOS = [
+  { value: 'deportiva', label: 'Beca deportiva' },
+  { value: 'hermanos', label: 'Descuento por hermanos' },
+  { value: 'convenio', label: 'Convenio / patrocinio' },
+  { value: 'economica', label: 'Apoyo económico' },
+  { value: 'precio_anterior', label: 'Precio anterior (conservado)' },
+  { value: 'otra', label: 'Otra' },
+];
+
+/** Etiqueta legible del motivo de beca. */
+export function becaMotivoLabel(reason) {
+  return BECA_MOTIVOS.find(m => m.value === reason)?.label || (reason ? String(reason) : 'Sin clasificar');
+}
+
+/** Porcentaje de beca declarado (0-100), con compatibilidad para el campo legado scholarship ('50%'/'100%'). */
+export function becaPct(player) {
+  const pct = Number(player?.scholarship_pct);
+  if (Number.isFinite(pct) && pct > 0) return Math.min(100, Math.max(0, pct));
+  const legacy = String(player?.scholarship || '').trim();
+  const m = legacy.match(/^(\d+(?:\.\d+)?)%$/);
+  return m ? Math.min(100, Number(m[1])) : 0;
+}
+
+/**
+ * Cuota neta que corresponde a un porcentaje de beca sobre la cuota completa.
+ * Regla del club: los precios se redondean a la decena (1,320 × 90% = 1,188 → 1,190; × 80% = 1,056 → 1,060).
+ * @param {number} cuotaCompleta
+ * @param {number} pct - 0-100
+ * @param {number} [redondeo=10] - múltiplo al que se redondea
+ */
+export function cuotaNeta(cuotaCompleta, pct, redondeo = 10) {
+  const c = Number(cuotaCompleta) || 0;
+  const p = Math.min(100, Math.max(0, Number(pct) || 0));
+  const r = Number(redondeo) > 0 ? Number(redondeo) : 1;
+  return Math.round((c * (1 - p / 100)) / r) * r;
+}
+
+/**
  * Aplica beca al monto de cuota mensual.
- * @param {number} baseFee - Cuota base
- * @param {string} scholarship - Tipo de beca ('ninguna', '50%', '100%')
+ * @deprecated monthly_fee ya es la cuota neta; usar cuotaNeta(cuotaCompleta, pct) al capturar.
+ * @param {number} baseFee - Cuota completa
+ * @param {string|number} scholarship - '50%', '100%' o porcentaje numérico
  * @returns {number} Cuota ajustada
  */
 export function applyScholarship(baseFee, scholarship) {
   if (!baseFee || baseFee <= 0) return 0;
-  if (scholarship === '100%') return 0;
-  if (scholarship === '50%') return baseFee * 0.5;
-  return baseFee;
+  const pct = typeof scholarship === 'number' ? scholarship : becaPct({ scholarship });
+  return cuotaNeta(baseFee, pct);
 }
 
 /**
