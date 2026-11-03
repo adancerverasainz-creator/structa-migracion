@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { isPausedOn } from '@/lib/financeEngine';
+import { isPausedOn, becaPct, becaMotivoLabel } from '@/lib/financeEngine';
 import { confirmar } from '@/components/ui/confirmar';
 import { usePerms } from '@/lib/usePerms';
 import { toast } from 'sonner';
@@ -20,7 +20,7 @@ import ERPPageHeader from '../components/layout/ERPPageHeader';
 import KPICard from '../components/layout/KPICard';
 
 export default function Players() {
-  const { canDelete } = usePerms('players');
+  const { canDelete, isAdmin } = usePerms('players');
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryExport, setCategoryExport] = useState('todas');
   const [statusFilter, setStatusFilter] = useState('todos');
@@ -173,7 +173,7 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
       [`Barcelona Inter Academy - Jugadores - ${label}`],
       [`Total: ${data.length} jugadores`],
       [],
-      ['Nombre', 'Categoría', 'Estatus', 'Fecha Nacimiento', 'Fecha Ingreso', 'Cuota Mensual', 'Padre/Tutor', 'Teléfono', 'Email'],
+      ['Nombre', 'Categoría', 'Estatus', 'Fecha Nacimiento', 'Fecha Ingreso', 'Cuota Mensual', 'Beca %', 'Motivo beca', 'Padre/Tutor', 'Teléfono', 'Email'],
       ...data.map(p => [
         p.full_name,
         p.category || '-',
@@ -181,6 +181,8 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
         p.birth_date || '-',
         p.join_date || '-',
         p.monthly_fee || 0,
+        Math.round(becaPct(p)),
+        becaPct(p) > 0 ? becaMotivoLabel(p.scholarship_reason) : '-',
         p.parent_name,
         p.parent_phone,
         p.parent_email || '-',
@@ -206,8 +208,8 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
     doc.setFontSize(9);
     doc.setTextColor(120, 120, 120);
     doc.text(`Total: ${data.length} jugadores`, 14, 34);
-    const cols = ['Nombre', 'Categoría', 'Estatus', 'Cuota', 'Padre/Tutor', 'Teléfono'];
-    const colWidths = [40, 22, 18, 18, 45, 32];
+    const cols = ['Nombre', 'Categoría', 'Estatus', 'Cuota', 'Beca', 'Padre/Tutor', 'Teléfono'];
+    const colWidths = [40, 20, 16, 16, 14, 40, 30];
     let y = 44;
     doc.setFillColor(165, 0, 68);
     doc.rect(14, y, pageWidth - 28, 8, 'F');
@@ -221,7 +223,7 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
       if (idx % 2 === 0) { doc.setFillColor(245, 245, 255); doc.rect(14, y, pageWidth - 28, 8, 'F'); }
       doc.setTextColor(40, 40, 40);
       x = 16;
-      const row = [p.full_name, p.category || '-', p.status, `$${p.monthly_fee || 0}`, p.parent_name, p.parent_phone];
+      const row = [p.full_name, p.category || '-', p.status, `$${p.monthly_fee || 0}`, becaPct(p) > 0 ? `${Math.round(becaPct(p))}%` : '-', p.parent_name, p.parent_phone];
       row.forEach((val, i) => {
         const text = doc.splitTextToSize(String(val || '-'), colWidths[i] - 2)[0];
         doc.text(text, x, y + 5.5);
@@ -274,7 +276,7 @@ onError: (err) => toast.error(`Operación fallida: ${err?.message || 'error desc
       </div>
 
       {/* Becas e ingreso real por mensualidades */}
-      <IngresoRealPanel players={players} playerPauses={playerPauses} />
+      {isAdmin && <IngresoRealPanel players={players} playerPauses={playerPauses} payments={payments} />}
 
       {/* Search and Filter */}
       <Card>
