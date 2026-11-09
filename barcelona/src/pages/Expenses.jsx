@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Plus, TrendingDown, Trash2, Edit, Search, Printer, Undo2 } from 'lucide-react';
+import { Plus, TrendingDown, Trash2, Edit, Search, Printer, Undo2, ArrowLeftRight } from 'lucide-react';
 import { toast } from 'sonner';
 import { confirmar } from '@/components/ui/confirmar';
 import { format } from 'date-fns';
@@ -27,6 +27,9 @@ const [editingExpense, setEditingExpense] = useState(null);
 const [searchTerm, setSearchTerm] = useState('');
 const [reversarInfo, setReversarInfo] = useState(null); // egreso a reversar (storno)
 const [motivoReverso, setMotivoReverso] = useState('');
+const [reclasInfo, setReclasInfo] = useState(null); // egreso cuya cuenta de origen se corrige
+const [reclasCuenta, setReclasCuenta] = useState('');
+const [reclasMotivo, setReclasMotivo] = useState('');
 const queryClient = useQueryClient();
 
 const { data: expenses = [], isLoading } = useQuery({
@@ -197,6 +200,44 @@ const reversarMutation = useMutation({
     setReversarInfo(null); setMotivoReverso('');
   },
   onError: (e) => toast.error(`No se pudo reversar: ${e.message}`),
+});
+
+// Reclasificación de CUENTA DE ORIGEN (de qué caja/banco salió el dinero). El vale no cambia
+// (monto, fecha, método, concepto); solo la cuenta, con motivo y rastro en notas + Auditoría.
+// Admin: cualquier egreso vivo. No-admin: solo los suyos, el mismo día y solo hacia "Caja chica".
+const { data: bankAccounts = [] } = useQuery({
+  queryKey: ['bankAccounts'],
+  queryFn: () => base44.entities.BankAccount.list(),
+});
+const hoyCancun = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Cancun' });
+const esMismoDia = (e) => e.created_at && new Date(e.created_at).toLocaleDateString('en-CA', { timeZone: 'America/Cancun' }) === hoyCancun;
+const puedeReclasificar = (e) => {
+  if (e.reversal_of || reversedIds.has(e.id) || e.is_transfer || e.payroll_item_id) return false;
+  if (['corte', 'arqueo'].includes(e.source_module || '')) return false;
+  if (isAdmin) return true;
+  return e.created_by === me?.email && esMismoDia(e) && e.account !== 'Caja chica';
+};
+const opcionesReclas = (e) => {
+  if (!e) return [];
+  const base = e.payment_method === 'efectivo'
+    ? ['Caja chica', 'Fondos']
+    : bankAccounts.filter(b => b.active !== false).map(b => b.name);
+  return base.filter(c => c !== e.account && (isAdmin || c === 'Caja chica'));
+};
+const reclasMutation = useMutation({
+  mutationFn: async ({ expense, cuenta, motivo }) => {
+    const { data, error } = await supabase.rpc('reclasificar_cuenta_egreso', { p_expense_id: expense.id, p_cuenta_nueva: cuenta, p_motivo: motivo });
+    if (error) throw new Error(error.message);
+    return data;
+  },
+  onSuccess: (res) => {
+    queryClient.invalidateQueries({ queryKey: ['expenses'] });
+    queryClient.invalidateQueries({ queryKey: ['saldosPorCuenta'] });
+    queryClient.invalidateQueries({ queryKey: ['accountPayablePayments'] });
+    toast.success(`Cuenta corregida: ${res?.de || '—'} → ${res?.a}`);
+    setReclasInfo(null); setReclasCuenta(''); setReclasMotivo('');
+  },
+  onError: (e) => toast.error(`No se pudo corregir la cuenta: ${e.message}`),
 });
 
 // Corrección de TEXTO (concepto/notas) de un egreso manual: admin o quien lo capturó.
@@ -397,6 +438,12 @@ className="pl-9"
 <Undo2 className="w-4 h-4 text-amber-700" />
 </Button>
 )}
+{puedeReclasificar(expense) && opcionesReclas(expense).length > 0 && (
+<Button variant="ghost" size="icon" title="Corregir cuenta de origen (de qué caja o banco salió)"
+  onClick={() => { setReclasInfo(expense); setReclasCuenta(opcionesReclas(expense)[0] || ''); setReclasMotivo(''); }}>
+<ArrowLeftRight className="w-4 h-4 text-blue-700" />
+</Button>
+)}
 {puedeCorregir(expense) && (
 <Button variant="ghost" size="icon" onClick={() => handleEdit(expense)} title="Corregir concepto o notas (el monto no cambia; para dinero usa Reversar)">
 <Edit className="w-4 h-4 text-gray-500" />
@@ -411,6 +458,50 @@ className="pl-9"
 </div>
 )}
 </>
+)}
+
+{/* Modal de reclasificación de cuenta de origen */}
+{reclasInfo && (
+<div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+  <Card className="w-full max-w-md">
+    <CardHeader>
+      <CardTitle className="text-base">Corregir cuenta de origen</CardTitle>
+    </CardHeader>
+    <CardContent className="space-y-3">
+      <p className="text-sm text-gray-700">
+        <span className="font-semibold">{reclasInfo.concept}</span> — {formatCurrency(reclasInfo.amount)}
+      </p>
+      <p className="text-xs text-gray-500">
+        El vale no cambia (monto, fecha, método). Solo se corrige de qué caja o banco salió el dinero;
+        los saldos se recalculan al instante y la corrección queda en las notas del egreso y en Auditoría.
+      </p>
+      <div className="text-sm">
+        <span className="text-gray-500">Salió de:</span> <span className="font-medium">{reclasInfo.account || '(sin cuenta)'}</span>
+      </div>
+      <label className="text-sm block space-y-1">
+        <span className="text-gray-500">Debió salir de:</span>
+        <select className="w-full border rounded-md p-2 text-sm bg-white" value={reclasCuenta} onChange={(e) => setReclasCuenta(e.target.value)}>
+          {opcionesReclas(reclasInfo).map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
+      </label>
+      <textarea
+        className="w-full border rounded-md p-2 text-sm min-h-[70px]"
+        placeholder="Motivo (obligatorio, mínimo 5 caracteres). Ej. 'Se pagó con efectivo de Fondos, no de Caja chica'"
+        value={reclasMotivo}
+        onChange={(e) => setReclasMotivo(e.target.value)}
+      />
+      <div className="flex justify-end gap-2">
+        <Button variant="outline" disabled={reclasMutation.isPending}
+          onClick={() => { setReclasInfo(null); setReclasCuenta(''); setReclasMotivo(''); }}>Cancelar</Button>
+        <Button className="bg-blue-600 hover:bg-blue-700"
+          disabled={reclasMutation.isPending || !reclasCuenta || reclasMotivo.trim().length < 5}
+          onClick={() => reclasMutation.mutate({ expense: reclasInfo, cuenta: reclasCuenta, motivo: reclasMotivo.trim() })}>
+          {reclasMutation.isPending ? 'Corrigiendo…' : 'Confirmar corrección'}
+        </Button>
+      </div>
+    </CardContent>
+  </Card>
+</div>
 )}
 
 {/* Modal de reverso: motivo obligatorio, contra-movimiento (storno) */}
