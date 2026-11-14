@@ -212,18 +212,22 @@ const { data: bankAccounts = [] } = useQuery({
 const hoyCancun = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Cancun' });
 const esMismoDia = (e) => e.created_at && new Date(e.created_at).toLocaleDateString('en-CA', { timeZone: 'America/Cancun' }) === hoyCancun;
 const puedeReclasificar = (e) => {
-  if (e.reversal_of || reversedIds.has(e.id) || e.is_transfer || e.payroll_item_id) return false;
+  if (e.reversal_of || reversedIds.has(e.id) || e.is_transfer) return false;
   if (['corte', 'arqueo'].includes(e.source_module || '')) return false;
-  if (isAdmin) return true;
-  return e.created_by === me?.email && esMismoDia(e) && e.account !== 'Caja chica';
+  if (isAdmin) return true; // incluye nómina: el RPC sincroniza la fuente de pago del recibo
+  if (e.payroll_item_id) return false;
+  return e.created_by === me?.email && esMismoDia(e) && e.payment_method === 'efectivo' && e.account !== 'Caja chica';
 };
+// Admin: cajas y bancos (el método se deriva: caja = efectivo, banco = transferencia).
+// No-admin: solo "Caja chica" y solo para egresos en efectivo.
 const opcionesReclas = (e) => {
   if (!e) return [];
-  const base = e.payment_method === 'efectivo'
-    ? ['Caja chica', 'Fondos']
-    : bankAccounts.filter(b => b.active !== false).map(b => b.name);
-  return base.filter(c => c !== e.account && (isAdmin || c === 'Caja chica'));
+  const cajas = ['Caja chica', 'Fondos'];
+  const bancos = bankAccounts.filter(b => b.active !== false).map(b => b.name);
+  const base = isAdmin ? [...cajas, ...bancos] : (e.payment_method === 'efectivo' ? ['Caja chica'] : []);
+  return base.filter(c => c !== e.account);
 };
+const esCaja = (c) => ['Caja chica', 'Fondos'].includes(c);
 const reclasMutation = useMutation({
   mutationFn: async ({ expense, cuenta, motivo }) => {
     const { data, error } = await supabase.rpc('reclasificar_cuenta_egreso', { p_expense_id: expense.id, p_cuenta_nueva: cuenta, p_motivo: motivo });
@@ -234,7 +238,7 @@ const reclasMutation = useMutation({
     queryClient.invalidateQueries({ queryKey: ['expenses'] });
     queryClient.invalidateQueries({ queryKey: ['saldosPorCuenta'] });
     queryClient.invalidateQueries({ queryKey: ['accountPayablePayments'] });
-    toast.success(`Cuenta corregida: ${res?.de || '—'} → ${res?.a}`);
+    toast.success(`Cuenta corregida: ${res?.de || '—'} → ${res?.a}${res?.metodo ? ` (${res.metodo})` : ''}`);
     setReclasInfo(null); setReclasCuenta(''); setReclasMotivo('');
   },
   onError: (e) => toast.error(`No se pudo corregir la cuenta: ${e.message}`),
@@ -472,9 +476,16 @@ className="pl-9"
         <span className="font-semibold">{reclasInfo.concept}</span> — {formatCurrency(reclasInfo.amount)}
       </p>
       <p className="text-xs text-gray-500">
-        El vale no cambia (monto, fecha, método). Solo se corrige de qué caja o banco salió el dinero;
+        El vale no cambia (monto, fecha, concepto). Solo se corrige de qué caja o banco salió el dinero;
         los saldos se recalculan al instante y la corrección queda en las notas del egreso y en Auditoría.
+        {reclasInfo.payroll_item_id ? ' El recibo de nómina se actualiza con la misma fuente de pago.' : ''}
+        {reclasInfo.cxp_payment_id ? ' El abono de Cuentas por Pagar se actualiza igual.' : ''}
       </p>
+      {reclasCuenta && esCaja(reclasCuenta) !== (reclasInfo.payment_method === 'efectivo') && (
+        <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+          El método cambiará de <b>{reclasInfo.payment_method}</b> a <b>{esCaja(reclasCuenta) ? 'efectivo' : 'transferencia'}</b>.
+        </p>
+      )}
       <div className="text-sm">
         <span className="text-gray-500">Salió de:</span> <span className="font-medium">{reclasInfo.account || '(sin cuenta)'}</span>
       </div>
