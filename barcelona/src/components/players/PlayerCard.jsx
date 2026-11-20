@@ -6,6 +6,7 @@ import { Edit, Trash2, Phone, Mail, Calendar, DollarSign, CheckCircle, AlertCirc
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { becaPct, becaMotivoLabel } from '@/lib/financeEngine';
+import { PhoneLink } from '../lib/whatsapp';
 
 export default function PlayerCard({ player, payments, onEdit, onDelete, onPauses, isPaused = false }) {
   const currentMonth = format(new Date(), 'MMMM yyyy', { locale: es });
@@ -65,8 +66,7 @@ export default function PlayerCard({ player, payments, onEdit, onDelete, onPause
           <div className="bg-gray-50 p-3 rounded-lg space-y-2">
             <p className="font-semibold text-gray-900 text-sm">{player.parent_name}</p>
             <div className="flex items-center gap-2 text-xs text-gray-600">
-              <Phone className="w-3 h-3" />
-              <span>{player.parent_phone}</span>
+              <PhoneLink phone={player.parent_phone} />
             </div>
             {player.parent_email && (
               <div className="flex items-center gap-2 text-xs text-gray-600">
