@@ -15,7 +15,9 @@ import {
 import { format, subMonths } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { formatCurrency } from '../lib/formatCurrency';
-import { PhoneLink } from '../lib/whatsapp';
+import { PhoneLink, waLink, mensajeEstadoCuenta } from '../lib/whatsapp';
+import { logAudit } from '../lib/auditLogger';
+import { MessageCircle } from 'lucide-react';
 import { calculateMoratorio, getSeasonAdjustment, getCurrentSeason, getPauseAdjustment, isPausedOn, becaPct, becaMotivoLabel } from '../../lib/financeEngine';
 import jsPDF from 'jspdf';
 import * as XLSX from 'xlsx';
@@ -653,6 +655,22 @@ export default function PlayerUnifiedDebt({
                       </p>
                       <p className="text-xs text-gray-400">{sections.length} sección(es)</p>
                     </div>
+                    {totalDebt > 0 && (() => {
+                      const href = waLink(player.parent_phone, mensajeEstadoCuenta({ player, sections, totalDebt }));
+                      return (
+                        <Button size="sm" variant="outline" disabled={!href}
+                          title={href ? 'Abrir WhatsApp con el estado de cuenta listo para enviar' : 'Teléfono del tutor no válido para WhatsApp'}
+                          className="border-green-300 text-green-700 hover:bg-green-50 gap-1.5"
+                          onClick={() => {
+                            if (!href) return;
+                            window.open(href, '_blank', 'noopener,noreferrer');
+                            logAudit({ action: 'ESTADO DE CUENTA (WhatsApp)', module: 'Pagos', entityType: 'Player', entityId: player.id, entityName: player.full_name,
+                              monetaryDiff: totalDebt, details: `Estado de cuenta enviado por WhatsApp al tutor ${player.parent_name || ''} (${player.parent_phone || ''}). Pendiente: ${formatCurrency(totalDebt)}` });
+                          }}>
+                          <MessageCircle className="w-3.5 h-3.5" /> Estado de cuenta
+                        </Button>
+                      );
+                    })()}
                     {totalDebt > 0 && onPagoGeneral && (
                       <Button size="sm" className="bg-blue-600 hover:bg-blue-700 gap-1.5" onClick={() => onPagoGeneral({ player, debts: { sections } })}>
                         <Wallet className="w-3.5 h-3.5" /> Pago General
