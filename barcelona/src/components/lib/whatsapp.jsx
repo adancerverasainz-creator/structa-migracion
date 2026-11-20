@@ -48,3 +48,31 @@ export function PhoneLink({ phone, text = '', className = '', iconClass = 'w-3 h
     </a>
   );
 }
+
+const money = (n) => `$${Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+/**
+ * Texto del estado de cuenta para WhatsApp a partir de las secciones de Deuda Unificada
+ * (solo conceptos pendientes). Formato de WhatsApp: *negritas*, un concepto por línea.
+ */
+export function mensajeEstadoCuenta({ player, sections = [], totalDebt = 0, clubName = 'Barcelona Inter Academy', fecha = new Date() }) {
+  const nombrePadre = (player?.parent_name || '').trim().split(' ')[0];
+  const lineas = [];
+  lineas.push(`Hola${nombrePadre ? ' ' + nombrePadre : ''}, le saludamos de *${clubName}*.`);
+  lineas.push(`Le compartimos el estado de cuenta de *${player?.full_name || ''}*${player?.category ? ` (${player.category})` : ''} al ${fecha.toLocaleDateString('es-MX')}:`);
+  lineas.push('');
+  for (const sec of sections) {
+    const pend = (sec.items || []).filter(i => (i.pending || 0) > 0);
+    if (!pend.length) continue;
+    lineas.push(`*${sec.title}*`);
+    for (const it of pend) {
+      const extra = it.moratorio > 0 ? ` (incluye recargo ${money(it.moratorio)})` : '';
+      lineas.push(`• ${it.label}: ${money(it.pending)}${extra}`);
+    }
+    lineas.push('');
+  }
+  lineas.push(`*Total pendiente: ${money(totalDebt)}*`);
+  lineas.push('');
+  lineas.push('Puede pagar en la academia (efectivo) o por transferencia; con gusto le enviamos los datos bancarios. Si ya realizó su pago, por favor ignore este mensaje y compártanos el comprobante. ¡Gracias!');
+  return lineas.join('\n');
+}
