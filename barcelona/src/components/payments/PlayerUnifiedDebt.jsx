@@ -549,8 +549,8 @@ export default function PlayerUnifiedDebt({
   return (
     <div className="space-y-4">
       {/* Controls */}
-      <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
-        <div className="flex flex-col sm:flex-row gap-3 flex-1">
+      <div className="flex flex-wrap gap-3 items-center justify-between">
+        <div className="flex flex-wrap gap-3 items-center">
           <div className="flex items-center gap-2">
             <Calendar className="w-5 h-5 text-gray-500" />
             <Select value={selectedMonth} onValueChange={setSelectedMonth}>
@@ -566,13 +566,13 @@ export default function PlayerUnifiedDebt({
           </div>
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <Input placeholder="Buscar jugador, padre o categoría..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9 w-64" />
+            <Input placeholder="Buscar jugador, padre o categoría..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9 w-56" />
           </div>
           {/* Cartera por temporada */}
-          <div className="flex rounded-lg border border-gray-300 overflow-hidden text-sm font-medium">
-            {[['activa', `Temporada ${temporadaActivaLabel}`], ['anteriores', 'Anteriores'], ['todo', 'Todo']].map(([k, lbl]) => (
-              <button key={k} onClick={() => setTemporadaFiltro(k)}
-                className={`px-3 py-1.5 ${temporadaFiltro === k ? 'bg-gray-800 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
+          <div className="flex rounded-lg border border-gray-300 overflow-hidden text-sm font-medium shrink-0">
+            {[['activa', temporadaActivaLabel], ['anteriores', 'Anteriores'], ['todo', 'Todo']].map(([k, lbl]) => (
+              <button key={k} onClick={() => setTemporadaFiltro(k)} title={k === 'activa' ? `Temporada activa ${temporadaActivaLabel}` : k === 'anteriores' ? 'Cartera de temporadas anteriores' : 'Toda la cartera'}
+                className={`px-3 py-1.5 whitespace-nowrap ${temporadaFiltro === k ? 'bg-gray-800 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
                 {lbl}
               </button>
             ))}
@@ -580,7 +580,7 @@ export default function PlayerUnifiedDebt({
           {/* Toggle all/debtors */}
           <button
             onClick={() => setShowAll(v => !v)}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm font-medium transition-colors ${
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm font-medium whitespace-nowrap shrink-0 transition-colors ${
               showAll
                 ? 'bg-blue-600 text-white border-blue-600'
                 : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
@@ -591,10 +591,10 @@ export default function PlayerUnifiedDebt({
           </button>
         </div>
         {visibleDebts.length > 0 && (
-          <div className="flex items-center gap-3">
-            <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer" title="Por defecto el estado de cuenta por WhatsApp lleva solo la temporada activa">
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer whitespace-nowrap" title="Por defecto el estado de cuenta por WhatsApp lleva solo la temporada activa; marca para incluir también las anteriores">
               <input type="checkbox" checked={incluirAnterioresWA} onChange={e => setIncluirAnterioresWA(e.target.checked)} />
-              WhatsApp: incluir temporadas anteriores
+              WhatsApp con anteriores
             </label>
             <Button onClick={exportXLSX} variant="outline" size="sm" className="gap-2 border-green-300 text-green-700 hover:bg-green-50">
               <FileDown className="w-4 h-4" /> Excel
