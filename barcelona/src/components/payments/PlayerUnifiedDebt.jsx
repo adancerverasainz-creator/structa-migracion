@@ -15,6 +15,7 @@ import {
 import { format, subMonths } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { formatCurrency } from '../lib/formatCurrency';
+import { PhoneLink } from '../lib/whatsapp';
 import { calculateMoratorio, getSeasonAdjustment, getCurrentSeason, getPauseAdjustment, isPausedOn, becaPct, becaMotivoLabel } from '../../lib/financeEngine';
 import jsPDF from 'jspdf';
 import * as XLSX from 'xlsx';
@@ -636,7 +637,7 @@ export default function PlayerUnifiedDebt({
                       <div className="bg-gray-50 p-2 rounded mt-1.5 space-y-0.5 text-xs">
                         <p className="font-semibold">{player.parent_name}</p>
                         <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-gray-600">
-                          <span className="flex items-center gap-1"><Phone className="w-3 h-3" />{player.parent_phone}</span>
+                          <PhoneLink phone={player.parent_phone} />
                           {player.parent_email && <span className="flex items-center gap-1"><Mail className="w-3 h-3" />{player.parent_email}</span>}
                           <span className="flex items-center gap-1"><DollarSign className="w-3 h-3" />Cuota: {formatCurrency(player.monthly_fee || 0)}</span>
                         </div>
