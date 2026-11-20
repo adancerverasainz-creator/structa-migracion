@@ -10,6 +10,7 @@ import { format, startOfMonth, endOfMonth } from 'date-fns';
 import { es } from 'date-fns/locale';
 import FinancialSummary from '../components/FinancialSummary';
 import { formatCurrency } from '../components/lib/formatCurrency';
+import { PhoneLink } from '../components/lib/whatsapp';
 import { Badge } from '@/components/ui/badge';
 import KPICard from '../components/layout/KPICard';
 
@@ -904,7 +905,7 @@ Padres Morosos Este Mes
 <div key={player.id} className="flex items-center justify-between p-3 bg-red-50 rounded-lg border border-red-200">
 <div className="flex-1">
 <p className="font-medium text-gray-900">{player.full_name}</p>
-<p className="text-xs text-gray-600">{player.parent_name} - {player.parent_phone}</p>
+<p className="text-xs text-gray-600">{player.parent_name} - <PhoneLink phone={player.parent_phone} showIcon={false} /></p>
 </div>
 <span className="text-sm font-bold text-red-600">{formatCurrency(player.monthly_fee)}</span>
 </div>
