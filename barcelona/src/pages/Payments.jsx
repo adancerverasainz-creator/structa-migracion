@@ -769,6 +769,7 @@ isLoading={playersLoading || paymentsLoading}
 onAbonar={handlePay}
 onAbonarTorneo={(info) => setPaymentConfig({ type: 'torneo', player: info.player, debtInfo: info })}
 onPagoGeneral={(info) => setPagoGeneralInfo(info)}
+onCondonar={isAdmin ? (player, month, amount, extra = {}) => setCondonarInfo({ player, month, amount, kind: extra.kind || 'mensualidad', label: extra.label || month, tournament_id: extra.tournament_id || null }) : undefined}
 />
 </TabsContent>
 </Tabs>
