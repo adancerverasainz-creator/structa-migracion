@@ -13,6 +13,7 @@ import { calculateMoratorio, getSeasonAdjustment, getPauseAdjustment, getCurrent
 import { format, subMonths, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { formatCurrency } from '../lib/formatCurrency';
+import { PhoneLink } from '../lib/whatsapp';
 import jsPDF from 'jspdf';
 import * as XLSX from 'xlsx';
 import { exportarPDF, exportarExcel } from '../lib/exportListado';
@@ -451,8 +452,7 @@ export default function DebtorsList({ players, payments, isLoading, tournamentPa
                         <p className="font-semibold text-gray-800 text-sm">{player.parent_name}</p>
                         <div className="flex flex-wrap gap-4 text-sm">
                           <div className="flex items-center gap-2 text-gray-600">
-                            <Phone className="w-4 h-4 text-blue-600" />
-                            <a href={`tel:${player.parent_phone}`} className="hover:text-blue-600">{player.parent_phone}</a>
+                            <PhoneLink phone={player.parent_phone} iconClass="w-4 h-4" />
                           </div>
                           {player.parent_email && (
                             <div className="flex items-center gap-2 text-gray-600">
@@ -611,10 +611,7 @@ export default function DebtorsList({ players, payments, isLoading, tournamentPa
                       <p className="font-semibold text-gray-900">{player.parent_name}</p>
                       <div className="flex flex-wrap gap-4 text-sm">
                         <div className="flex items-center gap-2 text-gray-600">
-                          <Phone className="w-4 h-4 text-blue-600" />
-                          <a href={`tel:${player.parent_phone}`} className="hover:text-blue-600">
-                            {player.parent_phone}
-                          </a>
+                          <PhoneLink phone={player.parent_phone} iconClass="w-4 h-4" />
                         </div>
                         {player.parent_email && (
                           <div className="flex items-center gap-2 text-gray-600">
@@ -759,8 +756,7 @@ export default function DebtorsList({ players, payments, isLoading, tournamentPa
                         <p className="font-semibold text-gray-800 text-sm">{item.player.parent_name}</p>
                         <div className="flex flex-wrap gap-4 text-sm">
                           <div className="flex items-center gap-2 text-gray-600">
-                            <Phone className="w-4 h-4 text-blue-600" />
-                            <a href={`tel:${item.player.parent_phone}`} className="hover:text-blue-600">{item.player.parent_phone}</a>
+                            <PhoneLink phone={item.player.parent_phone} iconClass="w-4 h-4" />
                           </div>
                           {item.player.parent_email && (
                             <div className="flex items-center gap-2 text-gray-600">
