@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Pencil, Trash2, Search, UserPlus, CreditCard, Phone, User } from 'lucide-react';
+import { PhoneLink } from '../lib/whatsapp';
 
 export default function ExternalPlayersList({ players, payments, isLoading, onEdit, onDelete, onRegisterPayment }) {
   const [search, setSearch] = useState('');
@@ -78,9 +79,7 @@ export default function ExternalPlayersList({ players, payments, isLoading, onEd
 
                 <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between gap-2">
                   <div className="flex items-center gap-3 text-xs text-gray-500">
-                    <span className="flex items-center gap-1">
-                      <Phone className="w-3 h-3" /> {player.parent_phone}
-                    </span>
+                    <PhoneLink phone={player.parent_phone} />
                     {payCount > 0 && (
                       <span className="text-green-600 font-medium">{payCount} pago{payCount > 1 ? 's' : ''} · ${totalPaid.toLocaleString()}</span>
                     )}
