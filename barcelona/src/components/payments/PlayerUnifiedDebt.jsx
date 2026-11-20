@@ -656,16 +656,19 @@ export default function PlayerUnifiedDebt({
                       <p className="text-xs text-gray-400">{sections.length} sección(es)</p>
                     </div>
                     {totalDebt > 0 && (() => {
-                      const href = waLink(player.parent_phone, mensajeEstadoCuenta({ player, sections, totalDebt }));
+                      const telValido = !!waLink(player.parent_phone);
                       return (
-                        <Button size="sm" variant="outline" disabled={!href}
-                          title={href ? 'Abrir WhatsApp con el estado de cuenta listo para enviar' : 'Teléfono del tutor no válido para WhatsApp'}
+                        <Button size="sm" variant="outline" disabled={!telValido}
+                          title={telValido ? 'Abrir WhatsApp con el estado de cuenta listo para enviar' : 'Teléfono del tutor no válido para WhatsApp'}
                           className="border-green-300 text-green-700 hover:bg-green-50 gap-1.5"
                           onClick={() => {
+                            // El mensaje se arma al momento del clic (datos vigentes) y se abre en WhatsApp Web;
+                            // el envío real lo confirma el usuario dentro de WhatsApp.
+                            const href = waLink(player.parent_phone, mensajeEstadoCuenta({ player, sections, totalDebt }));
                             if (!href) return;
                             window.open(href, '_blank', 'noopener,noreferrer');
                             logAudit({ action: 'ESTADO DE CUENTA (WhatsApp)', module: 'Pagos', entityType: 'Player', entityId: player.id, entityName: player.full_name,
-                              monetaryDiff: totalDebt, details: `Estado de cuenta enviado por WhatsApp al tutor ${player.parent_name || ''} (${player.parent_phone || ''}). Pendiente: ${formatCurrency(totalDebt)}` });
+                              monetaryDiff: totalDebt, details: `Estado de cuenta abierto en WhatsApp para el tutor ${player.parent_name || ''} (${player.parent_phone || ''}). Pendiente: ${formatCurrency(totalDebt)}` });
                           }}>
                           <MessageCircle className="w-3.5 h-3.5" /> Estado de cuenta
                         </Button>
