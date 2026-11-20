@@ -20,6 +20,7 @@ import PagoGeneralModal from '../components/payments/PagoGeneralModal';
 import { formatCurrency } from '../components/lib/formatCurrency';
 import { logAudit } from '../components/lib/auditLogger';
 import { imprimirVale, folioVale, cuentaLegible } from '../components/print/PrintVale';
+import { getCurrentSeason } from '@/lib/financeEngine';
 
 export default function Payments() {
 const { canDelete } = usePerms('payments');
@@ -54,6 +55,26 @@ queryFn: () => base44.entities.ClubSetting.list(),
 const lateFeeSettings = clubSettings.find(cs => cs.key === 'late_fee')?.value || null;
 const seasonCalendar = clubSettings.find(cs => cs.key === 'season_calendar')?.value || null;
 const feesConfig = clubSettings.find(cs => cs.key === 'fees')?.value || null;
+// Temporadas para corregir inscripciones (regla del club: inicio configurable, default agosto)
+const currentSeasonLabel = getCurrentSeason(new Date(), feesConfig?.season_start_month ?? 8);
+const prevSeasonLabel = `${parseInt(currentSeasonLabel) - 1}-${parseInt(currentSeasonLabel)}`;
+const nextSeasonLabel = `${parseInt(currentSeasonLabel) + 1}-${parseInt(currentSeasonLabel) + 2}`;
+const [temporadaInfo, setTemporadaInfo] = useState(null); // cobro de inscripción cuya temporada se corrige
+const [temporadaNueva, setTemporadaNueva] = useState('');
+const [temporadaMotivo, setTemporadaMotivo] = useState('');
+const temporadaMutation = useMutation({
+mutationFn: async ({ payment, temporada, motivo }) => {
+const { data, error } = await supabase.rpc('reclasificar_temporada_inscripcion', { p_payment_id: payment.id, p_temporada: temporada, p_motivo: motivo });
+if (error) throw new Error(error.message);
+return data;
+},
+onSuccess: (res) => {
+queryClient.invalidateQueries({ queryKey: ['payments'] });
+toast.success(`Temporada corregida: ${res?.de || '—'} → ${res?.a}`);
+setTemporadaInfo(null); setTemporadaNueva(''); setTemporadaMotivo('');
+},
+onError: (e) => toast.error(`No se pudo corregir la temporada: ${e.message}`),
+});
 
 const { data: saldosCuentas = [] } = useQuery({
 queryKey: ['saldosPorCuenta'],
@@ -719,6 +740,7 @@ payments={payments}
 players={players}
 isLoading={paymentsLoading || playersLoading}
 onReverse={(p) => { setReversarInfo(p); setMotivoReverso(''); }}
+onReclasificarTemporada={(p) => { setTemporadaInfo(p); setTemporadaNueva(p.month === currentSeasonLabel ? prevSeasonLabel : currentSeasonLabel); setTemporadaMotivo(''); }}
 currentUserEmail={currentUser?.email}
 isAdmin={isAdmin}
 />
@@ -773,6 +795,40 @@ onCondonar={isAdmin ? (player, month, amount, extra = {}) => setCondonarInfo({ p
 />
 </TabsContent>
 </Tabs>
+
+{/* Modal Corregir temporada de inscripción (admin) */}
+{temporadaInfo && (
+<div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+<div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6 space-y-4">
+<h3 className="text-lg font-bold text-gray-900">Corregir temporada de la inscripción</h3>
+<p className="text-sm text-gray-600">
+{(players.find(p => p.id === temporadaInfo.player_id)?.full_name) || 'Jugador'} — {temporadaInfo.payment_type} — <span className="font-bold text-red-600">{formatCurrency(temporadaInfo.amount)}</span>
+</p>
+<p className="text-xs text-gray-500">El vale no cambia (monto, fecha, método, banco). Solo se corrige a qué temporada aplica el cobro; la deuda de inscripción se recalcula al instante y la corrección queda en las notas del cobro y en Auditoría.</p>
+<div className="text-sm"><span className="text-gray-500">Temporada actual del cobro:</span> <span className="font-medium">{temporadaInfo.month || '(sin temporada)'}</span></div>
+<label className="text-sm block space-y-1">
+<span className="text-gray-500">Debe aplicar a:</span>
+<select className="w-full border rounded-md p-2 text-sm bg-white" value={temporadaNueva} onChange={(e) => setTemporadaNueva(e.target.value)}>
+{[prevSeasonLabel, currentSeasonLabel, nextSeasonLabel].filter(t => t !== temporadaInfo.month).map(t => <option key={t} value={t}>{t}{t === currentSeasonLabel ? ' (activa)' : ''}</option>)}
+</select>
+</label>
+<textarea
+className="w-full border rounded-md p-2 text-sm"
+rows={3}
+value={temporadaMotivo}
+onChange={(e) => setTemporadaMotivo(e.target.value)}
+placeholder="Motivo (obligatorio, mínimo 5 caracteres). Ej. 'Se capturó en 2025-2026 por error; es la reinscripción 2026-2027'"
+/>
+<div className="flex justify-end gap-2">
+<Button variant="outline" disabled={temporadaMutation.isPending} onClick={() => { setTemporadaInfo(null); setTemporadaNueva(''); setTemporadaMotivo(''); }}>Cancelar</Button>
+<Button className="bg-blue-600 hover:bg-blue-700" disabled={temporadaMutation.isPending || !temporadaNueva || temporadaMotivo.trim().length < 5}
+onClick={() => temporadaMutation.mutate({ payment: temporadaInfo, temporada: temporadaNueva, motivo: temporadaMotivo.trim() })}>
+{temporadaMutation.isPending ? 'Corrigiendo…' : 'Confirmar corrección'}
+</Button>
+</div>
+</div>
+</div>
+)}
 
 {/* Modal Reversar Pago (storno #80) */}
 {reversarInfo && (
