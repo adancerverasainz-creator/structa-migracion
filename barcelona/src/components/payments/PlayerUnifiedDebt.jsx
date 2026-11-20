@@ -40,7 +40,7 @@ const monthNames = ['enero','febrero','marzo','abril','mayo','junio','julio','ag
 export default function PlayerUnifiedDebt({
   players, payments, tournamentPayments, tournaments, tournamentAttendees,
   summerCampPayments, onAbonar, onAbonarTorneo, onPagoGeneral, isLoading
-, lateFeeSettings = null, debtWaivers = [], seasonCalendar = null, feesConfig = null, playerPauses = []}) {
+, lateFeeSettings = null, debtWaivers = [], seasonCalendar = null, feesConfig = null, playerPauses = [], onCondonar }) {
   const monthOptions = getMonthOptions();
   const [selectedMonth, setSelectedMonth] = useState(monthOptions[0]?.value || '');
   const [search, setSearch] = useState('');
@@ -60,6 +60,14 @@ export default function PlayerUnifiedDebt({
   const currentYear = now.getFullYear();
   // Temporada vigente (inicio configurable en Configuración → Precios; default agosto)
   const currentSeason = getCurrentSeason(now, feesConfig?.season_start_month ?? 8);
+  // Clave de condonación (debt_waivers.month) por tipo de concepto — misma convención que Morosos.
+  // Uniformes y Summer Camp son registros de pago con saldo, no deuda generada: no se condonan aquí.
+  const condonarKeyDe = (section, item) => {
+    if (section.id === 'mensualidad') return item.month || null;
+    if (section.id === 'inscripcion') return `inscripcion:${currentSeason}`;
+    if (section.id === 'torneos' && item.tournament_id) return `torneo:${item.tournament_id}`;
+    return null;
+  };
 
   const selectedOption = monthOptions.find(o => o.value === selectedMonth) || monthOptions[0];
   const [selMonthName, selYear] = (selectedOption?.value || '').split(' ');
@@ -731,9 +739,22 @@ export default function PlayerUnifiedDebt({
                                   </div>
                                 </div>
                                 {item.pending > 0 && (
-                                  <Button size="sm" className="bg-green-600 hover:bg-green-700 gap-1.5 shrink-0" onClick={() => handleAbonar(player, item)}>
-                                    <PlusCircle className="w-3.5 h-3.5" /> Pagar
-                                  </Button>
+                                  <div className="flex items-center gap-2 shrink-0">
+                                    {onCondonar && condonarKeyDe(section, item) && (
+                                      <Button size="sm" variant="outline" className="border-purple-300 text-purple-700 hover:bg-purple-50 gap-1"
+                                        title="Condonar este concepto (solo administrador; queda en Auditoría)"
+                                        onClick={() => onCondonar(player, condonarKeyDe(section, item), item.pending, {
+                                          kind: section.id === 'mensualidad' ? 'mensualidad' : section.id === 'inscripcion' ? 'inscripcion' : 'torneo',
+                                          label: section.id === 'mensualidad' ? item.label : `${section.title}: ${item.label}`,
+                                          tournament_id: item.tournament_id || null,
+                                        })}>
+                                        Condonar
+                                      </Button>
+                                    )}
+                                    <Button size="sm" className="bg-green-600 hover:bg-green-700 gap-1.5" onClick={() => handleAbonar(player, item)}>
+                                      <PlusCircle className="w-3.5 h-3.5" /> Pagar
+                                    </Button>
+                                  </div>
                                 )}
                               </div>
                             ))}
