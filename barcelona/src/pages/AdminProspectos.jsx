@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { waLink } from '../components/lib/whatsapp';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Card, CardContent } from '@/components/ui/card';
@@ -39,11 +40,6 @@ const EMPTY_PROGRAM = { name: '', description: '', link: '', status: 'activo', s
 const APP_ID = '69829604916b5b78a01842a3';
 const generateFormLink = (programId) => `${window.location.origin}/registro?programa=${programId}`;
 // WhatsApp directo al tutor: normaliza el número y antepone lada de México (52) si son 10 dígitos
-const waLink = (phone) => {
-  let d = String(phone || '').replace(/\D/g, '');
-  if (d.length === 10) d = '52' + d;
-  return `https://wa.me/${d}`;
-};
 
 
 
