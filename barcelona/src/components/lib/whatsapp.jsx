@@ -73,6 +73,8 @@ export function mensajeEstadoCuenta({ player, sections = [], totalDebt = 0, club
   }
   lineas.push(`*Total pendiente: ${money(totalDebt)}*`);
   lineas.push('');
+  lineas.push('Le recordamos que, de acuerdo con el reglamento de la academia, con *2 mensualidades pendientes* el jugador no podrá entrenar ni jugar partidos hasta regularizar su situación.');
+  lineas.push('');
   lineas.push('Puede pagar en la academia (efectivo) o por transferencia; con gusto le enviamos los datos bancarios. Si ya realizó su pago, por favor ignore este mensaje y compártanos el comprobante. ¡Gracias!');
   return lineas.join('\n');
 }
