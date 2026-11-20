@@ -73,6 +73,20 @@ export default function PlayerUnifiedDebt({
   const [selMonthName, selYear] = (selectedOption?.value || '').split(' ');
   const selMonthIndex = monthNames.indexOf(selMonthName?.toLowerCase());
   const selectedMonthDate = selMonthIndex >= 0 ? new Date(parseInt(selYear), selMonthIndex, 1) : now;
+  // Inicio de la temporada a la que pertenece el mes seleccionado (regla del club: inicio configurable, default agosto)
+  const seasonStartMonth = feesConfig?.season_start_month ?? 8;
+  const seasonStartDate = useMemo(() => {
+    const y = selectedMonthDate.getFullYear();
+    return (selectedMonthDate.getMonth() + 1) >= seasonStartMonth
+      ? new Date(y, seasonStartMonth - 1, 1)
+      : new Date(y - 1, seasonStartMonth - 1, 1);
+  }, [selectedMonthDate.getTime(), seasonStartMonth]);
+  const temporadaActivaLabel = getCurrentSeason(selectedMonthDate, seasonStartMonth);
+  // Filtro de cartera: 'activa' (operación semanal), 'anteriores' (cartera vencida por revisar) o 'todo'
+  const [temporadaFiltro, setTemporadaFiltro] = useState('activa');
+  const [incluirAnterioresWA, setIncluirAnterioresWA] = useState(false);
+  const deudaVisible = (d) => temporadaFiltro === 'activa' ? d.debtActual : temporadaFiltro === 'anteriores' ? d.debtAnterior : d.totalDebt;
+  const itemVisible = (it) => temporadaFiltro === 'todo' || (temporadaFiltro === 'activa' ? it.temporadaActiva : !it.temporadaActiva);
 
   // ── Calculate consolidated view for ALL active players ──
   const allPlayerDebts = useMemo(() => {
@@ -251,6 +265,7 @@ export default function PlayerUnifiedDebt({
           monthsLate,
           payment_type: 'mensualidad',
           month: mKey,
+          periodo: new Date(genCursor.getFullYear(), genCursor.getMonth(), 1),
           status: basePending <= 0 ? 'pagado' : 'pendiente',
         });
 
@@ -333,6 +348,7 @@ export default function PlayerUnifiedDebt({
             pending: pendingAmt,
             payment_type: 'uniformes',
             month: 'uniformes',
+            periodo: up.payment_date ? new Date(String(up.payment_date).slice(0, 10) + 'T00:00:00') : null,
             existingPaymentId: isPending ? up.id : null,
             status: up.status,
           };
@@ -378,6 +394,7 @@ export default function PlayerUnifiedDebt({
           isTournament: true,
           tournament_id: tournament.id,
           tournament_name: tournament.name,
+          periodo: tournament.date ? new Date(String(tournament.date).slice(0, 10) + 'T00:00:00') : null,
           registration_fee: fee,
           status: pending <= 0 ? 'pagado' : 'pendiente',
         });
@@ -411,6 +428,7 @@ export default function PlayerUnifiedDebt({
           paid: sc.status === 'pagado' ? sc.amount : (sc.paid_amount || 0),
           pending: sc.status === 'pagado' ? 0 : Math.max(0, (sc.amount || 0) - (sc.paid_amount || 0)),
           payment_type: `summer_${sc.payment_type}`,
+          periodo: sc.payment_date ? new Date(String(sc.payment_date).slice(0, 10) + 'T00:00:00') : null,
           status: sc.status,
         }));
         const scPending = scItems.reduce((s, i) => s + i.pending, 0);
@@ -431,17 +449,27 @@ export default function PlayerUnifiedDebt({
       }
 
       if (sections.length > 0) {
-        results.push({ player: p, sections, totalDebt: totalPending, totalPaid, pausedNow: isPausedOn(new Date(), pausesIdx.get(p.id)) });
+        // Cartera por antigüedad: temporada activa (desde su mes de inicio) vs. temporadas anteriores.
+        // Sin periodo (inscripción de la temporada vigente) = activa.
+        let debtActual = 0, debtAnterior = 0;
+        for (const sec of sections) {
+          for (const it of sec.items) {
+            it.temporadaActiva = !it.periodo || it.periodo >= seasonStartDate;
+            if (it.pending > 0) { if (it.temporadaActiva) debtActual += it.pending; else debtAnterior += it.pending; }
+          }
+        }
+        results.push({ player: p, sections, totalDebt: totalPending, debtActual, debtAnterior, totalPaid, pausedNow: isPausedOn(new Date(), pausesIdx.get(p.id)) });
       }
     }
 
     results.sort((a, b) => b.totalDebt - a.totalDebt);
     return results;
-  }, [players, payments, tournamentPayments, tournaments, tournamentAttendees, summerCampPayments, selectedMonthDate, currentSeason, debtWaivers, lateFeeSettings, seasonCalendar, feesConfig, playerPauses, feeHistory]);
+  }, [players, payments, tournamentPayments, tournaments, tournamentAttendees, summerCampPayments, selectedMonthDate, currentSeason, debtWaivers, lateFeeSettings, seasonCalendar, feesConfig, playerPauses, feeHistory, seasonStartDate]);
 
   // Filter: show all OR only with debt
   const visibleDebts = useMemo(() => {
-    let list = showAll ? allPlayerDebts : allPlayerDebts.filter(d => d.totalDebt > 0);
+    let list = showAll ? allPlayerDebts : allPlayerDebts.filter(d => deudaVisible(d) > 0);
+    list = [...list].sort((a, b) => deudaVisible(b) - deudaVisible(a));
     if (!search.trim()) return list;
     const term = search.toLowerCase();
     return list.filter(d =>
@@ -449,10 +477,14 @@ export default function PlayerUnifiedDebt({
       d.player.parent_name?.toLowerCase().includes(term) ||
       d.player.category?.toLowerCase().includes(term)
     );
-  }, [allPlayerDebts, search, showAll]);
+  }, [allPlayerDebts, search, showAll, temporadaFiltro]);
 
-  const totalDebtors = allPlayerDebts.filter(d => d.totalDebt > 0).length;
-  const grandTotalDebt = allPlayerDebts.filter(d => d.totalDebt > 0).reduce((sum, d) => sum + d.totalDebt, 0);
+  // Operación semanal: morosos y deuda de la TEMPORADA ACTIVA. La cartera anterior se muestra aparte.
+  const totalDebtors = allPlayerDebts.filter(d => d.debtActual > 0).length;
+  const grandTotalDebt = allPlayerDebts.reduce((sum, d) => sum + d.debtActual, 0);
+  const anterioresDebtors = allPlayerDebts.filter(d => d.debtAnterior > 0).length;
+  const grandTotalAnterior = allPlayerDebts.reduce((sum, d) => sum + d.debtAnterior, 0);
+  const grandTotalTodo = grandTotalDebt + grandTotalAnterior;
   const grandTotalPaid = allPlayerDebts.reduce((sum, d) => sum + d.totalPaid, 0);
 
   const selectedMonthLabel = (() => {
@@ -499,12 +531,13 @@ export default function PlayerUnifiedDebt({
   const exportXLSX = () => {
     const wsData = [
       [`Barcelona Inter Academy — Deuda Unificada — ${selectedMonthLabel}`],
-      [`Jugadores con deuda: ${totalDebtors}`, `Deuda total: ${formatCurrency(grandTotalDebt)}`],
+      [`Morosos temporada ${temporadaActivaLabel}: ${totalDebtors}`, `Deuda temporada activa: ${formatCurrency(grandTotalDebt)}`, `Temporadas anteriores: ${formatCurrency(grandTotalAnterior)} (${anterioresDebtors} jugadores)`, `Vista: ${temporadaFiltro}`],
       [],
-      ['Jugador', 'Categoría', 'Padre', 'Teléfono', 'Email', 'Mensualidad', 'Torneos', 'Uniformes', 'Inscripción', 'Summer Camp', 'Deuda Total'],
+      ['Jugador', 'Categoría', 'Estatus', 'Padre', 'Teléfono', 'Email', 'Mensualidad', 'Torneos', 'Uniformes', 'Inscripción', 'Summer Camp', `Deuda temporada ${temporadaActivaLabel}`, 'Deuda temporadas anteriores', 'Deuda total', 'Meses anteriores pendientes'],
       ...visibleDebts.map(d => {
-        const bySection = (id) => { const s = d.sections.find(sec => sec.id === id); return s ? s.items.reduce((sum, i) => sum + i.pending, 0) : 0; };
-        return [d.player.full_name, d.player.category || '-', d.player.parent_name, d.player.parent_phone, d.player.parent_email || '-', bySection('mensualidad'), bySection('torneos'), bySection('uniformes'), bySection('inscripcion'), bySection('summercamp'), d.totalDebt];
+        const bySection = (id) => { const s = d.sections.find(sec => sec.id === id); return s ? s.items.filter(itemVisible).reduce((sum, i) => sum + i.pending, 0) : 0; };
+        const mesesAnt = (d.sections.find(sec => sec.id === 'mensualidad')?.items || []).filter(i => !i.temporadaActiva && i.pending > 0).map(i => i.label).join(', ');
+        return [d.player.full_name, d.player.category || '-', d.player.status || '-', d.player.parent_name, d.player.parent_phone, d.player.parent_email || '-', bySection('mensualidad'), bySection('torneos'), bySection('uniformes'), bySection('inscripcion'), bySection('summercamp'), d.debtActual, d.debtAnterior, d.totalDebt, mesesAnt];
       }),
     ];
     const ws = XLSX.utils.aoa_to_sheet(wsData);
@@ -535,6 +568,15 @@ export default function PlayerUnifiedDebt({
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <Input placeholder="Buscar jugador, padre o categoría..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9 w-64" />
           </div>
+          {/* Cartera por temporada */}
+          <div className="flex rounded-lg border border-gray-300 overflow-hidden text-sm font-medium">
+            {[['activa', `Temporada ${temporadaActivaLabel}`], ['anteriores', 'Anteriores'], ['todo', 'Todo']].map(([k, lbl]) => (
+              <button key={k} onClick={() => setTemporadaFiltro(k)}
+                className={`px-3 py-1.5 ${temporadaFiltro === k ? 'bg-gray-800 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
+                {lbl}
+              </button>
+            ))}
+          </div>
           {/* Toggle all/debtors */}
           <button
             onClick={() => setShowAll(v => !v)}
@@ -549,7 +591,11 @@ export default function PlayerUnifiedDebt({
           </button>
         </div>
         {visibleDebts.length > 0 && (
-          <div className="flex gap-2">
+          <div className="flex items-center gap-3">
+            <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer" title="Por defecto el estado de cuenta por WhatsApp lleva solo la temporada activa">
+              <input type="checkbox" checked={incluirAnterioresWA} onChange={e => setIncluirAnterioresWA(e.target.checked)} />
+              WhatsApp: incluir temporadas anteriores
+            </label>
             <Button onClick={exportXLSX} variant="outline" size="sm" className="gap-2 border-green-300 text-green-700 hover:bg-green-50">
               <FileDown className="w-4 h-4" /> Excel
             </Button>
@@ -569,17 +615,30 @@ export default function PlayerUnifiedDebt({
                 {grandTotalDebt > 0 ? <AlertCircle className="w-6 h-6 text-white" /> : <CheckCircle2 className="w-6 h-6 text-white" />}
               </div>
               <div>
-                <p className="text-sm text-gray-600">Deuda Unificada — {selectedMonthLabel}</p>
+                <p className="text-sm text-gray-600">Deuda Unificada — {selectedMonthLabel} · Temporada {temporadaActivaLabel}</p>
                 <p className={`text-3xl font-bold ${grandTotalDebt > 0 ? 'text-red-600' : 'text-green-600'}`}>
                   {totalDebtors} {totalDebtors === 1 ? 'moroso' : 'morosos'}
                 </p>
+                <p className="text-xs text-gray-500">de la temporada activa</p>
               </div>
             </div>
             <div className="flex gap-6 text-right">
               <div>
-                <p className="text-xs text-gray-500">Deuda Total</p>
+                <p className="text-xs text-gray-500">Deuda temporada {temporadaActivaLabel}</p>
                 <p className={`text-2xl font-bold ${grandTotalDebt > 0 ? 'text-red-600' : 'text-green-600'}`}>{formatCurrency(grandTotalDebt)}</p>
               </div>
+              <button type="button" onClick={() => setTemporadaFiltro(temporadaFiltro === 'anteriores' ? 'activa' : 'anteriores')}
+                className={`rounded-lg px-3 py-1 text-right border ${temporadaFiltro === 'anteriores' ? 'bg-amber-100 border-amber-300' : 'bg-white/60 border-amber-200 hover:bg-amber-50'}`}
+                title="Cartera vencida de temporadas anteriores (por revisar: cobrar o condonar)">
+                <p className="text-xs text-amber-700">Temporadas anteriores · {anterioresDebtors} jugador(es)</p>
+                <p className="text-2xl font-bold text-amber-700">{formatCurrency(grandTotalAnterior)}</p>
+              </button>
+              {temporadaFiltro === 'todo' && (
+                <div>
+                  <p className="text-xs text-gray-500">Total cartera</p>
+                  <p className="text-2xl font-bold text-gray-700">{formatCurrency(grandTotalTodo)}</p>
+                </div>
+              )}
               {grandTotalPaid > 0 && (
                 <div>
                   <p className="text-xs text-gray-500">Total Cobrado</p>
@@ -615,7 +674,7 @@ export default function PlayerUnifiedDebt({
         </Card>
       ) : (
         <div className="space-y-3">
-          {visibleDebts.map(({ player, sections, totalDebt, totalPaid, pausedNow }) => (
+          {visibleDebts.map((d) => { const { player, sections, totalDebt, totalPaid, pausedNow } = d; return (
             <Card key={player.id} className={`border-2 ${totalDebt > 0 ? 'border-red-200 hover:border-red-300' : 'border-green-200 hover:border-green-300'} hover:shadow-lg transition-all`}>
               <CardContent className="pt-4 pb-3">
                 {/* Player Header */}
@@ -658,12 +717,18 @@ export default function PlayerUnifiedDebt({
                   <div className="flex items-center gap-3 shrink-0">
                     <div className="text-right">
                       {totalPaid > 0 && <p className="text-xs text-green-600">Abonado: {formatCurrency(totalPaid)}</p>}
-                      <p className={`text-xl font-bold ${totalDebt > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                        {totalDebt > 0 ? formatCurrency(totalDebt) : 'Sin deuda'}
+                      <p className={`text-xl font-bold ${deudaVisible(d) > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                        {deudaVisible(d) > 0 ? formatCurrency(deudaVisible(d)) : 'Sin deuda'}
                       </p>
+                      {temporadaFiltro === 'activa' && d.debtAnterior > 0 && (
+                        <p className="text-xs text-amber-700">+ {formatCurrency(d.debtAnterior)} de temporadas anteriores</p>
+                      )}
+                      {temporadaFiltro === 'anteriores' && d.debtActual > 0 && (
+                        <p className="text-xs text-red-500">+ {formatCurrency(d.debtActual)} de la temporada activa</p>
+                      )}
                       <p className="text-xs text-gray-400">{sections.length} sección(es)</p>
                     </div>
-                    {totalDebt > 0 && (() => {
+                    {(incluirAnterioresWA ? totalDebt : d.debtActual) > 0 && (() => {
                       const telValido = !!waLink(player.parent_phone);
                       return (
                         <Button size="sm" variant="outline" disabled={!telValido}
@@ -672,11 +737,13 @@ export default function PlayerUnifiedDebt({
                           onClick={() => {
                             // El mensaje se arma al momento del clic (datos vigentes) y se abre en WhatsApp Web;
                             // el envío real lo confirma el usuario dentro de WhatsApp.
-                            const href = waLink(player.parent_phone, mensajeEstadoCuenta({ player, sections, totalDebt }));
+                            const secs = sections.map(sec => ({ ...sec, items: sec.items.filter(it => it.temporadaActiva || incluirAnterioresWA) }));
+                            const total = incluirAnterioresWA ? totalDebt : d.debtActual;
+                            const href = waLink(player.parent_phone, mensajeEstadoCuenta({ player, sections: secs, totalDebt: total }));
                             if (!href) return;
                             window.open(href, '_blank', 'noopener,noreferrer');
                             logAudit({ action: 'ESTADO DE CUENTA (WhatsApp)', module: 'Pagos', entityType: 'Player', entityId: player.id, entityName: player.full_name,
-                              monetaryDiff: totalDebt, details: `Estado de cuenta abierto en WhatsApp para el tutor ${player.parent_name || ''} (${player.parent_phone || ''}). Pendiente: ${formatCurrency(totalDebt)}` });
+                              monetaryDiff: total, details: `Estado de cuenta abierto en WhatsApp para el tutor ${player.parent_name || ''} (${player.parent_phone || ''}). Pendiente: ${formatCurrency(total)}${incluirAnterioresWA ? ' (incluye temporadas anteriores)' : ' (solo temporada activa)'}` });
                           }}>
                           <MessageCircle className="w-3.5 h-3.5" /> Estado de cuenta
                         </Button>
@@ -694,8 +761,11 @@ export default function PlayerUnifiedDebt({
                 <Accordion type="multiple" defaultValue={sections.filter(s => s.items.some(i => i.pending > 0)).map(s => s.id)} className="space-y-2">
                   {sections.map((section) => {
                     const Icon = section.icon;
-                    const sectionPending = section.items.reduce((s, i) => s + i.pending, 0);
-                    const sectionPaid = section.items.reduce((s, i) => s + i.paid, 0);
+                    const itemsVisibles = section.items.filter(itemVisible);
+                    if (itemsVisibles.length === 0) return null;
+                    const sectionPending = itemsVisibles.reduce((s, i) => s + i.pending, 0);
+                    const sectionPaid = itemsVisibles.reduce((s, i) => s + i.paid, 0);
+                    const anterioresOcultos = temporadaFiltro === 'activa' ? section.items.filter(i => !i.temporadaActiva && i.pending > 0) : [];
                     return (
                       <AccordionItem key={section.id} value={section.id}
                         className={`border rounded-lg ${section.borderColor} ${section.bgColor} px-1`}>
@@ -714,8 +784,14 @@ export default function PlayerUnifiedDebt({
                         </AccordionTrigger>
                         <AccordionContent className="px-3 pb-3 pt-0">
                           <div className="space-y-2">
-                            {section.items.map((item, idx) => (
-                              <div key={idx} className={`flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 p-2.5 rounded-lg border ${item.status === 'pagado' ? 'bg-green-50 border-green-200' : 'bg-white border-gray-200'}`}>
+                            {anterioresOcultos.length > 0 && (
+                              <button type="button" onClick={() => setTemporadaFiltro('todo')}
+                                className="w-full text-left text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-1.5 hover:bg-amber-100">
+                                {anterioresOcultos.length} concepto(s) de temporadas anteriores por {formatCurrency(anterioresOcultos.reduce((s, i) => s + i.pending, 0))} — ver todo
+                              </button>
+                            )}
+                            {itemsVisibles.map((item, idx) => (
+                              <div key={idx} className={`flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 p-2.5 rounded-lg border ${item.status === 'pagado' ? 'bg-green-50 border-green-200' : (!item.temporadaActiva && item.pending > 0 ? 'bg-amber-50/60 border-amber-200' : 'bg-white border-gray-200')}`}>
                                 <div className="flex-1 min-w-0">
                                   <div className="flex items-center gap-2">
                                     <p className="text-sm font-medium text-gray-900">{item.label}</p>
@@ -766,7 +842,7 @@ export default function PlayerUnifiedDebt({
                 </Accordion>
               </CardContent>
             </Card>
-          ))}
+          ); })}
         </div>
       )}
     </div>
