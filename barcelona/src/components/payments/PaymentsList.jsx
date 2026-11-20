@@ -3,14 +3,14 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Search, CreditCard, Calendar, User, Undo2, Printer } from 'lucide-react';
+import { Search, CreditCard, Calendar, User, Undo2, Printer, CalendarRange } from 'lucide-react';
 import { format } from 'date-fns';
 import { formatCurrency } from '../lib/formatCurrency';
 import { imprimirVale, folioVale, cuentaLegible } from '../print/PrintVale';
 
 const PAGE_SIZE = 100;
 
-export default function PaymentsList({ payments, players, isLoading, onReverse, currentUserEmail, isAdmin }) {
+export default function PaymentsList({ payments, players, isLoading, onReverse, onReclasificarTemporada, currentUserEmail, isAdmin }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
@@ -23,6 +23,9 @@ export default function PaymentsList({ payments, players, isLoading, onReverse, 
   );
   const puedeReversar = (p) => !p.reversal_of && !reversedIds.has(p.id) && onReverse
     && (isAdmin || (p.created_by && p.created_by === currentUserEmail));
+  // Corrección de TEMPORADA de una inscripción (solo admin): el vale no cambia, solo a qué temporada aplica.
+  const puedeReclasificarTemporada = (p) => isAdmin && onReclasificarTemporada && !p.reversal_of && !reversedIds.has(p.id)
+    && ['inscripcion', 'reinscripcion'].includes(p.payment_type);
 
   // Índice O(1): evita players.find() por cada una de las ~10k filas
   const playerById = React.useMemo(() => new Map(players.map(p => [p.id, p])), [players]);
@@ -190,6 +193,18 @@ export default function PaymentsList({ payments, players, isLoading, onReverse, 
                       <Printer className="w-4 h-4 md:mr-0 mr-1" />
                       <span className="md:hidden">Imprimir</span>
                     </Button>
+                    )}
+                    {puedeReclasificarTemporada(payment) && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-blue-700 hover:text-blue-800 hover:bg-blue-50 flex-1 md:flex-none"
+                        onClick={() => onReclasificarTemporada(payment)}
+                        title="Corregir temporada de la inscripción (el vale no cambia; queda en Auditoría)"
+                      >
+                        <CalendarRange className="w-4 h-4 md:mr-0 mr-1" />
+                        <span className="md:hidden">Temporada</span>
+                      </Button>
                     )}
                     {puedeReversar(payment) && (
                       <Button
