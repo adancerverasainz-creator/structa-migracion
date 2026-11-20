@@ -10,6 +10,7 @@ import { AlertCircle, CheckCircle, Trophy, Search, Phone, Mail, PlusCircle, File
 import { exportarPDF, exportarExcel } from '../lib/exportListado';
 import { formatCurrency } from '../lib/formatCurrency';
 import { getTotalPaidForAttendee } from '@/lib/tournamentBalance';
+import { PhoneLink } from '../lib/whatsapp';
 
 export default function TournamentDebtorsList({ players, onAbonarTorneo, debtWaivers = [], onCondonar }) {
   const [selectedTournament, setSelectedTournament] = useState('all');
@@ -179,8 +180,7 @@ export default function TournamentDebtorsList({ players, onAbonarTorneo, debtWai
                       <p className="font-semibold text-gray-800 text-sm">{player.parent_name}</p>
                       <div className="flex flex-wrap gap-4 text-sm">
                         <div className="flex items-center gap-2 text-gray-600">
-                          <Phone className="w-4 h-4 text-blue-600" />
-                          <a href={`tel:${player.parent_phone}`} className="hover:text-blue-600">{player.parent_phone}</a>
+                          <PhoneLink phone={player.parent_phone} iconClass="w-4 h-4" />
                         </div>
                         {player.parent_email && (
                           <div className="flex items-center gap-2 text-gray-600">
