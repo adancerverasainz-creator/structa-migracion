@@ -40,7 +40,7 @@ const monthNames = ['enero','febrero','marzo','abril','mayo','junio','julio','ag
 export default function PlayerUnifiedDebt({
   players, payments, tournamentPayments, tournaments, tournamentAttendees,
   summerCampPayments, onAbonar, onAbonarTorneo, onPagoGeneral, isLoading
-, lateFeeSettings = null, debtWaivers = [], seasonCalendar = null, feesConfig = null, playerPauses = [], onCondonar }) {
+, lateFeeSettings = null, debtWaivers = [], seasonCalendar = null, feesConfig = null, playerPauses = [], onCondonar, saldosFavor = {} }) {
   const monthOptions = getMonthOptions();
   const [selectedMonth, setSelectedMonth] = useState(monthOptions[0]?.value || '');
   const [search, setSearch] = useState('');
@@ -696,6 +696,11 @@ export default function PlayerUnifiedDebt({
                         {becaPct(player) > 0 && (
                           <Badge className="bg-purple-100 text-purple-800 flex items-center gap-1" title={becaMotivoLabel(player.scholarship_reason)}>
                             <GraduationCap className="w-3 h-3" /> Beca {Math.round(becaPct(player))}%
+                          </Badge>
+                        )}
+                        {(Number(saldosFavor?.[player.id]) || 0) > 0 && (
+                          <Badge className="bg-amber-100 text-amber-800 text-xs" title="Crédito del jugador (p.ej. torneo cancelado). Se aplica al cobrar eligiendo el método 'Saldo a favor'.">
+                            Saldo a favor {formatCurrency(saldosFavor[player.id])}
                           </Badge>
                         )}
                         {totalDebt > 0
