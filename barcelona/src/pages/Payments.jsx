@@ -76,6 +76,49 @@ setTemporadaInfo(null); setTemporadaNueva(''); setTemporadaMotivo('');
 onError: (e) => toast.error(`No se pudo corregir la temporada: ${e.message}`),
 });
 
+// Saldo a favor por jugador (crédito por torneos cancelados). Se cobra con método 'saldo_a_favor' vía RPC.
+const { data: saldosFavorRows = [] } = useQuery({
+queryKey: ['saldosFavor'],
+queryFn: async () => { const { data, error } = await supabase.from('v_saldo_favor').select('player_id, saldo'); if (error) throw error; return data || []; },
+});
+const saldosFavor = Object.fromEntries(saldosFavorRows.map(r => [r.player_id, Number(r.saldo) || 0]));
+// Cobro con saldo a favor: una sola transacción en Supabase (descuenta crédito + crea el cobro sin caja)
+const pagarConSaldoMutation = useMutation({
+mutationFn: async (data) => {
+const esTorneo = data.type === 'tournament';
+const { data: res, error } = await supabase.rpc('pagar_con_saldo_favor', {
+p_player_id: data.player_id,
+p_payment_type: esTorneo ? 'torneo' : (data.payment_type || 'mensualidad'),
+p_month: esTorneo ? (tournaments.find(t => t.id === data.tournament_id)?.name || null) : (data.month || null),
+p_amount: esTorneo ? (data.paid_amount || 0) : ((data.amount || 0) - (data.surcharge || 0)),
+p_surcharge: esTorneo ? 0 : (data.surcharge || 0),
+p_notes: data.notes || null,
+p_fecha: (data.payment_date || '').slice(0, 10) || null,
+p_tournament_id: esTorneo ? data.tournament_id : null,
+p_op_key: (globalThis.crypto?.randomUUID ? crypto.randomUUID() : null),
+});
+if (error) throw new Error(error.message);
+return res;
+},
+onSuccess: (res, data) => {
+queryClient.invalidateQueries({ queryKey: ['payments'] });
+queryClient.invalidateQueries({ queryKey: ['tournamentPayments'] });
+queryClient.invalidateQueries({ queryKey: ['tournamentAttendees'] });
+queryClient.invalidateQueries({ queryKey: ['saldosFavor'] });
+setPaymentConfig(null); setShowForm(false); setEditingPayment(null);
+const player = players.find(p => p.id === data.player_id);
+const torneo = data.type === 'tournament' ? tournaments.find(t => t.id === data.tournament_id) : null;
+imprimirVale(valeDeIngreso({
+  id: res?.id, folio: res?.folio, fecha: data.payment_date, monto: res?.monto ?? (data.paid_amount ?? data.amount),
+  concepto: torneo ? `Torneo — ${torneo.name}` : (data.month ? `Mensualidad ${data.month}` : (data.payment_type || 'Pago')),
+  metodo: 'saldo_a_favor', cuenta: cuentaLegible({ payment_method: 'saldo_a_favor' }),
+  categoria: player?.category, cliente: player?.full_name,
+}));
+toast.success(`Cobrado con saldo a favor. Le quedan ${formatCurrency(res?.saldo_restante || 0)}`);
+},
+onError: (e) => toast.error(`No se pudo cobrar con saldo a favor: ${e.message}`),
+});
+
 const { data: saldosCuentas = [] } = useQuery({
 queryKey: ['saldosPorCuenta'],
 queryFn: async () => {
@@ -263,6 +306,8 @@ queryClient.invalidateQueries({ queryKey: ['players'] });
 const handleSubmit = (data) => {
 if (editingPayment && editingPayment.id) {
 updateMutation.mutate({ id: editingPayment.id, data, previousPayment: editingPayment });
+} else if (data.payment_method === 'saldo_a_favor') {
+pagarConSaldoMutation.mutate({ ...data, type: 'regular' });
 } else {
 createMutation.mutate(data);
 }
@@ -312,7 +357,9 @@ debtInfo,
 };
 
 const handleUnifiedSubmit = (data) => {
-if (data.type === 'tournament') {
+if (data.payment_method === 'saldo_a_favor') {
+pagarConSaldoMutation.mutate(data);
+} else if (data.type === 'tournament') {
 const { type, ...tpData } = data;
 createTournamentPaymentMutation.mutate(tpData);
 } else {
@@ -616,9 +663,10 @@ feesConfig={feesConfig}
 uniformCatalog={uniformCatalog}
 bankAccounts={bankAccounts}
 config={paymentConfig}
+saldoFavor={saldosFavor[paymentConfig.player?.id] || 0}
 onSubmit={handleUnifiedSubmit}
 onCancel={() => setPaymentConfig(null)}
-isLoading={createMutation.isPending || updateMutation.isPending || createTournamentPaymentMutation.isPending}
+isLoading={createMutation.isPending || updateMutation.isPending || createTournamentPaymentMutation.isPending || pagarConSaldoMutation.isPending}
 />
 )}
 {pagoGeneralInfo && (
@@ -655,12 +703,13 @@ actions={
 payment={editingPayment}
 players={players}
 feesConfig={feesConfig}
+saldosFavor={saldosFavor}
 onSubmit={handleSubmit}
 onCancel={() => {
 setShowForm(false);
 setEditingPayment(null);
 }}
-isLoading={createMutation.isPending || updateMutation.isPending}
+isLoading={createMutation.isPending || updateMutation.isPending || pagarConSaldoMutation.isPending}
 />
 )}
 
@@ -788,6 +837,7 @@ tournaments={tournaments}
 tournamentAttendees={tournamentAttendees}
 summerCampPayments={summerCampPayments}
 isLoading={playersLoading || paymentsLoading}
+saldosFavor={saldosFavor}
 onAbonar={handlePay}
 onAbonarTorneo={(info) => setPaymentConfig({ type: 'torneo', player: info.player, debtInfo: info })}
 onPagoGeneral={(info) => setPagoGeneralInfo(info)}
