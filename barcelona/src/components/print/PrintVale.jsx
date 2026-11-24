@@ -157,6 +157,7 @@ export const cuentaLegible = ({ payment_method, account, bank_name }) => {
   const cta = account ?? bank_name ?? '';
   if (payment_method === 'efectivo') return cta === 'Fondos' ? 'Fondos (caja)' : cta === 'Caja chica' ? 'Caja chica' : 'Efectivo (caja cobranza)';
   if (payment_method === 'tarjeta') return 'Tarjeta';
+  if (payment_method === 'saldo_a_favor') return 'Saldo a favor (sin movimiento de caja)';
   return cta === 'MercadoPagoBIA' ? 'Mercado Pago BIA' : (cta || '—');
 };
 
