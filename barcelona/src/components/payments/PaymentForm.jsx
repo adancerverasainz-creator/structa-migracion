@@ -12,7 +12,7 @@ import { formatCurrency } from '../lib/formatCurrency';
 import { getCurrentSeason } from '../../lib/financeEngine';
 import TicketUniforme from './TicketUniforme';
 
-export default function PaymentForm({ payment, players, onSubmit, onCancel, isLoading, feesConfig = null }) {
+export default function PaymentForm({ payment, players, onSubmit, onCancel, isLoading, feesConfig = null, saldosFavor = {} }) {
   const [formData, setFormData] = useState(() => {
     if (payment) {
       return {
@@ -188,6 +188,9 @@ export default function PaymentForm({ payment, players, onSubmit, onCancel, isLo
   };
 
   const selectedPlayer = players.find(p => p.id === formData.player_id);
+  const saldoFavorSel = Number(saldosFavor?.[formData.player_id]) || 0;
+  const totalPrevisto = (parseFloat(formData.amount) || 0) + (parseFloat(formData.surcharge) || 0);
+  const saldoOk = formData.payment_method !== 'saldo_a_favor' || (!payment && saldoFavorSel > 0 && totalPrevisto <= saldoFavorSel + 0.005);
 
   // FIX 2026-07-15: también se puede cobrar a inactivos/baja (su deuda sigue viva); activos aparecen primero
   const filteredPlayers = [...players]
@@ -517,8 +520,16 @@ export default function PaymentForm({ payment, players, onSubmit, onCancel, isLo
                   <SelectItem value="efectivo">Efectivo</SelectItem>
                   <SelectItem value="tarjeta">Tarjeta Bancaria</SelectItem>
                   <SelectItem value="transferencia">Transferencia</SelectItem>
+                  {!payment && saldoFavorSel > 0 && (
+                    <SelectItem value="saldo_a_favor">Saldo a favor (disponible {formatCurrency(saldoFavorSel)})</SelectItem>
+                  )}
                 </SelectContent>
               </Select>
+              {formData.payment_method === 'saldo_a_favor' && (
+                <p className={`text-xs rounded px-2 py-1 border ${saldoOk ? 'text-amber-700 bg-amber-50 border-amber-200' : 'text-red-700 bg-red-50 border-red-200'}`}>
+                  {saldoOk ? <>Se aplica crédito del jugador; no entra dinero a caja. Disponible {formatCurrency(saldoFavorSel)}.</> : <>El total excede el saldo a favor disponible ({formatCurrency(saldoFavorSel)}).</>}
+                </p>
+              )}
             </div>
             {formData.payment_method === 'transferencia' && (
               <>
@@ -580,7 +591,7 @@ export default function PaymentForm({ payment, players, onSubmit, onCancel, isLo
           <Button type="button" variant="outline" onClick={onCancel} disabled={isLoading}>
             Cancelar
           </Button>
-          <Button type="submit" disabled={isLoading || (formData.payment_method === 'transferencia' && !formData.bank_name)} className="bg-green-600 hover:bg-green-700">
+          <Button type="submit" disabled={isLoading || !saldoOk || (formData.payment_method === 'transferencia' && !formData.bank_name)} className="bg-green-600 hover:bg-green-700">
             <Save className="w-4 h-4 mr-2" />
             {payment ? 'Actualizar' : 'Guardar'}
           </Button>
