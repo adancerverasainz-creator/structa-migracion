@@ -96,6 +96,19 @@ export default function CortesPendientesCard({ isAdmin, cashRegisters = [], banc
     onError: (e) => toast.error(`No se confirmó la recepción: ${e.message}`),
   });
 
+  // Corte liquidado de más (un cobro de ese día se reversó DESPUÉS de liquidar): contra-asiento Fondos → Caja Cobranza
+  const [ajusteInfo, setAjusteInfo] = useState(null);
+  const [ajusteMotivo, setAjusteMotivo] = useState('');
+  const ajustarCorte = useMutation({
+    mutationFn: async ({ fecha, motivo }) => {
+      const { data, error } = await supabase.rpc('ajustar_corte_liquidado_de_mas', { p_fecha: fecha, p_motivo: motivo });
+      if (error) throw new Error(error.message);
+      return data;
+    },
+    onSuccess: (res) => { invalidar(queryClient); toast.success(`Corte ajustado: ${formatCurrency(Number(res?.ajuste) || 0)} regresan de Fondos a Caja Cobranza`); setAjusteInfo(null); setAjusteMotivo(''); },
+    onError: (e) => toast.error(`No se pudo ajustar el corte: ${e.message}`),
+  });
+
   const pendientes = cortes.filter((c) => !c.es_hoy && Number(c.pendiente) > 0.005);
   const porEntregar = pendientes.reduce((s, c) => s + Number(c.pendiente), 0);
   const hoy = cortes.find((c) => c.es_hoy);
@@ -251,8 +264,28 @@ export default function CortesPendientesCard({ isAdmin, cashRegisters = [], banc
             <span className="font-semibold text-red-700">{FECHA(c.fecha)}</span>
             <Badge variant="outline" className="ml-2 border-red-400 text-red-700">liquidado de más</Badge>
             <p className="text-xs text-red-600 mt-1">
-              Se liquidó {formatCurrency(Number(c.entregado))} pero el neto vigente del día es {formatCurrency(Number(c.neto))} (¿hubo un reverso después?). Corrige antes de confirmar la recepción.
+              Se liquidó {formatCurrency(Number(c.entregado))} pero el neto vigente del día es {formatCurrency(Number(c.neto))} (¿hubo un reverso después?).
+              {isAdmin ? ' Ajusta el corte: la diferencia regresa de Fondos a Caja Cobranza con un contra-asiento (el corte original no se toca).' : ' Pide al administrador ajustar el corte.'}
             </p>
+            {isAdmin && (
+              ajusteInfo === c.fecha ? (
+                <div className="mt-2 space-y-2">
+                  <textarea className="w-full border rounded-md p-2 text-xs min-h-[60px] bg-white" placeholder="Motivo (obligatorio, mínimo 5 caracteres). Ej. 'Abono de torneo reversado después del corte: solo entraron $6,400'"
+                    value={ajusteMotivo} onChange={(e) => setAjusteMotivo(e.target.value)} />
+                  <div className="flex justify-end gap-2">
+                    <Button size="sm" variant="outline" disabled={ajustarCorte.isPending} onClick={() => { setAjusteInfo(null); setAjusteMotivo(''); }}>Cancelar</Button>
+                    <Button size="sm" className="bg-red-600 hover:bg-red-700" disabled={ajustarCorte.isPending || ajusteMotivo.trim().length < 5}
+                      onClick={() => ajustarCorte.mutate({ fecha: c.fecha, motivo: ajusteMotivo.trim() })}>
+                      {ajustarCorte.isPending ? 'Ajustando…' : `Confirmar ajuste — ${formatCurrency(Math.abs(Number(c.pendiente)))} Fondos → Caja Cobranza`}
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <Button size="sm" variant="outline" className="mt-2 border-red-300 text-red-700 hover:bg-red-100" onClick={() => { setAjusteInfo(c.fecha); setAjusteMotivo(''); }}>
+                  Ajustar corte ({formatCurrency(Math.abs(Number(c.pendiente)))})
+                </Button>
+              )
+            )}
           </div>
         ))}
         {entregasTransito.length > 0 && (
