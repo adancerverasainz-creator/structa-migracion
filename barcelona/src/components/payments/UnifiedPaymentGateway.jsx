@@ -48,7 +48,7 @@ const PAYMENT_METHODS = [
 ];
 const DEFAULT_BANKS = ['BBVA', 'MP', 'NU', 'OpenBank', 'MercadoPagoBIA'];
 
-export default function UnifiedPaymentGateway({ config, onSubmit, onCancel, isLoading, feesConfig = null, uniformCatalog = null, bankAccounts = null, lateFeeSettings = null }) {
+export default function UnifiedPaymentGateway({ config, onSubmit, onCancel, isLoading, feesConfig = null, uniformCatalog = null, bankAccounts = null, lateFeeSettings = null, saldoFavor = 0 }) {
   // Configuración del club desde BD (catálogos/cuentas/precios editables sin deploy)
   const amountsByType = {
     mensualidad: feesConfig?.mensualidad_montos?.length ? feesConfig.mensualidad_montos : DEFAULT_AMOUNTS.mensualidad,
@@ -171,9 +171,12 @@ export default function UnifiedPaymentGateway({ config, onSubmit, onCancel, isLo
 
   // Transferencia sin banco destino = dinero sin rastro → inválido
   const bankOk = paymentMethod !== 'transferencia' || !!bankName;
+  // Saldo a favor: crédito del jugador (torneo cancelado); no entra dinero a caja y no puede exceder el disponible
+  const saldoDisponible = Number(saldoFavor) || 0;
+  const saldoOk = paymentMethod !== 'saldo_a_favor' || (saldoDisponible > 0 && total <= saldoDisponible + 0.005);
   const isValid = (isUniformes
     ? (totalUniforme > 0)
-    : (baseAmount > 0 && !isNaN(baseAmount) && (!isUniformAbono || baseAmount <= pendingAmount))) && bankOk;
+    : (baseAmount > 0 && !isNaN(baseAmount) && (!isUniformAbono || baseAmount <= pendingAmount))) && bankOk && saldoOk;
   const isFullyPaid = isTorneo 
     ? ((totalPaid + total) >= registrationFee)
     : isUniformes
@@ -627,8 +630,18 @@ export default function UnifiedPaymentGateway({ config, onSubmit, onCancel, isLo
                   {PAYMENT_METHODS.map(m => (
                     <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
                   ))}
+                  {saldoDisponible > 0 && !isUniformes && (
+                    <SelectItem value="saldo_a_favor">Saldo a favor (disponible {formatCurrency(saldoDisponible)})</SelectItem>
+                  )}
                 </SelectContent>
               </Select>
+              {paymentMethod === 'saldo_a_favor' && (
+                <p className={`text-xs rounded px-2 py-1 border ${saldoOk ? 'text-amber-700 bg-amber-50 border-amber-200' : 'text-red-700 bg-red-50 border-red-200'}`}>
+                  {saldoOk
+                    ? <>Se aplica crédito del jugador: no entra dinero a ninguna caja. Disponible {formatCurrency(saldoDisponible)}; quedará {formatCurrency(Math.max(0, saldoDisponible - total))}.</>
+                    : <>El total {formatCurrency(total)} excede el saldo a favor disponible ({formatCurrency(saldoDisponible)}). Cobra el resto con otro método en un segundo abono.</>}
+                </p>
+              )}
             </div>
 
             {/* Cuenta destino SIEMPRE visible: trazabilidad de a dónde entra el dinero */}
@@ -648,6 +661,12 @@ export default function UnifiedPaymentGateway({ config, onSubmit, onCancel, isLo
                 {!bankName && (
                   <p className="text-xs text-red-600">Obligatorio: indica a qué banco entró la transferencia.</p>
                 )}
+              </div>
+            ) : paymentMethod === 'saldo_a_favor' ? (
+              <div className="flex items-center gap-2 text-sm bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                <Wallet className="w-4 h-4 text-amber-600" />
+                <span className="text-gray-600">Sin movimiento de caja:</span>
+                <span className="font-semibold text-gray-900">Saldo a favor del jugador</span>
               </div>
             ) : paymentMethod === 'efectivo' ? (
               <div className="space-y-2">
