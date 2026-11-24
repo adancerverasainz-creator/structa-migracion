@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ArrowLeft, Plus, CheckCircle, AlertCircle, X, Save, Trash2, Search, Edit, Users, Clock, Globe, Undo2, Printer } from 'lucide-react';
+import { ArrowLeft, Plus, CheckCircle, AlertCircle, X, Save, Trash2, Search, Edit, Users, Clock, Globe, Undo2, Printer, PiggyBank } from 'lucide-react';
 import { imprimirVale, folioVale, cuentaLegible } from '../print/PrintVale';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
@@ -54,6 +54,53 @@ export default function TournamentPayments({ tournament, players, payments: allP
   const [formData, setFormData] = useState(resetForm);
 
   const queryClient = useQueryClient();
+
+  // ── Saldo a favor (crédito del jugador por torneos cancelados) ──
+  const { data: saldosFavorRows = [] } = useQuery({
+    queryKey: ['saldosFavor'],
+    queryFn: async () => { const { data, error } = await supabase.from('v_saldo_favor').select('player_id, saldo'); if (error) throw error; return data || []; },
+  });
+  const saldoFavorDe = (pid) => Number(saldosFavorRows.find(r => r.player_id === pid)?.saldo) || 0;
+  const [aSaldoInfo, setASaldoInfo] = useState(null);      // pago a convertir en saldo a favor
+  const [cancelarTorneo, setCancelarTorneo] = useState(false); // cancelar torneo completo
+  const [motivoSaldo, setMotivoSaldo] = useState('');
+  const invalidarSaldos = () => {
+    queryClient.invalidateQueries({ queryKey: ['saldosFavor'] });
+    queryClient.invalidateQueries({ queryKey: ['tournamentPayments'] });
+  };
+  const aSaldoMutation = useMutation({
+    mutationFn: async ({ payment, motivo }) => {
+      const { data, error } = await supabase.rpc('torneo_pago_a_saldo_favor', { p_tournament_payment_id: payment.id, p_motivo: motivo });
+      if (error) throw new Error(error.message); return data;
+    },
+    onSuccess: (res) => { invalidarSaldos(); toast.success(`${res?.jugador || 'Jugador'}: ${formatCurrency(res?.monto || 0)} a saldo a favor (disponible ${formatCurrency(res?.saldo || 0)})`); setASaldoInfo(null); setMotivoSaldo(''); },
+    onError: (e) => toast.error(`No se pudo convertir: ${e.message}`),
+  });
+  const cancelarMutation = useMutation({
+    mutationFn: async ({ motivo }) => {
+      const { data, error } = await supabase.rpc('torneo_cancelar_a_saldo_favor', { p_tournament_id: tournament?.id, p_motivo: motivo });
+      if (error) throw new Error(error.message); return data;
+    },
+    onSuccess: (res) => { invalidarSaldos(); toast.success(`${res?.pagos || 0} pago(s) convertidos a saldo a favor por ${formatCurrency(res?.total || 0)}`); setCancelarTorneo(false); setMotivoSaldo(''); },
+    onError: (e) => toast.error(`No se pudo cancelar: ${e.message}`),
+  });
+  const pagarConSaldoMutation = useMutation({
+    mutationFn: async (data) => {
+      const { data: res, error } = await supabase.rpc('pagar_con_saldo_favor', {
+        p_player_id: data.player_id, p_payment_type: 'torneo', p_month: tournament?.name || null,
+        p_amount: data.paid_amount, p_surcharge: 0, p_notes: data.notes || null, p_fecha: data.payment_date || null,
+        p_tournament_id: tournament?.id, p_op_key: (globalThis.crypto?.randomUUID ? crypto.randomUUID() : null),
+      });
+      if (error) throw new Error(error.message); return res;
+    },
+    onSuccess: (res, data) => {
+      invalidarSaldos();
+      if ((data.paid_amount || 0) > 0) imprimirVale(valeDeTorneo({ ...data, id: res?.id, folio: res?.folio, payment_method: 'saldo_a_favor' }));
+      toast.success(`Cobrado con saldo a favor. Restante: ${formatCurrency(res?.saldo_restante || 0)}`);
+      setShowForm(false); setEditingPayment(null); setFormData(resetForm());
+    },
+    onError: (e) => toast.error(`No se pudo cobrar con saldo a favor: ${e.message}`),
+  });
 
   const { data: tournamentPayments = [] } = useQuery({
     queryKey: ['tournamentPayments', tournament?.id],
@@ -212,6 +259,10 @@ export default function TournamentPayments({ tournament, players, payments: allP
 
     if (editingPayment && editingPayment.id) {
       updateMutation.mutate({ id: editingPayment.id, data: paymentData });
+    } else if (paymentData.payment_method === 'saldo_a_favor') {
+      if (!paymentData.player_id) { toast.error('El saldo a favor solo aplica a jugadores del club.'); return; }
+      if (finalPaid > saldoFavorDe(paymentData.player_id)) { toast.error(`Saldo a favor insuficiente: disponible ${formatCurrency(saldoFavorDe(paymentData.player_id))}`); return; }
+      pagarConSaldoMutation.mutate(paymentData);
     } else {
       createMutation.mutate(paymentData);
     }
@@ -314,6 +365,13 @@ export default function TournamentPayments({ tournament, players, payments: allP
             </p>
           )}
         </div>
+        {isAdmin && (
+          <Button variant="outline" className="border-amber-300 text-amber-800 hover:bg-amber-50"
+            title="Torneo cancelado: todos los pagos vivos de jugadores del club se convierten en saldo a favor (el dinero ya cobrado se queda en caja)"
+            onClick={() => { setCancelarTorneo(true); setMotivoSaldo(''); }}>
+            <PiggyBank className="w-4 h-4 mr-2" /> Cancelar torneo → saldo a favor
+          </Button>
+        )}
         <Button onClick={() => {
           setEditingPayment(null);
           setFormData(resetForm());
@@ -324,6 +382,31 @@ export default function TournamentPayments({ tournament, players, payments: allP
           Registrar Pago
         </Button>
       </div>
+
+      {/* Modal: convertir pago / cancelar torneo a saldo a favor */}
+      {(aSaldoInfo || cancelarTorneo) && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+          <Card className="w-full max-w-md">
+            <CardHeader><CardTitle className="text-base">{cancelarTorneo ? 'Cancelar torneo: pagos a saldo a favor' : 'Convertir pago en saldo a favor'}</CardTitle></CardHeader>
+            <CardContent className="space-y-3">
+              <p className="text-sm text-gray-700">
+                {cancelarTorneo
+                  ? <>Todos los pagos vivos de jugadores del club en <span className="font-semibold">{tournament?.name}</span> se convertirán en crédito a favor de cada jugador.</>
+                  : <><span className="font-semibold">{getPlayerName(aSaldoInfo.player_id)}</span> — {formatCurrency(effectivePaid(aSaldoInfo))}</>}
+              </p>
+              <p className="text-xs text-gray-500">El dinero ya cobrado se queda en caja (fue real). El jugador recibe un saldo a favor que después se aplica a mensualidades, inscripción u otros torneos eligiendo el método "Saldo a favor", sin mover ninguna caja. Todo queda en Auditoría.</p>
+              <textarea className="w-full border rounded-md p-2 text-sm min-h-[70px]" placeholder="Motivo (obligatorio, mínimo 5 caracteres). Ej. 'Liga cancelada por la organización'" value={motivoSaldo} onChange={(e) => setMotivoSaldo(e.target.value)} />
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" disabled={aSaldoMutation.isPending || cancelarMutation.isPending} onClick={() => { setASaldoInfo(null); setCancelarTorneo(false); setMotivoSaldo(''); }}>Cancelar</Button>
+                <Button className="bg-amber-600 hover:bg-amber-700" disabled={aSaldoMutation.isPending || cancelarMutation.isPending || motivoSaldo.trim().length < 5}
+                  onClick={() => cancelarTorneo ? cancelarMutation.mutate({ motivo: motivoSaldo.trim() }) : aSaldoMutation.mutate({ payment: aSaldoInfo, motivo: motivoSaldo.trim() })}>
+                  {(aSaldoMutation.isPending || cancelarMutation.isPending) ? 'Procesando…' : 'Confirmar'}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="grid w-full grid-cols-4">
@@ -564,8 +647,16 @@ export default function TournamentPayments({ tournament, players, payments: allP
                       <SelectItem value="efectivo">Efectivo</SelectItem>
                       <SelectItem value="tarjeta">Tarjeta</SelectItem>
                       <SelectItem value="transferencia">Transferencia</SelectItem>
+                      {!editingPayment && formData.player_id && saldoFavorDe(formData.player_id) > 0 && (
+                        <SelectItem value="saldo_a_favor">Saldo a favor (disponible {formatCurrency(saldoFavorDe(formData.player_id))})</SelectItem>
+                      )}
                     </SelectContent>
                   </Select>
+                  {formData.payment_method === 'saldo_a_favor' && (
+                    <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+                      Se aplicará crédito del jugador: no entra dinero a ninguna caja. Disponible {formatCurrency(saldoFavorDe(formData.player_id))}.
+                    </p>
+                  )}
                 </div>
                 {formData.payment_method === 'transferencia' && (
                   <>
@@ -675,7 +766,8 @@ export default function TournamentPayments({ tournament, players, payments: allP
                       {payment.payment_date && formatSafeDate(payment.payment_date) && (
                         <span>{formatSafeDate(payment.payment_date)}</span>
                       )}
-                      <Badge variant="outline">{payment.payment_method}</Badge>
+                      <Badge variant="outline" className={payment.payment_method === 'saldo_a_favor' ? 'border-amber-300 text-amber-800 bg-amber-50' : ''}>{payment.payment_method === 'saldo_a_favor' ? 'saldo a favor' : payment.payment_method}</Badge>
+                      {payment.notes?.includes('Convertido a SALDO A FAVOR') && <Badge className="bg-amber-100 text-amber-800 border-amber-300 border">→ Saldo a favor</Badge>}
                       {payment.status === 'abono' && <Badge className="bg-orange-100 text-orange-700 border-orange-300 border">Abono</Badge>}
                       {payment.status === 'pagado' && payment.amount === 0 && <Badge className="bg-blue-100 text-blue-700 border-blue-300 border">🎓 Becado</Badge>}
                       {payment.status === 'pagado' && payment.amount > 0 && <Badge className="bg-green-100 text-green-700 border-green-300 border">Pagado</Badge>}
@@ -690,6 +782,13 @@ export default function TournamentPayments({ tournament, players, payments: allP
                       <Button variant="outline" size="sm" title="Imprimir vale"
                         onClick={() => imprimirVale(valeDeTorneo(payment))}>
                         <Printer className="w-4 h-4" />
+                      </Button>
+                    )}
+                    {isAdmin && payment.player_id && !payment.reversal_of && !reversedIds.has(payment.id) && payment.payment_method !== 'saldo_a_favor' && !payment.notes?.includes('Convertido a SALDO A FAVOR') && effectivePaid(payment) > 0 && (
+                      <Button variant="outline" size="sm" className="text-amber-800 hover:bg-amber-50"
+                        title="Convertir este pago en saldo a favor del jugador (torneo cancelado)"
+                        onClick={() => { setASaldoInfo(payment); setMotivoSaldo(''); }}>
+                        <PiggyBank className="w-4 h-4" />
                       </Button>
                     )}
                     {puedeCorregir(payment) ? (
